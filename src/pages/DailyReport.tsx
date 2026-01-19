@@ -26,7 +26,7 @@ export default function DailyReport() {
   const { items } = useInventory();
   const { currentShop, currentUser } = useShop();
   const { getTotalCashCollected, getTotalMpesaCollected, getTotalBankDeposits, getPendingCashDeposits } = usePayment();
-  const { repairs, getTotalOutsourcedCosts } = useRepair();
+  const { repairs } = useRepair();
   
   // Date selection for manual reports
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -252,7 +252,7 @@ export default function DailyReport() {
         <div>
           <h2 className="text-2xl font-bold">Daily Sales Report</h2>
           <p className="text-gray-600 text-sm mt-1">
-            {currentUser?.role === 'admin' ? 'All Shops' : currentShop?.name || 'Select Shop'}
+            {currentUser?.roles.includes('admin') ? 'All Shops' : currentShop?.name || 'Select Shop'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useSales } from "../context/SalesContext";
 import { useRepair } from "../context/RepairContext";
 import { usePayment } from "../context/PaymentContext";
@@ -8,7 +8,7 @@ import { shareViaWhatsApp } from "../utils/receiptUtils";
 
 export default function AutomatedDailyReport() {
   const { getDailySales, getDailyRevenue } = useSales();
-  const { repairs, getTotalOutsourcedCosts } = useRepair();
+  const { repairs } = useRepair();
   const { getTotalCashCollected, getTotalMpesaCollected, getTotalBankDeposits, getPendingCashDeposits } = usePayment();
   const { currentShop } = useShop();
   const { debts } = useSupplierDebt();

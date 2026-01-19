@@ -7,7 +7,7 @@ export default function ShopSelector() {
   // If user is not admin, they can only see their shop
   const availableShops = React.useMemo(() => {
     if (!currentUser) return shops;
-    return currentUser.role === 'admin' ? shops : shops.filter(s => s.id === currentUser.shopId);
+    return currentUser.roles.includes('admin') ? shops : shops.filter(s => s.id === currentUser.shopId);
   }, [currentUser, shops]);
 
   if (!availableShops || availableShops.length <= 1) {
@@ -22,7 +22,7 @@ export default function ShopSelector() {
             <div className="text-right">
               <p className="text-sm text-gray-600">Logged in as</p>
               <p className="font-semibold">{currentUser.name}</p>
-              <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
+              <p className="text-xs text-gray-500 capitalize">{currentUser.roles.join(', ')}</p>
             </div>
           )}
         </div>
@@ -51,7 +51,7 @@ export default function ShopSelector() {
       </select>
       {currentUser && (
         <div className="mt-2 text-sm text-gray-600">
-          Logged in as: <span className="font-semibold">{currentUser.name}</span> ({currentUser.role})
+          Logged in as: <span className="font-semibold">{currentUser.name}</span> ({currentUser.roles.join(', ')})
         </div>
       )}
     </div>

@@ -20,7 +20,6 @@ export default function PendingCollections() {
     bank_to_paybill: "",
     bank: "",
   });
-  const [splitPayments, setSplitPayments] = useState<Array<{method: string; amount: string; transactionCode: string; bank?: string}>>([]);
 
   // Filter repairs based on customer status and payment
   const filteredRepairs = useMemo(() => {
@@ -46,7 +45,7 @@ export default function PendingCollections() {
     switch (filter) {
       case 'pending_collection':
         filtered = filtered.filter(repair =>
-          (repair.customerStatus === 'coming_back' || repair.depositAmount) &&
+          (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)) &&
           repair.paymentStatus === 'fully_paid'
         );
         break;
@@ -61,7 +60,7 @@ export default function PendingCollections() {
       default:
         // Show all repairs where customer has left phone
         filtered = filtered.filter(repair =>
-          repair.customerStatus === 'coming_back' || repair.depositAmount > 0
+          repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)
         );
     }
 
@@ -97,7 +96,7 @@ export default function PendingCollections() {
   };
 
   const stats = useMemo(() => {
-    const allPending = repairs.filter(r => r.customerStatus === 'coming_back' || r.depositAmount > 0);
+    const allPending = repairs.filter(r => r.customerStatus === 'coming_back' || (r.depositAmount && r.depositAmount > 0));
     return {
       total: allPending.length,
       pendingCollection: allPending.filter(r => r.paymentStatus === 'fully_paid').length,

@@ -37,7 +37,7 @@ type SplitPayment = {
 
 export default function RepairSales() {
   const navigate = useNavigate();
-  const { items, deductStock, addStock } = useInventory();
+  const { items, addStock } = useInventory();
   const { addRepair } = useRepair();
   const { addPayment } = usePayment();
   const { currentShop, currentUser } = useShop();
@@ -106,7 +106,7 @@ export default function RepairSales() {
       return;
     }
     const supplierName = newSupplierName.trim();
-    addSupplier({ name: supplierName });
+    addSupplier({ name: supplierName, categories: ['spare_parts'] });
     setPendingSupplierName(supplierName);
     setNewSupplierName("");
     setShowAddSupplier(false);
@@ -332,7 +332,7 @@ export default function RepairSales() {
         ? 'PAYMENT_PENDING' as const
         : (paymentStatus === 'fully_paid' ? 'FULLY_PAID' as const : 'PAYMENT_PENDING' as const),
       shopId: currentShop?.id,
-      paymentStatus: paymentStatus,
+      paymentStatus: paymentStatus as 'pending' | 'partial' | 'fully_paid',
       customerStatus: customerStatus,
       totalAgreedAmount: Number(form.totalAgreedAmount),
       paymentTiming: form.paymentTiming,

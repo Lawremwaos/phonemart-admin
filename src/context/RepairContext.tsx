@@ -104,7 +104,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
     );
   }, []);
 
-  const confirmPayment = useCallback((repairId: string, transactionCodes: any, paymentMethod: string, splitPayments?: any[]) => {
+  const confirmPayment = useCallback((repairId: string, _transactionCodes: any, _paymentMethod: string, _splitPayments?: any[]) => {
     setRepairs((prev) =>
       prev.map((repair) => {
         if (repair.id === repairId) {

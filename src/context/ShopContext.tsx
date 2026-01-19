@@ -215,6 +215,11 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
     return shops.filter(shop => shop.id === user.shopId);
   }, [users, shops]);
 
+  const hasRole = useCallback((user: User | null, role: 'admin' | 'technician' | 'manager') => {
+    if (!user) return false;
+    return user.roles.includes(role);
+  }, []);
+
   return (
     <ShopContext.Provider
       value={{
@@ -235,6 +240,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         deleteUser,
         getShopById,
         getUserShops,
+        hasRole,
       }}
     >
       {children}
