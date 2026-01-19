@@ -2,6 +2,8 @@ import { useState, useMemo } from "react";
 import { useSales } from "../context/SalesContext";
 import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
+import { usePayment } from "../context/PaymentContext";
+import { useRepair } from "../context/RepairContext";
 import { shareViaWhatsApp, shareViaEmail } from "../utils/receiptUtils";
 import {
   LineChart,
@@ -23,6 +25,8 @@ export default function DailyReport() {
   const { sales, getRevenueByPeriod } = useSales();
   const { items } = useInventory();
   const { currentShop, currentUser } = useShop();
+  const { getTotalCashCollected, getTotalMpesaCollected, getTotalBankDeposits, getPendingCashDeposits } = usePayment();
+  const { repairs, getTotalOutsourcedCosts } = useRepair();
   
   // Date selection for manual reports
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -35,7 +39,7 @@ export default function DailyReport() {
     targetDate.setHours(0, 0, 0, 0);
     
     let salesToFilter = sales;
-    if (currentUser?.role !== 'admin' && currentShop) {
+    if (!currentUser?.roles.includes('admin') && currentShop) {
       salesToFilter = sales.filter(sale => sale.shopId === currentShop.id);
     }
     
@@ -79,7 +83,7 @@ export default function DailyReport() {
 
   // Filter inventory by shop
   const shopItems = useMemo(() => {
-    if (currentUser?.role === 'admin') {
+    if (currentUser?.roles.includes('admin')) {
       return items;
     }
     if (!currentShop) return items;
@@ -133,6 +137,34 @@ export default function DailyReport() {
     });
   };
 
+  // Calculate payment totals for selected date
+  const cashCollected = getTotalCashCollected();
+  const mpesaCollected = getTotalMpesaCollected();
+  const bankDeposits = getTotalBankDeposits();
+  const pendingDeposits = getPendingCashDeposits();
+  const pendingDepositsAmount = pendingDeposits.reduce((sum, p) => sum + p.amount, 0);
+
+  // Get repairs for selected date
+  const selectedDateRepairs = useMemo(() => {
+    const targetDate = new Date(selectedDate);
+    targetDate.setHours(0, 0, 0, 0);
+    let repairsToFilter = repairs;
+    if (!currentUser?.roles.includes('admin') && currentShop) {
+      repairsToFilter = repairs.filter(r => r.shopId === currentShop.id);
+    }
+    return repairsToFilter.filter(repair => {
+      const repairDate = new Date(repair.date);
+      repairDate.setHours(0, 0, 0, 0);
+      return repairDate.getTime() === targetDate.getTime();
+    });
+  }, [repairs, selectedDate, currentShop, currentUser]);
+
+  const repairsCompleted = selectedDateRepairs.filter(r => 
+    r.status === 'REPAIR_COMPLETED' || r.status === 'FULLY_PAID' || r.status === 'COLLECTED'
+  ).length;
+  const repairRevenue = selectedDateRepairs.reduce((sum, r) => sum + r.amountPaid, 0);
+  const outsourcedCosts = selectedDateRepairs.reduce((sum, r) => sum + r.outsourcedCost, 0);
+
   const generateReportText = () => {
     const reportDate = formatDate(selectedDate);
     let text = `*${currentShop?.name || 'PHONEMART'} - Daily Sales Report*\n`;
@@ -143,6 +175,20 @@ export default function DailyReport() {
     text += `Total Revenue: KES ${dailyRevenue.toLocaleString()}\n`;
     text += `Total Items Sold: ${totalItemsSold}\n`;
     text += `Number of Transactions: ${dailySales.length}\n\n`;
+    
+    text += `*💳 PAYMENT BREAKDOWN*\n`;
+    text += `Cash Collected: KES ${cashCollected.toLocaleString()}\n`;
+    text += `MPESA Collected: KES ${mpesaCollected.toLocaleString()}\n`;
+    text += `Bank Deposits: KES ${bankDeposits.toLocaleString()}\n`;
+    if (pendingDepositsAmount > 0) {
+      text += `⚠️ Pending Cash Deposits: KES ${pendingDepositsAmount.toLocaleString()}\n`;
+    }
+    text += `\n`;
+    
+    text += `*🔧 REPAIRS*\n`;
+    text += `Repairs Completed: ${repairsCompleted}\n`;
+    text += `Repair Revenue: KES ${repairRevenue.toLocaleString()}\n`;
+    text += `Outsourced Costs: KES ${outsourcedCosts.toLocaleString()}\n\n`;
     
     if (itemsSoldByProduct.length > 0) {
       text += `*📦 TOP ITEMS SOLD*\n`;

@@ -24,7 +24,7 @@ export default function Exchange() {
   const shopItems = items.filter(item => item.shopId === currentShop?.id);
 
   // Filter exchanges by shop
-  const filteredExchanges = currentUser?.role === 'admin'
+  const filteredExchanges = currentUser?.roles.includes('admin')
     ? exchanges
     : exchanges.filter(e => e.fromShopId === currentShop?.id || e.toShopId === currentShop?.id);
 

@@ -46,7 +46,8 @@ export default function ReceiptView() {
       currentShop?.address,
       currentShop?.phone
     );
-    shareViaWhatsApp(text, currentShop?.phone);
+    // Use your work WhatsApp number
+    shareViaWhatsApp(text, '+254715592682');
   };
 
   const handleShareEmail = () => {

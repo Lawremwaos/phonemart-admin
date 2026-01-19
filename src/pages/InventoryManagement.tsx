@@ -19,7 +19,7 @@ export default function InventoryManagement() {
   });
 
   // Filter items by shop (technicians see only their shop, admin sees all)
-  const filteredItems = currentUser?.role === 'admin' 
+  const filteredItems = currentUser?.roles.includes('admin') 
     ? items 
     : items.filter(item => !item.shopId || item.shopId === currentShop?.id);
 

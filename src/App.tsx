@@ -3,10 +3,15 @@ import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import InventoryManagement from "./pages/InventoryManagement";
 import Sales from "./pages/Sales";
+import RepairSales from "./pages/RepairSales";
 import ReceiptView from "./pages/ReceiptView";
 import DailyReport from "./pages/DailyReport";
 import Purchases from "./pages/Purchases";
 import Exchange from "./pages/Exchange";
+import SupplierManagement from "./pages/SupplierManagement";
+import AdminSettings from "./pages/AdminSettings";
+import StockExchangeReport from "./pages/StockExchangeReport";
+import PendingCollections from "./pages/PendingCollections";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useShop } from "./context/ShopContext";
@@ -37,7 +42,7 @@ function AppContent() {
         <div className="mb-4 p-2 bg-gray-800 rounded">
           <p className="text-xs text-gray-400">Logged in as</p>
           <p className="text-sm font-semibold">{currentUser?.name}</p>
-          <p className="text-xs text-gray-400 capitalize">{currentUser?.role}</p>
+          <p className="text-xs text-gray-400 capitalize">{currentUser?.roles.join(', ')}</p>
         </div>
         <ul className="space-y-4 mb-6">
           <li>
@@ -47,7 +52,10 @@ function AppContent() {
             <Link to="/inventory" className="block hover:text-gray-300 transition-colors">Inventory</Link>
           </li>
           <li>
-            <Link to="/sales" className="block hover:text-gray-300 transition-colors">Sales</Link>
+            <Link to="/sales" className="block hover:text-gray-300 transition-colors">Accessories Sales</Link>
+          </li>
+          <li>
+            <Link to="/repair-sales" className="block hover:text-gray-300 transition-colors">Repair Sales</Link>
           </li>
           <li>
             <Link to="/daily-report" className="block hover:text-gray-300 transition-colors">Daily Report</Link>
@@ -58,6 +66,27 @@ function AppContent() {
           <li>
             <Link to="/exchange" className="block hover:text-gray-300 transition-colors">Exchange</Link>
           </li>
+          <li>
+            <Link to="/suppliers" className="block hover:text-gray-300 transition-colors">Suppliers</Link>
+          </li>
+          <li>
+            <Link to="/pending-collections" className="block hover:text-gray-300 transition-colors">Pending Collections</Link>
+          </li>
+          {currentUser?.roles.includes('admin') && (
+            <>
+              <li>
+                <Link to="/admin-settings" className="block hover:text-gray-300 transition-colors">Admin Settings</Link>
+              </li>
+              <li>
+                <Link to="/stock-exchange-report" className="block hover:text-gray-300 transition-colors">Stock Exchange Report</Link>
+              </li>
+            </>
+          )}
+          {!currentUser?.roles.includes('admin') && (
+            <li>
+              <Link to="/stock-exchange-report" className="block hover:text-gray-300 transition-colors">Stock Exchange Report</Link>
+            </li>
+          )}
         </ul>
         <button
           onClick={handleLogout}
@@ -112,10 +141,26 @@ function AppContent() {
             }
           />
           <Route
+            path="/suppliers"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <SupplierManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/sales"
             element={
               <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
                 <Sales />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/repair-sales"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <RepairSales />
               </ProtectedRoute>
             }
           />
@@ -132,6 +177,30 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'manager']}>
                 <DailyReport />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin-settings"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminSettings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/stock-exchange-report"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <StockExchangeReport />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pending-collections"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <PendingCollections />
               </ProtectedRoute>
             }
           />

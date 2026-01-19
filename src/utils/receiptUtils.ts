@@ -79,8 +79,10 @@ export const downloadReceiptAsImage = downloadReceiptAsPrint;
 
 export const shareViaWhatsApp = (text: string, phoneNumber?: string) => {
   const encodedText = encodeURIComponent(text);
-  const whatsappUrl = phoneNumber 
-    ? `https://wa.me/${phoneNumber}?text=${encodedText}`
+  // Remove + sign and any spaces from phone number for wa.me URL
+  const cleanPhone = phoneNumber ? phoneNumber.replace(/[\s+]/g, '') : undefined;
+  const whatsappUrl = cleanPhone 
+    ? `https://wa.me/${cleanPhone}?text=${encodedText}`
     : `https://wa.me/?text=${encodedText}`;
   window.open(whatsappUrl, '_blank');
 };
@@ -114,19 +116,52 @@ export const formatReceiptText = (sale: any, shopName: string, shopAddress?: str
   text += `*Receipt #${sale.id}*\n`;
   text += `Date & Time: ${dateTime}\n`;
   if (sale.saleType) {
-    const saleTypeText = sale.saleType === 'in-shop' ? 'In-Shop Sale' : 'Wholesale';
+    const saleTypeText = sale.saleType === 'in-shop' ? 'In-Shop Sale' : sale.saleType === 'wholesale' ? 'Wholesale' : 'Repair Sale';
     text += `Sale Type: ${saleTypeText}\n`;
   }
+  
+  // Customer info for repairs
+  if (sale.customerName) {
+    text += `\nCustomer: ${sale.customerName}\n`;
+    if (sale.customerPhone) {
+      text += `Phone: ${sale.customerPhone}\n`;
+    }
+    if (sale.phoneModel) {
+      text += `Phone Model: ${sale.phoneModel}\n`;
+    }
+  }
+  
   text += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-  text += `*ITEMS*\n`;
+  text += `*ITEMS USED*\n`;
   text += `━━━━━━━━━━━━━━━━━━━━\n`;
   sale.items.forEach((item: any) => {
-    const itemTotal = item.qty * item.price;
-    text += `${item.name}\n`;
-    text += `  Qty: ${item.qty} × KES ${item.price.toLocaleString()} = KES ${itemTotal.toLocaleString()}\n`;
+    text += `• ${item.name}${item.qty > 1 ? ` (Qty: ${item.qty})` : ''}\n`;
   });
   text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
-  text += `*TOTAL: KES ${sale.total.toLocaleString()}*\n`;
+  
+  // Show total agreed amount if available, otherwise show calculated total
+  const totalAmount = sale.totalAgreedAmount || sale.total;
+  text += `*TOTAL: KES ${totalAmount.toLocaleString()}*\n`;
+  
+  // Payment info
+  if (sale.amountPaid !== undefined && sale.amountPaid > 0) {
+    text += `Amount Paid: KES ${sale.amountPaid.toLocaleString()}\n`;
+  }
+  if (sale.balance !== undefined && sale.balance > 0) {
+    text += `Balance: KES ${sale.balance.toLocaleString()}\n`;
+  }
+  
+  // Transaction codes
+  if (sale.transactionCodes && Array.isArray(sale.transactionCodes) && sale.transactionCodes.length > 0) {
+    text += `\n*Transaction Codes:*\n`;
+    sale.transactionCodes.forEach((tc: any) => {
+      text += `${tc.method.replace(/_/g, ' ').toUpperCase()}: ${tc.code}\n`;
+      if (tc.bank) {
+        text += `Bank: ${tc.bank}\n`;
+      }
+    });
+  }
+  
   text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
   text += `\nThank you for your business!`;
   text += `\nThis is a digital receipt.`;

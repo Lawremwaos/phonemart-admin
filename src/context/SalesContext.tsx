@@ -11,6 +11,12 @@ export type Sale = {
     price: number;
   }>;
   total: number;
+  paymentType?: 'cash' | 'mpesa' | 'bank_deposit';
+  paymentStatus?: 'pending' | 'partial' | 'fully_paid';
+  amountPaid?: number;
+  balance?: number;
+  bank?: string;
+  depositReference?: string;
 };
 
 type SalesContextType = {

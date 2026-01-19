@@ -20,12 +20,12 @@ export default function Purchases() {
   const [costPrice, setCostPrice] = useState(0);
 
   // Filter items by shop
-  const availableItems = currentUser?.role === 'admin'
+  const availableItems = currentUser?.roles.includes('admin')
     ? items
     : items.filter(item => !item.shopId || item.shopId === currentShop?.id);
 
   // Filter purchases by shop
-  const filteredPurchases = currentUser?.role === 'admin'
+  const filteredPurchases = currentUser?.roles.includes('admin')
     ? purchases
     : purchases.filter(p => !p.shopId || p.shopId === currentShop?.id);
 
