@@ -83,7 +83,7 @@ export default function PendingCollections() {
   };
 
   const getStatusBadge = (repair: typeof repairs[0]) => {
-    if (repair.paymentStatus === 'fully_paid' && (repair.customerStatus === 'coming_back' || repair.depositAmount > 0)) {
+    if (repair.paymentStatus === 'fully_paid' && (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0))) {
       return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Ready for Collection</span>;
     }
     if (repair.paymentStatus === 'partial') {
