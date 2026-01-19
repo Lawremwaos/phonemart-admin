@@ -1,0 +1,150 @@
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate } from "react-router-dom";
+import Dashboard from "./pages/Dashboard";
+import Inventory from "./pages/Inventory";
+import InventoryManagement from "./pages/InventoryManagement";
+import Sales from "./pages/Sales";
+import ReceiptView from "./pages/ReceiptView";
+import DailyReport from "./pages/DailyReport";
+import Purchases from "./pages/Purchases";
+import Exchange from "./pages/Exchange";
+import Login from "./pages/Login";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { useShop } from "./context/ShopContext";
+
+function AppContent() {
+  const { isAuthenticated, currentUser, logout } = useShop();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="*" element={<Login />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen">
+      {/* Sidebar - Fixed on desktop, responsive on mobile */}
+      <nav className="fixed md:static left-0 top-0 h-full w-64 bg-gray-900 text-white p-6 z-10">
+        <h3 className="text-xl font-bold mb-6">PHONEMART</h3>
+        <div className="mb-4 p-2 bg-gray-800 rounded">
+          <p className="text-xs text-gray-400">Logged in as</p>
+          <p className="text-sm font-semibold">{currentUser?.name}</p>
+          <p className="text-xs text-gray-400 capitalize">{currentUser?.role}</p>
+        </div>
+        <ul className="space-y-4 mb-6">
+          <li>
+            <Link to="/" className="block hover:text-gray-300 transition-colors">Dashboard</Link>
+          </li>
+          <li>
+            <Link to="/inventory" className="block hover:text-gray-300 transition-colors">Inventory</Link>
+          </li>
+          <li>
+            <Link to="/sales" className="block hover:text-gray-300 transition-colors">Sales</Link>
+          </li>
+          <li>
+            <Link to="/daily-report" className="block hover:text-gray-300 transition-colors">Daily Report</Link>
+          </li>
+          <li>
+            <Link to="/purchases" className="block hover:text-gray-300 transition-colors">Purchases</Link>
+          </li>
+          <li>
+            <Link to="/exchange" className="block hover:text-gray-300 transition-colors">Exchange</Link>
+          </li>
+        </ul>
+        <button
+          onClick={handleLogout}
+          className="w-full bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
+        >
+          Logout
+        </button>
+      </nav>
+
+      {/* Main content - Responsive with sidebar offset */}
+      <main className="flex-1 md:ml-0 ml-64 p-4 md:p-6 min-h-screen w-full md:w-auto">
+        <Routes>
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventory"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <Inventory />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventory/manage"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <InventoryManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/purchases"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <Purchases />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/exchange"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <Exchange />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sales"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <Sales />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/receipt"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <ReceiptView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/daily-report"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'manager']}>
+                <DailyReport />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
+  );
+}
