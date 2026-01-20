@@ -52,7 +52,8 @@ This creates all the tables:
      - **Key:** `VITE_SUPABASE_ANON_KEY`
      - **Value:** `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1ZmVkb21jcnFybW5nbWNpZnV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4Nzk4ODcsImV4cCI6MjA4NDQ1NTg4N30.Mi6oizD0LyC7p3RmMS-85J9MXiLfIrq6Q-k2tFt5yOw`
    - Select **Production**, **Preview**, and **Development** for both
-6. Click **Deploy**
+6. **IMPORTANT:** The `vercel.json` file is already in the project - this fixes 404 routing errors
+7. Click **Deploy**
 
 ### Option B: Deploy via Vercel CLI
 
@@ -84,6 +85,8 @@ vercel
 
 ## Troubleshooting
 
+- **404 Error on Vercel:** The `vercel.json` file is included to fix this. If you still get 404s, make sure `vercel.json` is in your repository root.
 - **White Screen:** Check browser console for errors. Make sure env vars are set in Vercel.
 - **"Supabase env vars missing" warning:** Add env vars in Vercel dashboard.
 - **Tables not found:** Run the SQL schema in Supabase SQL Editor.
+- **Routes not working:** Ensure `vercel.json` exists with the rewrite rule for SPA routing.
