@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { supabase } from "../lib/supabaseClient";
 
 export type Shop = {
   id: string;
@@ -41,10 +42,9 @@ type ShopContextType = {
 
 const ShopContext = createContext<ShopContextType | null>(null);
 
-// Default shops for demo - 4 shops
-const defaultShops: Shop[] = [
+// Default shops for initial setup
+const defaultShops: Omit<Shop, 'id'>[] = [
   {
-    id: '1',
     name: 'PHONEMART - Main Branch',
     address: 'THIKA',
     phone: '+254715592682',
@@ -52,7 +52,6 @@ const defaultShops: Shop[] = [
     whatsappGroup: 'https://chat.whatsapp.com/example1',
   },
   {
-    id: '2',
     name: 'PHONEMART - Westlands',
     address: '456 Westlands Road, Nairobi',
     phone: '+254712345679',
@@ -60,7 +59,6 @@ const defaultShops: Shop[] = [
     whatsappGroup: 'https://chat.whatsapp.com/example2',
   },
   {
-    id: '3',
     name: 'PHONEMART - Karen',
     address: '789 Karen Road, Nairobi',
     phone: '+254712345680',
@@ -68,7 +66,6 @@ const defaultShops: Shop[] = [
     whatsappGroup: 'https://chat.whatsapp.com/example3',
   },
   {
-    id: '4',
     name: 'PHONEMART - Parklands',
     address: '321 Parklands Avenue, Nairobi',
     phone: '+254712345681',
@@ -77,69 +74,169 @@ const defaultShops: Shop[] = [
   },
 ];
 
-// Default users for demo - users for each shop
-const defaultUsers: User[] = [
-  // Admin/CEO - can see all shops
+// Default users for initial setup (shopName used to find shop ID)
+const defaultUsers: Array<Omit<User, 'id' | 'shopId'> & { shopName: string }> = [
   {
-    id: '1',
     name: 'Admin User',
     email: 'admin@phonemart.com',
     password: 'admin123',
-    shopId: '1',
+    shopName: 'PHONEMART - Main Branch',
     roles: ['admin'],
   },
-  // Shop 1 - Main Branch
   {
-    id: '2',
     name: 'Technician Main',
     email: 'tech1@phonemart.com',
     password: 'tech123',
-    shopId: '1',
+    shopName: 'PHONEMART - Main Branch',
     roles: ['technician'],
   },
-  // Shop 2 - Westlands
   {
-    id: '3',
     name: 'Manager Westlands',
     email: 'manager@phonemart.com',
     password: 'manager123',
-    shopId: '2',
+    shopName: 'PHONEMART - Westlands',
     roles: ['manager'],
   },
   {
-    id: '4',
     name: 'Technician Westlands',
     email: 'tech2@phonemart.com',
     password: 'tech123',
-    shopId: '2',
+    shopName: 'PHONEMART - Westlands',
     roles: ['technician'],
   },
-  // Shop 3 - Karen
   {
-    id: '5',
     name: 'Technician Karen',
     email: 'tech3@phonemart.com',
     password: 'tech123',
-    shopId: '3',
+    shopName: 'PHONEMART - Karen',
     roles: ['technician'],
   },
-  // Shop 4 - Parklands
   {
-    id: '6',
     name: 'Technician Parklands',
     email: 'tech4@phonemart.com',
     password: 'tech123',
-    shopId: '4',
+    shopName: 'PHONEMART - Parklands',
     roles: ['technician'],
   },
 ];
 
 export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
-  const [shops, setShops] = useState<Shop[]>(defaultShops);
-  const [users, setUsers] = useState<User[]>(defaultUsers);
+  const [shops, setShops] = useState<Shop[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [currentShop, setCurrentShop] = useState<Shop | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+
+  // Load shops and users from Supabase on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // Load shops
+        const { data: shopsData, error: shopsError } = await supabase
+          .from("shops")
+          .select("*")
+          .order("created_at", { ascending: false });
+        if (shopsError) throw shopsError;
+        if (cancelled) return;
+
+        let loadedShops: Shop[] = (shopsData || []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          address: s.address,
+          phone: s.phone,
+          email: s.email || undefined,
+          whatsappGroup: s.whatsapp_group || undefined,
+        }));
+
+        // If no shops exist, create default shops
+        if (loadedShops.length === 0) {
+          const shopInserts = defaultShops.map(shop => ({
+            name: shop.name,
+            address: shop.address,
+            phone: shop.phone,
+            email: shop.email || null,
+            whatsapp_group: shop.whatsappGroup || null,
+          }));
+          const { data: newShops, error: insertError } = await supabase
+            .from("shops")
+            .insert(shopInserts)
+            .select("*");
+          if (insertError) throw insertError;
+          loadedShops = (newShops || []).map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            address: s.address,
+            phone: s.phone,
+            email: s.email || undefined,
+            whatsappGroup: s.whatsapp_group || undefined,
+          }));
+        }
+
+        setShops(loadedShops);
+
+        // Load users
+        const { data: usersData, error: usersError } = await supabase
+          .from("users")
+          .select("*")
+          .order("created_at", { ascending: false });
+        if (usersError) throw usersError;
+        if (cancelled) return;
+
+        let loadedUsers: User[] = (usersData || []).map((u: any) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          password: u.password,
+          shopId: u.shop_id || '',
+          roles: (u.roles || []) as ('admin' | 'technician' | 'manager')[],
+        }));
+
+        // If no users exist, create default users
+        if (loadedUsers.length === 0) {
+          // Create users with shop references
+          for (const userData of defaultUsers) {
+            const matchingShop = loadedShops.find(s => s.name === userData.shopName);
+            if (!matchingShop) continue;
+
+            const { data: newUser, error: userError } = await supabase
+              .from("users")
+              .insert({
+                name: userData.name,
+                email: userData.email,
+                password: userData.password,
+                shop_id: matchingShop.id,
+                roles: userData.roles,
+              })
+              .select("*")
+              .single();
+            if (userError) {
+              console.error("Error creating default user:", userError);
+              continue;
+            }
+            loadedUsers.push({
+              id: newUser.id,
+              name: newUser.name,
+              email: newUser.email,
+              password: newUser.password,
+              shopId: newUser.shop_id,
+              roles: (newUser.roles || []) as ('admin' | 'technician' | 'manager')[],
+            });
+          }
+        }
+
+        setUsers(loadedUsers);
+      } catch (e) {
+        console.error("Error loading shops/users from Supabase:", e);
+        // Fallback to empty arrays
+        setShops([]);
+        setUsers([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const login = useCallback((email: string, password: string): boolean => {
     const user = users.find(u => u.email === email && u.password === password);
@@ -163,59 +260,149 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const addShop = useCallback((shopData: Omit<Shop, 'id'>) => {
-    const newShop: Shop = {
-      ...shopData,
-      id: Date.now().toString(),
-    };
-    setShops((prev) => [...prev, newShop]);
+    (async () => {
+      const { data, error } = await supabase
+        .from("shops")
+        .insert({
+          name: shopData.name,
+          address: shopData.address,
+          phone: shopData.phone,
+          email: shopData.email || null,
+          whatsapp_group: shopData.whatsappGroup || null,
+        })
+        .select("*")
+        .single();
+      if (error) {
+        console.error("Error adding shop:", error);
+        return;
+      }
+      const newShop: Shop = {
+        id: data.id,
+        name: data.name,
+        address: data.address,
+        phone: data.phone,
+        email: data.email || undefined,
+        whatsappGroup: data.whatsapp_group || undefined,
+      };
+      setShops((prev) => [newShop, ...prev]);
+    })();
   }, []);
 
   const updateShop = useCallback((shopId: string, shopData: Partial<Shop>) => {
-    setShops((prev) =>
-      prev.map(shop => shop.id === shopId ? { ...shop, ...shopData } : shop)
-    );
+    (async () => {
+      const payload: any = {};
+      if (shopData.name !== undefined) payload.name = shopData.name;
+      if (shopData.address !== undefined) payload.address = shopData.address;
+      if (shopData.phone !== undefined) payload.phone = shopData.phone;
+      if (shopData.email !== undefined) payload.email = shopData.email || null;
+      if (shopData.whatsappGroup !== undefined) payload.whatsapp_group = shopData.whatsappGroup || null;
+
+      const { error } = await supabase
+        .from("shops")
+        .update(payload)
+        .eq("id", shopId);
+      if (error) {
+        console.error("Error updating shop:", error);
+        return;
+      }
+      setShops((prev) =>
+        prev.map((shop) => (shop.id === shopId ? { ...shop, ...shopData } : shop))
+      );
+    })();
   }, []);
 
   const deleteShop = useCallback((shopId: string) => {
-    setShops((prev) => prev.filter(shop => shop.id !== shopId));
-    // Also remove users associated with this shop
-    setUsers((prev) => prev.filter(user => user.shopId !== shopId));
+    (async () => {
+      const { error } = await supabase.from("shops").delete().eq("id", shopId);
+      if (error) {
+        console.error("Error deleting shop:", error);
+        return;
+      }
+      setShops((prev) => prev.filter((shop) => shop.id !== shopId));
+      // Users are automatically deleted via CASCADE
+      setUsers((prev) => prev.filter((user) => user.shopId !== shopId));
+    })();
   }, []);
 
   const addUser = useCallback((userData: Omit<User, 'id'>) => {
-    const newUser: User = {
-      ...userData,
-      id: Date.now().toString(),
-    };
-    setUsers((prev) => [...prev, newUser]);
+    (async () => {
+      const { data, error } = await supabase
+        .from("users")
+        .insert({
+          name: userData.name,
+          email: userData.email,
+          password: userData.password,
+          shop_id: userData.shopId || null,
+          roles: userData.roles,
+        })
+        .select("*")
+        .single();
+      if (error) {
+        console.error("Error adding user:", error);
+        return;
+      }
+      const newUser: User = {
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        shopId: data.shop_id || '',
+        roles: (data.roles || []) as ('admin' | 'technician' | 'manager')[],
+      };
+      setUsers((prev) => [newUser, ...prev]);
+    })();
   }, []);
 
   const updateUser = useCallback((userId: string, userData: Partial<User>) => {
-    setUsers((prev) =>
-      prev.map(user => user.id === userId ? { ...user, ...userData } : user)
-    );
+    (async () => {
+      const payload: any = {};
+      if (userData.name !== undefined) payload.name = userData.name;
+      if (userData.email !== undefined) payload.email = userData.email;
+      if (userData.password !== undefined) payload.password = userData.password;
+      if (userData.shopId !== undefined) payload.shop_id = userData.shopId || null;
+      if (userData.roles !== undefined) payload.roles = userData.roles;
+
+      const { error } = await supabase
+        .from("users")
+        .update(payload)
+        .eq("id", userId);
+      if (error) {
+        console.error("Error updating user:", error);
+        return;
+      }
+      setUsers((prev) =>
+        prev.map((user) => (user.id === userId ? { ...user, ...userData } : user))
+      );
+    })();
   }, []);
 
   const deleteUser = useCallback((userId: string) => {
-    setUsers((prev) => prev.filter(user => user.id !== userId));
+    (async () => {
+      const { error } = await supabase.from("users").delete().eq("id", userId);
+      if (error) {
+        console.error("Error deleting user:", error);
+        return;
+      }
+      setUsers((prev) => prev.filter((user) => user.id !== userId));
+    })();
   }, []);
 
   const getShopById = useCallback((shopId: string) => {
-    return shops.find(shop => shop.id === shopId);
+    return shops.find((shop) => shop.id === shopId);
   }, [shops]);
 
   const getUserShops = useCallback((userId: string) => {
-    const user = users.find(u => u.id === userId);
+    const user = users.find((u) => u.id === userId);
     if (!user) return [];
-    
-    if (user.roles.includes('admin')) {
+
+    if (user.roles.includes("admin")) {
       return shops; // Admin sees all shops
     }
-    
-    return shops.filter(shop => shop.id === user.shopId);
+
+    return shops.filter((shop) => shop.id === user.shopId);
   }, [users, shops]);
 
-  const hasRole = useCallback((user: User | null, role: 'admin' | 'technician' | 'manager') => {
+  const hasRole = useCallback((user: User | null, role: "admin" | "technician" | "manager") => {
     if (!user) return false;
     return user.roles.includes(role);
   }, []);

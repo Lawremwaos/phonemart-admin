@@ -175,6 +175,30 @@ create table if not exists payments (
 create index if not exists payments_repair_id_idx on payments(repair_id);
 create index if not exists payments_sale_id_idx on payments(sale_id);
 
+-- Shops
+create table if not exists shops (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  address text not null,
+  phone text not null,
+  email text,
+  whatsapp_group text,
+  created_at timestamptz not null default now()
+);
+
+-- Users (Staff)
+create table if not exists users (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text not null unique,
+  password text not null,
+  shop_id uuid references shops(id) on delete cascade,
+  roles text[] not null default array['technician']::text[],
+  created_at timestamptz not null default now()
+);
+create index if not exists users_shop_id_idx on users(shop_id);
+create index if not exists users_email_idx on users(email);
+
 -- NOTE:
 -- For a secure production setup, enable RLS and add policies.
 -- This schema is minimal so you can go live quickly, then harden permissions next.
