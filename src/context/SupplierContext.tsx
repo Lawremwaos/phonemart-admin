@@ -58,7 +58,17 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
   }, []);
 
   const addSupplier = useCallback((supplierData: Omit<Supplier, 'id' | 'createdAt'>) => {
-    (async () => {
+    return (async () => {
+      // Check if supplier with same name already exists
+      const existingSupplier = suppliers.find(s => 
+        s.name.toLowerCase() === supplierData.name.toLowerCase()
+      );
+      
+      if (existingSupplier) {
+        console.warn(`Supplier "${supplierData.name}" already exists`);
+        return existingSupplier.id; // Return existing supplier ID
+      }
+
       const payload = {
         name: supplierData.name,
         phone: supplierData.phone || null,
@@ -68,8 +78,38 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
       };
       const { data, error } = await supabase.from("suppliers").insert(payload).select("*").single();
       if (error) {
-        console.error("Error adding supplier:", error);
-        return;
+        // Handle duplicate name error gracefully
+        if (error.code === '23505' || error.message.includes('unique')) {
+          console.warn(`Supplier "${supplierData.name}" already exists in database`);
+          // Try to fetch the existing supplier
+          const { data: existing } = await supabase
+            .from("suppliers")
+            .select("*")
+            .eq("name", supplierData.name)
+            .single();
+          if (existing) {
+            const existingSupplier: Supplier = {
+              id: existing.id,
+              name: existing.name,
+              phone: existing.phone || undefined,
+              email: existing.email || undefined,
+              address: existing.address || undefined,
+              categories: (existing.categories || []) as any,
+              createdAt: new Date(existing.created_at),
+            };
+            // Add to state if not already there
+            setSuppliers((prev) => {
+              if (prev.find(s => s.id === existingSupplier.id)) {
+                return prev;
+              }
+              return [existingSupplier, ...prev];
+            });
+            return existingSupplier.id;
+          }
+        } else {
+          console.error("Error adding supplier:", error);
+        }
+        return null;
       }
       const newSupplier: Supplier = {
         id: data.id,
@@ -81,8 +121,9 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
         createdAt: new Date(data.created_at),
       };
       setSuppliers((prev) => [newSupplier, ...prev]);
+      return newSupplier.id;
     })();
-  }, []);
+  }, [suppliers]);
 
   const updateSupplier = useCallback((id: string, supplierData: Partial<Supplier>) => {
     (async () => {

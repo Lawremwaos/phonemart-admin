@@ -13,7 +13,7 @@ type PurchaseItem = {
 
 export default function Purchases() {
   const { items, purchases, addPurchase, addItem } = useInventory();
-  const { suppliers } = useSupplier();
+  const { suppliers, addSupplier } = useSupplier();
   const { currentShop, currentUser } = useShop();
   
   const [supplierId, setSupplierId] = useState("");
@@ -94,14 +94,36 @@ export default function Purchases() {
     setPurchaseItems(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleCompletePurchase = () => {
-    const finalSupplierName = supplierId
+  const handleCompletePurchase = async () => {
+    let finalSupplierName = supplierId
       ? suppliers.find(s => s.id === supplierId)?.name || supplierName
       : supplierName;
 
     if (!finalSupplierName || purchaseItems.length === 0) {
       alert("Please select or enter supplier and add at least one item");
       return;
+    }
+
+    // Ensure supplier exists in database (should already be saved via onBlur or button click)
+    if (!supplierId && supplierName.trim()) {
+      // Check if supplier already exists by name
+      const existingSupplier = suppliers.find(s => 
+        s.name.toLowerCase() === supplierName.trim().toLowerCase()
+      );
+      
+      if (!existingSupplier) {
+        // Add new supplier to database (fallback if not already saved)
+        addSupplier({
+          name: supplierName.trim(),
+          categories: ['spare_parts', 'accessories'],
+        });
+        // Use the name directly for this purchase
+        finalSupplierName = supplierName.trim();
+      } else {
+        // Use existing supplier
+        finalSupplierName = existingSupplier.name;
+        setSupplierId(existingSupplier.id);
+      }
     }
 
     // Process purchase items - create new items if they don't exist
@@ -206,17 +228,65 @@ export default function Purchases() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Or Add New Supplier</label>
-            <input
-              type="text"
-              value={supplierName}
-              onChange={(e) => {
-                setSupplierName(e.target.value);
-                setSupplierId("");
-              }}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-              placeholder="Enter supplier name"
-            />
-            <p className="text-xs text-gray-500 mt-1">All suppliers are shared across the system.</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={supplierName}
+                onChange={(e) => {
+                  setSupplierName(e.target.value);
+                  setSupplierId("");
+                }}
+                onBlur={async () => {
+                  // Auto-save supplier when user leaves the field
+                  if (supplierName.trim() && !supplierId) {
+                    const existingSupplier = suppliers.find(s => 
+                      s.name.toLowerCase() === supplierName.trim().toLowerCase()
+                    );
+                    if (!existingSupplier) {
+                      // Add new supplier to database
+                      addSupplier({
+                        name: supplierName.trim(),
+                        categories: ['spare_parts', 'accessories'], // Default to both
+                      });
+                      // The supplier will appear in the dropdown after state updates
+                    } else {
+                      // Use existing supplier
+                      setSupplierId(existingSupplier.id);
+                      setSupplierName(existingSupplier.name);
+                    }
+                  }
+                }}
+                className="flex-1 border border-gray-300 rounded-md px-3 py-2"
+                placeholder="Enter supplier name (auto-saves)"
+              />
+              {supplierName.trim() && !supplierId && (
+                <button
+                  onClick={async () => {
+                    const existingSupplier = suppliers.find(s => 
+                      s.name.toLowerCase() === supplierName.trim().toLowerCase()
+                    );
+                    if (!existingSupplier) {
+                      addSupplier({
+                        name: supplierName.trim(),
+                        categories: ['spare_parts', 'accessories'],
+                      });
+                      alert(`Supplier "${supplierName.trim()}" added successfully!`);
+                    } else {
+                      setSupplierId(existingSupplier.id);
+                      setSupplierName(existingSupplier.name);
+                    }
+                  }}
+                  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 whitespace-nowrap"
+                >
+                  Save Supplier
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {supplierName && !supplierId 
+                ? "Supplier will be saved automatically or click 'Save Supplier' button"
+                : "All suppliers are shared across the system."}
+            </p>
           </div>
         </div>
 
