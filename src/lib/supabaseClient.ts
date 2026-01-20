@@ -5,10 +5,15 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 
 if (!supabaseUrl || !supabaseAnonKey) {
   // eslint-disable-next-line no-console
-  console.warn(
-    "Supabase env vars missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable backend persistence."
+  console.error(
+    "❌ CRITICAL: Supabase environment variables are missing!\n" +
+    "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel environment variables.\n" +
+    "Current values:\n" +
+    `  VITE_SUPABASE_URL: ${supabaseUrl ? '✅ Set' : '❌ Missing'}\n` +
+    `  VITE_SUPABASE_ANON_KEY: ${supabaseAnonKey ? '✅ Set' : '❌ Missing'}`
   );
 }
 
+// Create client with fallback empty strings (will fail gracefully)
 export const supabase = createClient(supabaseUrl || "", supabaseAnonKey || "");
 
