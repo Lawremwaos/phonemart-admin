@@ -29,7 +29,9 @@ export default function ReceiptView() {
 
   const handleDownloadPDF = async () => {
     if (receiptRef.current) {
-      await downloadReceiptAsPDF(receiptRef.current, `receipt-${sale.id}`);
+      const customerName = (sale as any).customerName || `receipt-${sale.id}`;
+      const filename = customerName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      await downloadReceiptAsPDF(receiptRef.current, filename);
     }
   };
 
@@ -51,7 +53,8 @@ export default function ReceiptView() {
   };
 
   const handleShareEmail = () => {
-    const subject = `Receipt #${sale.id} from ${currentShop?.name || 'PHONEMART'}`;
+    const customerName = (sale as any).customerName || `Customer-${sale.id}`;
+    const subject = `${customerName} - Receipt from ${currentShop?.name || 'PHONEMART'}`;
     const body = formatReceiptText(
       sale, 
       currentShop?.name || 'PHONEMART',

@@ -97,6 +97,8 @@ export default function Repairs() {
       status: 'RECEIVED',
       shopId: currentShop?.id,
       paymentStatus: 'pending',
+      amountPaid: 0,
+      balance: 0,
     });
 
     // Reset form

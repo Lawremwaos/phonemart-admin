@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useSupplier } from "../context/SupplierContext";
+import { useInventory } from "../context/InventoryContext";
+// import { useShop } from "../context/ShopContext";
 
 export default function SupplierManagement() {
   const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useSupplier();
+  const { purchases } = useInventory();
+  // const { currentUser } = useShop();
   const [isAdding, setIsAdding] = useState(false);
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -63,6 +68,51 @@ export default function SupplierManagement() {
       deleteSupplier(id);
     }
   };
+
+  // Calculate supplier analytics
+  const supplierAnalytics = useMemo(() => {
+    return suppliers.map(supplier => {
+      const supplierPurchases = purchases.filter(p => p.supplier === supplier.name);
+      const totalSpent = supplierPurchases.reduce((sum, p) => sum + p.total, 0);
+      
+      // Count items purchased
+      const itemCounts: Record<string, { qty: number; totalCost: number; prices: number[] }> = {};
+      supplierPurchases.forEach(purchase => {
+        purchase.items.forEach(item => {
+          if (!itemCounts[item.itemName]) {
+            itemCounts[item.itemName] = { qty: 0, totalCost: 0, prices: [] };
+          }
+          itemCounts[item.itemName].qty += item.qty;
+          itemCounts[item.itemName].totalCost += item.qty * item.costPrice;
+          itemCounts[item.itemName].prices.push(item.costPrice);
+        });
+      });
+
+      // Find most bought item
+      const mostBoughtItem = Object.entries(itemCounts).reduce((max, [name, data]) => {
+        return data.qty > (max ? itemCounts[max].qty : 0) ? name : max;
+      }, "" as string);
+
+      // Calculate average prices
+      const itemPriceAverages: Record<string, { avg: number; min: number; max: number }> = {};
+      Object.entries(itemCounts).forEach(([name, data]) => {
+        itemPriceAverages[name] = {
+          avg: data.prices.reduce((a, b) => a + b, 0) / data.prices.length,
+          min: Math.min(...data.prices),
+          max: Math.max(...data.prices),
+        };
+      });
+
+      return {
+        supplier,
+        totalSpent,
+        purchaseCount: supplierPurchases.length,
+        mostBoughtItem,
+        itemCounts,
+        itemPriceAverages,
+      };
+    });
+  }, [suppliers, purchases]);
 
   return (
     <div className="space-y-6">
@@ -192,6 +242,88 @@ export default function SupplierManagement() {
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Supplier Analytics */}
+      {supplierAnalytics.length > 0 && (
+        <div className="bg-white p-6 rounded shadow">
+          <h3 className="text-lg font-semibold mb-4">Supplier Analytics</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {supplierAnalytics.map((analytics) => (
+              <div key={analytics.supplier.id} className="border rounded-lg p-4 hover:shadow-md transition">
+                <h4 className="font-bold text-lg mb-2">{analytics.supplier.name}</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Total Purchases:</span>
+                    <span className="font-semibold">KES {analytics.totalSpent.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Purchase Orders:</span>
+                    <span className="font-semibold">{analytics.purchaseCount}</span>
+                  </div>
+                  {analytics.mostBoughtItem && (
+                    <div className="pt-2 border-t">
+                      <span className="text-gray-600 text-xs">Most Bought:</span>
+                      <div className="font-semibold">{analytics.mostBoughtItem}</div>
+                      <div className="text-xs text-gray-500">
+                        Qty: {analytics.itemCounts[analytics.mostBoughtItem].qty} | 
+                        Total: KES {analytics.itemCounts[analytics.mostBoughtItem].totalCost.toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setSelectedSupplierId(
+                    selectedSupplierId === analytics.supplier.id ? null : analytics.supplier.id
+                  )}
+                  className="mt-3 text-blue-600 hover:text-blue-800 text-sm"
+                >
+                  {selectedSupplierId === analytics.supplier.id ? 'Hide' : 'View'} Details
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Detailed View */}
+          {selectedSupplierId && (() => {
+            const analytics = supplierAnalytics.find(a => a.supplier.id === selectedSupplierId);
+            if (!analytics) return null;
+            return (
+              <div className="mt-6 border-t pt-6">
+                <h4 className="font-bold text-lg mb-4">Detailed Analytics: {analytics.supplier.name}</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="p-2 text-left">Item</th>
+                        <th className="p-2 text-right">Total Qty</th>
+                        <th className="p-2 text-right">Total Cost</th>
+                        <th className="p-2 text-right">Avg Price</th>
+                        <th className="p-2 text-right">Min Price</th>
+                        <th className="p-2 text-right">Max Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(analytics.itemCounts).map(([itemName, data]) => {
+                        const priceData = analytics.itemPriceAverages[itemName];
+                        return (
+                          <tr key={itemName} className="border-t">
+                            <td className="p-2 font-medium">{itemName}</td>
+                            <td className="p-2 text-right">{data.qty}</td>
+                            <td className="p-2 text-right">KES {data.totalCost.toLocaleString()}</td>
+                            <td className="p-2 text-right">KES {priceData.avg.toFixed(0)}</td>
+                            <td className="p-2 text-right">KES {priceData.min.toLocaleString()}</td>
+                            <td className="p-2 text-right">KES {priceData.max.toLocaleString()}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

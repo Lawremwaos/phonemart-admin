@@ -4,13 +4,15 @@ import { useShop } from "../context/ShopContext";
 
 export default function InventoryManagement() {
   const { items, addItem, updateItem, removeItem } = useInventory();
-  const { currentShop, currentUser } = useShop();
+  const { currentShop, currentUser, shops } = useShop();
   
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     category: "Phone" as 'Phone' | 'Spare' | 'Accessory',
+    itemType: "",
+    itemTypeDetail: "", // For specific type details (e.g., "USB-C" for charger)
     stock: 0,
     price: 0,
     reorderLevel: 0,
@@ -28,6 +30,8 @@ export default function InventoryManagement() {
     setFormData({
       name: "",
       category: "Phone",
+      itemType: "",
+      itemTypeDetail: "",
       stock: 0,
       price: 0,
       reorderLevel: 0,
@@ -38,9 +42,13 @@ export default function InventoryManagement() {
 
   const handleEdit = (item: typeof items[0]) => {
     setEditingId(item.id);
+    // Split itemType if it contains " - "
+    const itemTypeParts = (item.itemType || "").split(' - ');
     setFormData({
       name: item.name,
       category: item.category,
+      itemType: itemTypeParts[0] || "",
+      itemTypeDetail: itemTypeParts[1] || "",
       stock: item.stock,
       price: item.price,
       reorderLevel: item.reorderLevel,
@@ -56,15 +64,22 @@ export default function InventoryManagement() {
       return;
     }
 
+    // Combine itemType and itemTypeDetail for storage
+    const finalItemType = formData.itemTypeDetail 
+      ? `${formData.itemType} - ${formData.itemTypeDetail}`.trim()
+      : formData.itemType;
+
     if (editingId) {
       updateItem(editingId, {
         ...formData,
+        itemType: finalItemType,
         shopId: currentShop?.id,
       });
       setEditingId(null);
     } else {
       addItem({
         ...formData,
+        itemType: finalItemType,
         shopId: currentShop?.id,
         initialStock: formData.stock,
       });
@@ -74,6 +89,8 @@ export default function InventoryManagement() {
     setFormData({
       name: "",
       category: "Phone",
+      itemType: "",
+      itemTypeDetail: "",
       stock: 0,
       price: 0,
       reorderLevel: 0,
@@ -88,6 +105,8 @@ export default function InventoryManagement() {
     setFormData({
       name: "",
       category: "Phone",
+      itemType: "",
+      itemTypeDetail: "",
       stock: 0,
       price: 0,
       reorderLevel: 0,
@@ -135,7 +154,10 @@ export default function InventoryManagement() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
               <select
                 value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value as 'Phone' | 'Spare' | 'Accessory' })}
+              onChange={(e) => {
+                const newCategory = e.target.value as 'Phone' | 'Spare' | 'Accessory';
+                setFormData({ ...formData, category: newCategory, itemType: "", itemTypeDetail: "" }); // Reset itemType when category changes
+              }}
                 className="w-full border border-gray-300 rounded-md px-3 py-2"
               >
                 <option value="Phone">Phone</option>
@@ -143,6 +165,104 @@ export default function InventoryManagement() {
                 <option value="Accessory">Accessory</option>
               </select>
             </div>
+            {/* Item Type field based on category */}
+            {formData.category === 'Accessory' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type of Accessory *</label>
+                <select
+                  value={formData.itemType}
+                  onChange={(e) => {
+                    const selectedType = e.target.value;
+                    setFormData({ ...formData, itemType: selectedType, itemTypeDetail: "" });
+                  }}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                >
+                  <option value="">Select Type</option>
+                  <option value="Charger">Charger</option>
+                  <option value="Protector">Protector</option>
+                  <option value="Case">Case</option>
+                  <option value="Cable">Cable</option>
+                  <option value="Other">Other</option>
+                </select>
+                {formData.itemType === 'Charger' && (
+                  <input
+                    type="text"
+                    value={formData.itemTypeDetail}
+                    onChange={(e) => setFormData({ ...formData, itemTypeDetail: e.target.value })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2"
+                    placeholder="e.g., USB-C Charger, Lightning Charger, Wireless Charger"
+                  />
+                )}
+                {formData.itemType === 'Protector' && (
+                  <input
+                    type="text"
+                    value={formData.itemTypeDetail}
+                    onChange={(e) => setFormData({ ...formData, itemTypeDetail: e.target.value })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2"
+                    placeholder="e.g., Tempered Glass, Film Protector, Privacy Protector"
+                  />
+                )}
+                {formData.itemType === 'Other' && (
+                  <input
+                    type="text"
+                    value={formData.itemTypeDetail}
+                    onChange={(e) => setFormData({ ...formData, itemTypeDetail: e.target.value })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2"
+                    placeholder="Enter accessory type"
+                  />
+                )}
+              </div>
+            )}
+            {formData.category === 'Spare' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type of Spare Part *</label>
+                <select
+                  value={formData.itemType}
+                  onChange={(e) => {
+                    const selectedType = e.target.value;
+                    setFormData({ ...formData, itemType: selectedType, itemTypeDetail: "" });
+                  }}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                >
+                  <option value="">Select Type</option>
+                  <option value="Screen">Screen</option>
+                  <option value="Battery">Battery</option>
+                  <option value="Camera">Camera</option>
+                  <option value="Speaker">Speaker</option>
+                  <option value="Other">Other</option>
+                </select>
+                {formData.itemType === 'Screen' && (
+                  <input
+                    type="text"
+                    value={formData.itemTypeDetail}
+                    onChange={(e) => setFormData({ ...formData, itemTypeDetail: e.target.value })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2"
+                    placeholder="e.g., LCD Screen, OLED Screen, Touch Screen, Display Assembly"
+                  />
+                )}
+                {formData.itemType === 'Other' && (
+                  <input
+                    type="text"
+                    value={formData.itemTypeDetail}
+                    onChange={(e) => setFormData({ ...formData, itemTypeDetail: e.target.value })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2"
+                    placeholder="Enter spare part type"
+                  />
+                )}
+              </div>
+            )}
+            {formData.category === 'Phone' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Type</label>
+                <input
+                  type="text"
+                  value={formData.itemType}
+                  onChange={(e) => setFormData({ ...formData, itemType: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  placeholder="e.g., Smartphone, Feature Phone"
+                />
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Stock *</label>
               <input
@@ -153,16 +273,20 @@ export default function InventoryManagement() {
                 min="0"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Selling Price (KES) *</label>
-              <input
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-                min="0"
-              />
-            </div>
+            {currentUser?.roles.includes('admin') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount Sold (KES) *</label>
+                <input
+                  type="number"
+                  value={formData.price}
+                  onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  min="0"
+                  placeholder="Enter amount staff sold this item for"
+                />
+                <p className="text-xs text-gray-500 mt-1">This is the amount the item was sold for, not a fixed price</p>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Reorder Level *</label>
               <input
@@ -183,16 +307,20 @@ export default function InventoryManagement() {
                 placeholder="Supplier name"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price (KES)</label>
-              <input
-                type="number"
-                value={formData.costPrice}
-                onChange={(e) => setFormData({ ...formData, costPrice: Number(e.target.value) })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-                min="0"
-              />
-            </div>
+            {currentUser?.roles.includes('admin') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price (KES) - Admin Only</label>
+                <input
+                  type="number"
+                  value={formData.costPrice}
+                  onChange={(e) => setFormData({ ...formData, costPrice: Number(e.target.value) })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  min="0"
+                  placeholder="Admin: Enter purchase cost"
+                />
+                <p className="text-xs text-gray-500 mt-1">Only admin can set cost price. Staff cannot see or edit this.</p>
+              </div>
+            )}
           </div>
           <div className="flex gap-2 mt-4">
             <button
@@ -218,9 +346,15 @@ export default function InventoryManagement() {
             <tr>
               <th className="p-3 text-left">Item</th>
               <th className="p-3 text-left">Category</th>
+              <th className="p-3 text-left">Type</th>
               <th className="p-3 text-left">Stock</th>
-              <th className="p-3 text-left">Price</th>
-              <th className="p-3 text-left">Cost Price</th>
+              {currentUser?.roles.includes('admin') && (
+                <th className="p-3 text-left">Shop</th>
+              )}
+              <th className="p-3 text-left">Amount Sold</th>
+              {currentUser?.roles.includes('admin') && (
+                <th className="p-3 text-left">Cost Price</th>
+              )}
               <th className="p-3 text-left">Reorder Level</th>
               <th className="p-3 text-left">Supplier</th>
               <th className="p-3 text-left">Status</th>
@@ -237,11 +371,19 @@ export default function InventoryManagement() {
                 >
                   <td className="p-3 font-semibold">{item.name}</td>
                   <td className="p-3">{item.category}</td>
+                  <td className="p-3">{item.itemType || '-'}</td>
                   <td className={`p-3 font-semibold ${lowStock ? 'text-red-600' : ''}`}>
                     {item.stock}
                   </td>
+                  {currentUser?.roles.includes('admin') && (
+                    <td className="p-3 text-sm text-gray-700">
+                      {item.shopId ? (shops.find(s => s.id === item.shopId)?.name || 'Unknown Shop') : 'Unassigned'}
+                    </td>
+                  )}
                   <td className="p-3">KES {item.price.toLocaleString()}</td>
-                  <td className="p-3">KES {item.costPrice?.toLocaleString() || 'N/A'}</td>
+                  {currentUser?.roles.includes('admin') && (
+                    <td className="p-3">KES {item.costPrice?.toLocaleString() || 'N/A'}</td>
+                  )}
                   <td className="p-3">{item.reorderLevel}</td>
                   <td className="p-3">{item.supplier || 'N/A'}</td>
                   <td className="p-3">

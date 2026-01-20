@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { supabase } from "../lib/supabaseClient";
 
 export type Sale = {
   id: string;
   date: Date;
   shopId?: string;
-  saleType: 'in-shop' | 'wholesale';
+  saleType: 'in-shop' | 'wholesale' | 'retail';
   items: Array<{
     name: string;
     qty: number;
@@ -17,11 +18,16 @@ export type Sale = {
   balance?: number;
   bank?: string;
   depositReference?: string;
+  status?: 'open' | 'closed'; // For wholesale sales that stay open during the day
+  closedAt?: Date; // When wholesale sale was closed
 };
 
 type SalesContextType = {
   sales: Sale[];
-  addSale: (items: Array<{ name: string; qty: number; price: number }>, total: number, shopId?: string, saleType?: 'in-shop' | 'wholesale') => void;
+  openWholesaleSale: Sale | null; // Current open wholesale sale
+  addSale: (items: Array<{ name: string; qty: number; price: number }>, total: number, shopId?: string, saleType?: 'in-shop' | 'wholesale' | 'retail') => void;
+  addItemToWholesaleSale: (item: { name: string; qty: number; price: number }, shopId?: string) => void;
+  closeWholesaleSale: (paymentType: 'cash' | 'mpesa' | 'bank_deposit', depositReference?: string, bank?: string) => void;
   getDailyRevenue: () => number;
   getWeeklyRevenue: () => number;
   getMonthlyRevenue: () => number;
@@ -31,24 +37,211 @@ type SalesContextType = {
   getTotalItemsSoldToday: () => number;
   getRevenueByPeriod: (period: 'daily' | 'weekly' | 'monthly') => Array<{ period: string; revenue: number }>;
   getItemsSoldByProduct: () => Array<{ name: string; qty: number; category: string }>;
+  getTodaysSalesReport: () => {
+    totalSales: number;
+    retailSales: number;
+    wholesaleSales: number;
+    totalAmount: number;
+    totalDeposited: number;
+    transactionReferences: Array<{ method: string; reference: string; amount: number; bank?: string }>;
+  };
 };
 
 const SalesContext = createContext<SalesContextType | null>(null);
 
 export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
   const [sales, setSales] = useState<Sale[]>([]);
+  const [openWholesaleSale, setOpenWholesaleSale] = useState<Sale | null>(null);
 
-  const addSale = useCallback((items: Array<{ name: string; qty: number; price: number }>, total: number, shopId?: string, saleType: 'in-shop' | 'wholesale' = 'in-shop') => {
-    const newSale: Sale = {
-      id: Date.now().toString(),
-      date: new Date(),
-      shopId,
-      saleType,
-      items,
-      total,
+  // Load sales from Supabase on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: salesData, error: salesError } = await supabase
+          .from("sales")
+          .select("*")
+          .order("date", { ascending: false });
+        if (salesError) throw salesError;
+        if (cancelled) return;
+
+        const salesWithItems: Sale[] = await Promise.all(
+          (salesData || []).map(async (s: any) => {
+            const { data: itemsData, error: itemsError } = await supabase
+              .from("sale_items")
+              .select("*")
+              .eq("sale_id", s.id);
+            if (itemsError) throw itemsError;
+
+            return {
+              id: s.id,
+              date: new Date(s.date),
+              shopId: s.shop_id || undefined,
+              saleType: s.sale_type as 'in-shop' | 'wholesale' | 'retail',
+              items: (itemsData || []).map((i: any) => ({
+                name: i.name,
+                qty: i.qty,
+                price: Number(i.price) || 0,
+              })),
+              total: Number(s.total) || 0,
+              status: s.status as 'open' | 'closed',
+              closedAt: s.closed_at ? new Date(s.closed_at) : undefined,
+            };
+          })
+        );
+        setSales(salesWithItems.filter((s) => s.status === 'closed'));
+
+        // Find open wholesale sale from today
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const openSale = salesWithItems.find((s) => {
+          if (s.status !== 'open' || s.saleType !== 'wholesale') return false;
+          const saleDate = new Date(s.date);
+          saleDate.setHours(0, 0, 0, 0);
+          return saleDate.getTime() === today.getTime();
+        });
+        setOpenWholesaleSale(openSale || null);
+      } catch (e) {
+        console.error("Error loading sales from Supabase:", e);
+        setSales([]);
+        setOpenWholesaleSale(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
-    setSales((prev) => [...prev, newSale]);
   }, []);
+
+  const addSale = useCallback((items: Array<{ name: string; qty: number; price: number }>, total: number, shopId?: string, saleType: 'in-shop' | 'wholesale' | 'retail' = 'in-shop') => {
+    (async () => {
+      const status = saleType === 'wholesale' ? 'open' : 'closed';
+      
+      // Insert sale
+      const { data: saleRecord, error: saleError } = await supabase
+        .from("sales")
+        .insert({
+          shop_id: shopId || null,
+          sale_type: saleType,
+          total: total,
+          status: status,
+          closed_at: status === 'closed' ? new Date().toISOString() : null,
+        })
+        .select("*")
+        .single();
+      if (saleError) {
+        console.error("Error adding sale:", saleError);
+        return;
+      }
+
+      // Insert sale items
+      const itemsPayload = items.map((item) => ({
+        sale_id: saleRecord.id,
+        name: item.name,
+        qty: item.qty,
+        price: item.price,
+      }));
+      const { error: itemsError } = await supabase
+        .from("sale_items")
+        .insert(itemsPayload);
+      if (itemsError) {
+        console.error("Error adding sale items:", itemsError);
+        return;
+      }
+
+      const newSale: Sale = {
+        id: saleRecord.id,
+        date: new Date(saleRecord.date),
+        shopId: saleRecord.shop_id || undefined,
+        saleType: saleRecord.sale_type as 'in-shop' | 'wholesale' | 'retail',
+        items: items,
+        total: Number(saleRecord.total) || 0,
+        status: saleRecord.status as 'open' | 'closed',
+        closedAt: saleRecord.closed_at ? new Date(saleRecord.closed_at) : undefined,
+      };
+      
+      if (saleType === 'wholesale') {
+        setOpenWholesaleSale(newSale);
+      } else {
+        setSales((prev) => [newSale, ...prev]);
+      }
+    })();
+  }, []);
+
+  const addItemToWholesaleSale = useCallback((item: { name: string; qty: number; price: number }, shopId?: string) => {
+    (async () => {
+      if (!openWholesaleSale) {
+        // Create new wholesale sale if none exists
+        await addSale([item], item.qty * item.price, shopId, 'wholesale');
+      } else {
+        // Add item to existing sale
+        const updatedItems = [...openWholesaleSale.items, item];
+        const updatedTotal = updatedItems.reduce((sum, i) => sum + (i.qty * i.price), 0);
+        
+        // Update sale total
+        const { error: updateError } = await supabase
+          .from("sales")
+          .update({ total: updatedTotal })
+          .eq("id", openWholesaleSale.id);
+        if (updateError) {
+          console.error("Error updating wholesale sale:", updateError);
+          return;
+        }
+
+        // Add new item
+        const { error: itemError } = await supabase
+          .from("sale_items")
+          .insert({
+            sale_id: openWholesaleSale.id,
+            name: item.name,
+            qty: item.qty,
+            price: item.price,
+          });
+        if (itemError) {
+          console.error("Error adding item to wholesale sale:", itemError);
+          return;
+        }
+
+        setOpenWholesaleSale({
+          ...openWholesaleSale,
+          items: updatedItems,
+          total: updatedTotal,
+        });
+      }
+    })();
+  }, [openWholesaleSale, addSale]);
+
+  const closeWholesaleSale = useCallback((paymentType: 'cash' | 'mpesa' | 'bank_deposit', depositReference?: string, bank?: string) => {
+    (async () => {
+      if (!openWholesaleSale) return;
+      
+      const { error } = await supabase
+        .from("sales")
+        .update({
+          status: 'closed',
+          closed_at: new Date().toISOString(),
+        })
+        .eq("id", openWholesaleSale.id);
+      if (error) {
+        console.error("Error closing wholesale sale:", error);
+        return;
+      }
+      
+      const closedSale: Sale = {
+        ...openWholesaleSale,
+        status: 'closed',
+        closedAt: new Date(),
+        paymentType,
+        paymentStatus: 'fully_paid',
+        amountPaid: openWholesaleSale.total,
+        balance: 0,
+        depositReference,
+        bank,
+      };
+      
+      setSales((prev) => [closedSale, ...prev]);
+      setOpenWholesaleSale(null);
+    })();
+  }, [openWholesaleSale]);
 
   const getDailyRevenue = useCallback(() => {
     const today = new Date();
@@ -209,11 +402,50 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
     return Array.from(itemMap.values());
   }, [sales]);
 
+  const getTodaysSalesReport = useCallback(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const todaysSales = sales.filter((sale) => {
+      const saleDate = new Date(sale.date);
+      saleDate.setHours(0, 0, 0, 0);
+      return saleDate.getTime() === today.getTime();
+    });
+
+    const retailSales = todaysSales.filter(s => s.saleType === 'retail' || s.saleType === 'in-shop').length;
+    const wholesaleSales = todaysSales.filter(s => s.saleType === 'wholesale').length;
+    const totalAmount = todaysSales.reduce((sum, sale) => sum + sale.total, 0);
+    const totalDeposited = todaysSales
+      .filter(s => s.paymentStatus === 'fully_paid' && s.amountPaid)
+      .reduce((sum, sale) => sum + (sale.amountPaid || 0), 0);
+    
+    const transactionReferences = todaysSales
+      .filter(s => s.depositReference || s.paymentType)
+      .map(sale => ({
+        method: sale.paymentType || 'unknown',
+        reference: sale.depositReference || 'N/A',
+        amount: sale.total,
+        bank: sale.bank,
+      }));
+
+    return {
+      totalSales: todaysSales.length,
+      retailSales,
+      wholesaleSales,
+      totalAmount,
+      totalDeposited,
+      transactionReferences,
+    };
+  }, [sales]);
+
   return (
     <SalesContext.Provider
       value={{
         sales,
+        openWholesaleSale,
         addSale,
+        addItemToWholesaleSale,
+        closeWholesaleSale,
         getDailyRevenue,
         getWeeklyRevenue,
         getMonthlyRevenue,
@@ -223,6 +455,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         getTotalItemsSoldToday,
         getRevenueByPeriod,
         getItemsSoldByProduct,
+        getTodaysSalesReport,
       }}
     >
       {children}

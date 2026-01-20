@@ -105,6 +105,8 @@ export const formatReceiptText = (sale: any, shopName: string, shopAddress?: str
     minute: '2-digit',
   });
 
+  const customerName = sale.customerName || `Customer-${sale.id}`;
+  
   let text = `*${shopName}*\n`;
   if (shopAddress) {
     text += `${shopAddress}\n`;
@@ -113,7 +115,8 @@ export const formatReceiptText = (sale: any, shopName: string, shopAddress?: str
     text += `Phone: ${shopPhone}\n`;
   }
   text += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-  text += `*Receipt #${sale.id}*\n`;
+  text += `*Receipt for ${customerName}*\n`;
+  text += `Receipt #${sale.id}\n`;
   text += `Date & Time: ${dateTime}\n`;
   if (sale.saleType) {
     const saleTypeText = sale.saleType === 'in-shop' ? 'In-Shop Sale' : sale.saleType === 'wholesale' ? 'Wholesale' : 'Repair Sale';

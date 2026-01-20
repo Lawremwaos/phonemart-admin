@@ -1,54 +1,91 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
+import { useSupplier } from "../context/SupplierContext";
 
 type PurchaseItem = {
   itemId: number;
   itemName: string;
+  itemCategory: 'Spare' | 'Accessory';
   qty: number;
   costPrice: number;
 };
 
 export default function Purchases() {
-  const { items, purchases, addPurchase } = useInventory();
+  const { items, purchases, addPurchase, addItem } = useInventory();
+  const { suppliers } = useSupplier();
   const { currentShop, currentUser } = useShop();
   
-  const [supplier, setSupplier] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const [supplierName, setSupplierName] = useState("");
   const [purchaseItems, setPurchaseItems] = useState<PurchaseItem[]>([]);
-  const [selectedItemId, setSelectedItemId] = useState<number | "">("");
+  const [itemName, setItemName] = useState("");
+  const [itemCategory, setItemCategory] = useState<'Spare' | 'Accessory'>('Spare');
   const [qty, setQty] = useState(1);
   const [costPrice, setCostPrice] = useState(0);
-
-  // Filter items by shop
-  const availableItems = currentUser?.roles.includes('admin')
-    ? items
-    : items.filter(item => !item.shopId || item.shopId === currentShop?.id);
 
   // Filter purchases by shop
   const filteredPurchases = currentUser?.roles.includes('admin')
     ? purchases
     : purchases.filter(p => !p.shopId || p.shopId === currentShop?.id);
 
+  // Supplier spend analytics
+  const supplierStats = useMemo(() => {
+    const stats: Record<string, { total: number; count: number; items: Record<string, number> }> = {};
+    purchases.forEach(p => {
+      const name = p.supplier;
+      if (!stats[name]) stats[name] = { total: 0, count: 0, items: {} };
+      stats[name].total += p.total;
+      stats[name].count += 1;
+      p.items.forEach(it => {
+        stats[name].items[it.itemName] = (stats[name].items[it.itemName] || 0) + it.qty;
+      });
+    });
+    return Object.entries(stats).map(([supplier, data]) => {
+      const topItem = Object.entries(data.items).sort((a, b) => b[1] - a[1])[0];
+      return {
+        supplier,
+        total: data.total,
+        orders: data.count,
+        topItem: topItem ? `${topItem[0]} (Qty ${topItem[1]})` : '-',
+      };
+    });
+  }, [purchases]);
+
   const handleAddItem = () => {
-    if (!selectedItemId || qty <= 0 || costPrice <= 0) {
-      alert("Please select an item and enter valid quantity and cost price");
+    if (!itemName.trim() || qty <= 0) {
+      alert("Please enter item name and valid quantity");
+      return;
+    }
+    if (currentUser?.roles.includes('admin') && costPrice <= 0) {
+      alert("Please enter valid cost price");
       return;
     }
 
-    const item = items.find(i => i.id === selectedItemId);
-    if (!item) return;
+    // Check if item already exists in inventory
+    const existingItem = items.find(i => i.name.toLowerCase() === itemName.trim().toLowerCase() && i.category === itemCategory);
+    
+    let itemId: number;
+    if (existingItem) {
+      // Use existing item ID
+      itemId = existingItem.id;
+    } else {
+      // Create a temporary ID for new items (will be created when purchase is completed)
+      itemId = -Date.now(); // Negative ID to indicate it's a new item
+    }
 
     setPurchaseItems(prev => [
       ...prev,
       {
-        itemId: item.id,
-        itemName: item.name,
+        itemId,
+        itemName: itemName.trim(),
+        itemCategory,
         qty,
         costPrice,
       },
     ]);
 
-    setSelectedItemId("");
+    setItemName("");
     setQty(1);
     setCostPrice(0);
   };
@@ -58,24 +95,83 @@ export default function Purchases() {
   };
 
   const handleCompletePurchase = () => {
-    if (!supplier || purchaseItems.length === 0) {
-      alert("Please enter supplier name and add at least one item");
+    const finalSupplierName = supplierId
+      ? suppliers.find(s => s.id === supplierId)?.name || supplierName
+      : supplierName;
+
+    if (!finalSupplierName || purchaseItems.length === 0) {
+      alert("Please select or enter supplier and add at least one item");
       return;
+    }
+
+    // Process purchase items - create new items if they don't exist
+    const processedItems: Array<{ itemId: number; itemName: string; qty: number; costPrice: number }> = [];
+    
+    for (const purchaseItem of purchaseItems) {
+      // Check if item exists (negative ID means it's new)
+      if (purchaseItem.itemId < 0) {
+        // Check if item with same name and category already exists
+        const existingItem = items.find(i => 
+          i.name.toLowerCase() === purchaseItem.itemName.toLowerCase() && 
+          i.category === purchaseItem.itemCategory &&
+          !i.shopId // Only check unallocated items
+        );
+        
+        if (existingItem) {
+          // Use existing item ID - stock will be added by addPurchase
+          processedItems.push({
+            itemId: existingItem.id,
+            itemName: purchaseItem.itemName,
+            qty: purchaseItem.qty,
+            costPrice: purchaseItem.costPrice,
+          });
+        } else {
+          // Create new item in inventory - calculate new ID first
+          const newItemId = Math.max(...items.map(i => i.id), 0) + 1;
+          addItem({
+            name: purchaseItem.itemName,
+            category: purchaseItem.itemCategory,
+            stock: purchaseItem.qty,
+            price: 0, // Will be set when sold
+            reorderLevel: 0,
+            initialStock: purchaseItem.qty,
+            supplier: finalSupplierName,
+            adminCostPrice: purchaseItem.costPrice,
+            pendingAllocation: true,
+          });
+          
+          processedItems.push({
+            itemId: newItemId,
+            itemName: purchaseItem.itemName,
+            qty: purchaseItem.qty,
+            costPrice: purchaseItem.costPrice,
+          });
+        }
+      } else {
+        // Existing item
+        processedItems.push({
+          itemId: purchaseItem.itemId,
+          itemName: purchaseItem.itemName,
+          qty: purchaseItem.qty,
+          costPrice: purchaseItem.costPrice,
+        });
+      }
     }
 
     const total = purchaseItems.reduce((sum, item) => sum + (item.qty * item.costPrice), 0);
     
     addPurchase({
-      supplier,
-      items: purchaseItems,
+      supplier: finalSupplierName,
+      items: processedItems,
       total,
       shopId: currentShop?.id,
     });
 
     // Reset form
-    setSupplier("");
+    setSupplierId("");
+    setSupplierName("");
     setPurchaseItems([]);
-    setSelectedItemId("");
+    setItemName("");
     setQty(1);
     setCostPrice(0);
     
@@ -90,37 +186,60 @@ export default function Purchases() {
       <div className="bg-white p-6 rounded-lg shadow mb-6">
         <h3 className="text-lg font-semibold mb-4">Record New Purchase</h3>
         
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Supplier Name *</label>
-          <input
-            type="text"
-            value={supplier}
-            onChange={(e) => setSupplier(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2"
-            placeholder="Enter supplier name"
-          />
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Supplier *</label>
+            <select
+              value={supplierId}
+              onChange={(e) => {
+                setSupplierId(e.target.value);
+                const sup = suppliers.find(s => s.id === e.target.value);
+                setSupplierName(sup ? sup.name : "");
+              }}
+              className="w-full border border-gray-300 rounded-md px-3 py-2"
+            >
+              <option value="">Select supplier</option>
+              {suppliers.map((sup) => (
+                <option key={sup.id} value={sup.id}>{sup.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Or Add New Supplier</label>
+            <input
+              type="text"
+              value={supplierName}
+              onChange={(e) => {
+                setSupplierName(e.target.value);
+                setSupplierId("");
+              }}
+              className="w-full border border-gray-300 rounded-md px-3 py-2"
+              placeholder="Enter supplier name"
+            />
+            <p className="text-xs text-gray-500 mt-1">All suppliers are shared across the system.</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-4 gap-4 mb-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Item *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Item Name *</label>
+            <input
+              type="text"
+              value={itemName}
+              onChange={(e) => setItemName(e.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2"
+              placeholder="Enter item name"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
             <select
-              value={selectedItemId}
-              onChange={(e) => {
-                setSelectedItemId(Number(e.target.value));
-                const item = items.find(i => i.id === Number(e.target.value));
-                if (item?.costPrice) {
-                  setCostPrice(item.costPrice);
-                }
-              }}
+              value={itemCategory}
+              onChange={(e) => setItemCategory(e.target.value as 'Spare' | 'Accessory')}
               className="w-full border border-gray-300 rounded-md px-3 py-2"
             >
-              <option value="">Select Item</option>
-              {availableItems.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
+              <option value="Spare">Spare Parts</option>
+              <option value="Accessory">Accessories</option>
             </select>
           </div>
           <div>
@@ -133,16 +252,20 @@ export default function Purchases() {
               min="1"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Cost Price (KES) *</label>
-            <input
-              type="number"
-              value={costPrice}
-              onChange={(e) => setCostPrice(Number(e.target.value))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-              min="0"
-            />
-          </div>
+          {currentUser?.roles.includes('admin') && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Admin Purchase Cost (KES) *</label>
+              <input
+                type="number"
+                value={costPrice}
+                onChange={(e) => setCostPrice(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                min="0"
+                placeholder="Your purchase cost (hidden from staff)"
+              />
+              <p className="text-xs text-gray-500 mt-1">This cost is only visible to you. Staff will see their own cost.</p>
+            </div>
+          )}
           <div className="flex items-end">
             <button
               onClick={handleAddItem}
@@ -160,9 +283,16 @@ export default function Purchases() {
             <div className="border rounded p-4">
               {purchaseItems.map((item, index) => (
                 <div key={index} className="flex justify-between items-center py-2 border-b last:border-b-0">
-                  <span>{item.itemName} x {item.qty} @ KES {item.costPrice.toLocaleString()}</span>
+                  <span>
+                    {item.itemName} x {item.qty}
+                    {currentUser?.roles.includes('admin') && (
+                      <> @ KES {item.costPrice.toLocaleString()}</>
+                    )}
+                  </span>
                   <div className="flex gap-2 items-center">
-                    <span className="font-semibold">KES {(item.qty * item.costPrice).toLocaleString()}</span>
+                    {currentUser?.roles.includes('admin') && (
+                      <span className="font-semibold">KES {(item.qty * item.costPrice).toLocaleString()}</span>
+                    )}
                     <button
                       onClick={() => handleRemoveItem(index)}
                       className="bg-red-600 text-white px-2 py-1 rounded text-sm hover:bg-red-700"
@@ -172,9 +302,11 @@ export default function Purchases() {
                   </div>
                 </div>
               ))}
-              <div className="mt-2 pt-2 border-t font-bold text-right">
-                Total: KES {purchaseItems.reduce((sum, item) => sum + (item.qty * item.costPrice), 0).toLocaleString()}
-              </div>
+              {currentUser?.roles.includes('admin') && (
+                <div className="mt-2 pt-2 border-t font-bold text-right">
+                  Total: KES {purchaseItems.reduce((sum, item) => sum + (item.qty * item.costPrice), 0).toLocaleString()}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -182,7 +314,7 @@ export default function Purchases() {
         <button
           onClick={handleCompletePurchase}
           className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
-          disabled={!supplier || purchaseItems.length === 0}
+          disabled={(!supplierId && !supplierName) || purchaseItems.length === 0}
         >
           Complete Purchase
         </button>
@@ -201,7 +333,9 @@ export default function Purchases() {
                   <th className="p-3 text-left">Date</th>
                   <th className="p-3 text-left">Supplier</th>
                   <th className="p-3 text-left">Items</th>
-                  <th className="p-3 text-right">Total</th>
+                  {currentUser?.roles.includes('admin') && (
+                    <th className="p-3 text-right">Total</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -218,9 +352,11 @@ export default function Purchases() {
                         </span>
                       ))}
                     </td>
-                    <td className="p-3 text-right font-semibold">
-                      KES {purchase.total.toLocaleString()}
-                    </td>
+                    {currentUser?.roles.includes('admin') && (
+                      <td className="p-3 text-right font-semibold">
+                        KES {purchase.total.toLocaleString()}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -228,6 +364,34 @@ export default function Purchases() {
           </div>
         )}
       </div>
+
+      {currentUser?.roles.includes('admin') && supplierStats.length > 0 && (
+        <div className="bg-white rounded shadow mt-6">
+          <h3 className="text-lg font-semibold p-4 border-b">Supplier Spend Overview</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="p-3 text-left">Supplier</th>
+                  <th className="p-3 text-right">Total Spent</th>
+                  <th className="p-3 text-right">Orders</th>
+                  <th className="p-3 text-left">Most Bought</th>
+                </tr>
+              </thead>
+              <tbody>
+                {supplierStats.map((row) => (
+                  <tr key={row.supplier} className="border-t">
+                    <td className="p-3 font-medium">{row.supplier}</td>
+                    <td className="p-3 text-right font-semibold">KES {row.total.toLocaleString()}</td>
+                    <td className="p-3 text-right">{row.orders}</td>
+                    <td className="p-3 text-sm text-gray-700">{row.topItem}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -12,6 +12,10 @@ import SupplierManagement from "./pages/SupplierManagement";
 import AdminSettings from "./pages/AdminSettings";
 import StockExchangeReport from "./pages/StockExchangeReport";
 import PendingCollections from "./pages/PendingCollections";
+import PendingPaymentApproval from "./pages/PendingPaymentApproval";
+import TodaysSalesReport from "./pages/TodaysSalesReport";
+import Returns from "./pages/Returns";
+import StockAllocation from "./pages/StockAllocation";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useShop } from "./context/ShopContext";
@@ -49,28 +53,47 @@ function AppContent() {
             <Link to="/" className="block hover:text-gray-300 transition-colors">Dashboard</Link>
           </li>
           <li>
-            <Link to="/inventory" className="block hover:text-gray-300 transition-colors">Inventory</Link>
+            <Link to="/repair-sales" className="block hover:text-gray-300 transition-colors">Repair Sales</Link>
           </li>
           <li>
             <Link to="/sales" className="block hover:text-gray-300 transition-colors">Accessories Sales</Link>
           </li>
           <li>
-            <Link to="/repair-sales" className="block hover:text-gray-300 transition-colors">Repair Sales</Link>
+            <Link to="/pending-collections" className="block hover:text-gray-300 transition-colors">Pending Collections</Link>
           </li>
-          <li>
-            <Link to="/daily-report" className="block hover:text-gray-300 transition-colors">Daily Report</Link>
-          </li>
+          {currentUser?.roles.includes('admin') && (
+            <li>
+              <Link to="/pending-payment-approval" className="block hover:text-gray-300 transition-colors">Pending Payment Approval</Link>
+            </li>
+          )}
+          {!currentUser?.roles.includes('admin') && (
+            <li>
+              <Link to="/pending-payment-approval" className="block hover:text-gray-300 transition-colors">Pending Approval</Link>
+            </li>
+          )}
           <li>
             <Link to="/purchases" className="block hover:text-gray-300 transition-colors">Purchases</Link>
           </li>
           <li>
-            <Link to="/exchange" className="block hover:text-gray-300 transition-colors">Exchange</Link>
+            <Link to="/stock-allocation" className="block hover:text-gray-300 transition-colors">Stock Allocation</Link>
           </li>
           <li>
             <Link to="/suppliers" className="block hover:text-gray-300 transition-colors">Suppliers</Link>
           </li>
           <li>
-            <Link to="/pending-collections" className="block hover:text-gray-300 transition-colors">Pending Collections</Link>
+            <Link to="/returns" className="block hover:text-gray-300 transition-colors">Returns & Warranty</Link>
+          </li>
+          <li>
+            <Link to="/inventory" className="block hover:text-gray-300 transition-colors">Inventory</Link>
+          </li>
+          <li>
+            <Link to="/daily-report" className="block hover:text-gray-300 transition-colors">Daily Reports</Link>
+          </li>
+          <li>
+            <Link to="/todays-sales-report" className="block hover:text-gray-300 transition-colors">Today's Sales Report</Link>
+          </li>
+          <li>
+            <Link to="/exchange" className="block hover:text-gray-300 transition-colors">Exchange</Link>
           </li>
           {currentUser?.roles.includes('admin') && (
             <>
@@ -133,6 +156,14 @@ function AppContent() {
             }
           />
           <Route
+            path="/stock-allocation"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <StockAllocation />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/exchange"
             element={
               <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
@@ -145,6 +176,14 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
                 <SupplierManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/returns"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <Returns />
               </ProtectedRoute>
             }
           />
@@ -201,6 +240,22 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
                 <PendingCollections />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pending-payment-approval"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <PendingPaymentApproval />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/todays-sales-report"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <TodaysSalesReport />
               </ProtectedRoute>
             }
           />

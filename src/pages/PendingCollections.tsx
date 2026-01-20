@@ -6,7 +6,7 @@ import { usePayment } from "../context/PaymentContext";
 type FilterType = 'all' | 'pending_collection' | 'pending_payment' | 'fully_paid';
 
 export default function PendingCollections() {
-  const { repairs, confirmPayment } = useRepair();
+  const { repairs, confirmPayment, confirmCollection } = useRepair();
   const { shops, currentUser } = useShop();
   const { addPayment } = usePayment();
   const [filter, setFilter] = useState<FilterType>('all');
@@ -257,6 +257,18 @@ export default function PendingCollections() {
                           className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-sm"
                         >
                           Confirm Payment
+                        </button>
+                      )}
+                      {repair.paymentStatus === 'fully_paid' && repair.paymentApproved && repair.status !== 'COLLECTED' && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Confirm that ${repair.customerName} has collected their phone?`)) {
+                              confirmCollection(repair.id);
+                            }
+                          }}
+                          className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm ml-2"
+                        >
+                          Confirm Collection
                         </button>
                       )}
                     </td>

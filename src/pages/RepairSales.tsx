@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useInventory } from "../context/InventoryContext";
 import { useRepair } from "../context/RepairContext";
-import { usePayment } from "../context/PaymentContext";
+import type { RepairStatus } from "../context/RepairContext";
+// import { usePayment } from "../context/PaymentContext";
 import { useShop } from "../context/ShopContext";
 import { useSupplier } from "../context/SupplierContext";
 import { useSupplierDebt } from "../context/SupplierDebtContext";
@@ -12,7 +13,8 @@ type PartSource = 'in-house' | 'outsourced';
 type AdditionalLaborItem = {
   id: string;
   itemName: string;
-  cost: number;
+  source: 'inventory' | 'outsourced';
+  itemId?: number; // For inventory items
 };
 
 type RepairPart = {
@@ -26,20 +28,15 @@ type RepairPart = {
   additionalLaborCost?: number;
 };
 
-type PaymentMethod = 'cash_to_mpesa' | 'mpesa_to_paybill' | 'split_payment' | 'bank_to_paybill';
+type PaymentMethod = 'cash_to_deposit' | 'mpesa_to_paybill' | 'mpesa_to_mpesa_shop' | 'bank_to_mpesa_shop' | 'bank_to_shop_bank' | 'sacco_to_mpesa';
 
-type SplitPayment = {
-  method: 'cash' | 'mpesa' | 'bank_deposit';
-  amount: number;
-  transactionCode: string;
-  bank?: string;
-};
+// Split payment not currently used
 
 export default function RepairSales() {
   const navigate = useNavigate();
   const { items, addStock } = useInventory();
   const { addRepair } = useRepair();
-  const { addPayment } = usePayment();
+  // Payments are recorded after admin approval on the Pending Payment Approval page
   const { currentShop, currentUser } = useShop();
   const { suppliers, addSupplier } = useSupplier();
   const { addDebt } = useSupplierDebt();
@@ -47,7 +44,7 @@ export default function RepairSales() {
   const [customerStatus, setCustomerStatus] = useState<'waiting' | 'coming_back'>('waiting');
   const [additionalLaborItems, setAdditionalLaborItems] = useState<AdditionalLaborItem[]>([]);
   const [additionalLaborItemName, setAdditionalLaborItemName] = useState("");
-  const [additionalLaborItemCost, setAdditionalLaborItemCost] = useState("");
+  const [additionalLaborItemSource, setAdditionalLaborItemSource] = useState<'inventory' | 'outsourced'>('inventory');
   const [form, setForm] = useState({
     customerName: "",
     customerPhone: "",
@@ -58,15 +55,12 @@ export default function RepairSales() {
     totalAgreedAmount: "",
     paymentTiming: 'after' as 'before' | 'after',
     depositAmount: "",
-    additionalLaborCost: "",
-    outsourcedCost: "",
   });
 
   const [selectedParts, setSelectedParts] = useState<RepairPart[]>([]);
   const [partName, setPartName] = useState("");
   const [partSource, setPartSource] = useState<PartSource>('in-house');
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
-  const [outsourcedPartCost, setOutsourcedPartCost] = useState("");
   const [showAddSupplier, setShowAddSupplier] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState("");
   const [pendingSupplierName, setPendingSupplierName] = useState<string | null>(null);
@@ -86,16 +80,23 @@ export default function RepairSales() {
   const [paymentMade, setPaymentMade] = useState<'yes' | 'no'>('yes'); // New: Payment made or not
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mpesa_to_paybill');
   const [transactionCodes, setTransactionCodes] = useState({
-    cash_to_mpesa: "",
+    cash_to_deposit: "",
     mpesa_to_paybill: "",
-    bank_to_paybill: "",
+    mpesa_to_mpesa_shop: "",
+    bank_to_mpesa_shop: "",
+    bank_to_shop_bank: "",
+    sacco_to_mpesa: "",
     bank: "",
+    customBank: "", // For custom bank name input
   });
-  const [splitPayments, setSplitPayments] = useState<SplitPayment[]>([]);
-  const [splitPaymentMethod, setSplitPaymentMethod] = useState<'cash' | 'mpesa' | 'bank_deposit'>('cash');
-  const [splitPaymentAmount, setSplitPaymentAmount] = useState("");
-  const [splitPaymentCode, setSplitPaymentCode] = useState("");
-  const [splitPaymentBank, setSplitPaymentBank] = useState("");
+  // Split payment UI is not currently used in this flow
+  // const [splitPayments, setSplitPayments] = useState<SplitPayment[]>([]);
+  // const [splitPaymentMethod, setSplitPaymentMethod] = useState<'cash' | 'mpesa' | 'bank_deposit'>('cash');
+  // const [splitPaymentAmount, setSplitPaymentAmount] = useState("");
+  // const [splitPaymentCode, setSplitPaymentCode] = useState("");
+  // const [splitPaymentBank, setSplitPaymentBank] = useState("");
+  const [selectedInventoryItem, setSelectedInventoryItem] = useState<number | null>(null);
+  const [outsourcedItemSupplier, setOutsourcedItemSupplier] = useState("");
 
   // Auto-set technician from logged-in user
   const technician = currentUser?.name || "";
@@ -119,10 +120,6 @@ export default function RepairSales() {
     }
 
     if (partSource === 'outsourced') {
-      if (!outsourcedPartCost || Number(outsourcedPartCost) <= 0) {
-        alert("Please enter the cost for outsourced part");
-        return;
-      }
       if (!selectedSupplierId) {
         alert("Please select a supplier for outsourced part");
         return;
@@ -130,9 +127,7 @@ export default function RepairSales() {
     }
 
     const supplier = suppliers.find(s => s.id === selectedSupplierId);
-    const cost = partSource === 'in-house' 
-      ? 0 // Will be calculated later or set manually
-      : Number(outsourcedPartCost || 0);
+    const cost = 0; // Cost not shown for parts
 
     setSelectedParts(prev => [
       ...prev,
@@ -152,7 +147,6 @@ export default function RepairSales() {
     setPartName("");
     setPartSource('in-house');
     setSelectedSupplierId("");
-    setOutsourcedPartCost("");
   }
 
   function removePart(index: number) {
@@ -168,26 +162,62 @@ export default function RepairSales() {
   }
 
   function addAdditionalLaborItem() {
-    if (!additionalLaborItemName || !additionalLaborItemCost || Number(additionalLaborItemCost) <= 0) {
-      alert("Please enter item name and cost");
-      return;
+    if (additionalLaborItemSource === 'inventory') {
+      if (!selectedInventoryItem) {
+        alert("Please select an inventory item");
+        return;
+      }
+      const item = items.find(i => i.id === selectedInventoryItem);
+      if (!item) {
+        alert("Selected inventory item not found");
+        return;
+      }
+      if (item.stock <= 0) {
+        alert("Selected item is out of stock");
+        return;
+      }
+      // Reduce stock
+      addStock(item.id, -1);
+      // Use item name from inventory
+      setAdditionalLaborItems(prev => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          itemName: item.name,
+          source: additionalLaborItemSource,
+          itemId: selectedInventoryItem,
+        },
+      ]);
+      setSelectedInventoryItem(null);
+    } else {
+      // Outsourced item - require supplier name
+      if (!outsourcedItemSupplier.trim()) {
+        alert("Please enter supplier name");
+        return;
+      }
+      setAdditionalLaborItems(prev => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          itemName: outsourcedItemSupplier.trim(), // Store supplier name as itemName for outsourced
+          source: additionalLaborItemSource,
+          itemId: undefined,
+        },
+      ]);
+      setOutsourcedItemSupplier("");
     }
-    setAdditionalLaborItems(prev => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        itemName: additionalLaborItemName,
-        cost: Number(additionalLaborItemCost),
-      },
-    ]);
-    setAdditionalLaborItemName("");
-    setAdditionalLaborItemCost("");
   }
 
   function removeAdditionalLaborItem(id: string) {
+    const item = additionalLaborItems.find(i => i.id === id);
+    if (item && item.source === 'inventory' && item.itemId) {
+      // Restore stock
+      addStock(item.itemId, 1);
+    }
     setAdditionalLaborItems(prev => prev.filter(item => item.id !== id));
   }
 
+  /*
   function addSplitPayment() {
     if (!splitPaymentAmount || Number(splitPaymentAmount) <= 0) {
       alert("Please enter a valid amount");
@@ -220,36 +250,29 @@ export default function RepairSales() {
   function removeSplitPayment(index: number) {
     setSplitPayments(prev => prev.filter((_, i) => i !== index));
   }
+  */
 
   function calculateTotal() {
+    // Note: This is just for reference display. The actual total is the agreed amount.
     const partsTotal = selectedParts.reduce((sum, part) => sum + (part.cost * part.qty), 0);
-    const additionalLaborTotal = selectedParts.reduce((sum, part) => sum + (part.additionalLaborCost || 0), 0);
-    const additionalLaborItemsTotal = additionalLaborItems.reduce((sum, item) => sum + item.cost, 0);
     const outsourcedPartsCost = selectedParts
       .filter(p => p.source === 'outsourced')
       .reduce((sum, part) => sum + (part.cost * part.qty), 0);
-    const additionalOutsourced = Number(form.outsourcedCost || 0);
-    const additionalLaborCost = Number(form.additionalLaborCost || 0);
     
     return {
       partsTotal,
       outsourcedPartsCost,
-      additionalOutsourced,
-      additionalLaborCost,
-      additionalLaborTotal,
-      additionalLaborItemsTotal,
-      total: partsTotal + additionalLaborTotal + additionalLaborItemsTotal + additionalOutsourced + additionalLaborCost,
-      totalOutsourced: outsourcedPartsCost + additionalOutsourced,
+      total: partsTotal + outsourcedPartsCost,
+      totalOutsourced: outsourcedPartsCost,
     };
   }
 
   const totals = calculateTotal();
 
   function getTotalPaid() {
-    if (paymentMethod === 'split_payment') {
-      return splitPayments.reduce((sum, p) => sum + p.amount, 0);
-    }
-    return totals.total;
+    // Use agreed amount as the total
+    const finalTotal = form.totalAgreedAmount ? Number(form.totalAgreedAmount) : 0;
+    return finalTotal;
   }
 
   function validateTransactionCodes() {
@@ -258,9 +281,9 @@ export default function RepairSales() {
       return true;
     }
     
-    if (paymentMethod === 'cash_to_mpesa') {
-      if (!transactionCodes.cash_to_mpesa) {
-        alert("Transaction code is required! Staff must deposit cash to MPESA and provide the code.");
+    if (paymentMethod === 'cash_to_deposit') {
+      if (!transactionCodes.cash_to_deposit) {
+        alert("Transaction code is required! Staff must deposit cash and provide the code.");
         return false;
       }
     } else if (paymentMethod === 'mpesa_to_paybill') {
@@ -268,25 +291,37 @@ export default function RepairSales() {
         alert("MPESA transaction code is required!");
         return false;
       }
-    } else if (paymentMethod === 'bank_to_paybill') {
-      if (!transactionCodes.bank_to_paybill) {
-        alert("Bank transaction code is required!");
+    } else if (paymentMethod === 'mpesa_to_mpesa_shop') {
+      if (!transactionCodes.mpesa_to_mpesa_shop) {
+        alert("MPESA transaction code is required!");
+        return false;
+      }
+    } else if (paymentMethod === 'bank_to_mpesa_shop') {
+      if (!transactionCodes.bank_to_mpesa_shop) {
+        alert("Transaction code is required!");
         return false;
       }
       if (!transactionCodes.bank) {
         alert("Please select the bank");
         return false;
       }
-    } else if (paymentMethod === 'split_payment') {
-      if (splitPayments.length === 0) {
-        alert("Please add at least one payment method");
+    } else if (paymentMethod === 'bank_to_shop_bank') {
+      if (!transactionCodes.bank_to_shop_bank) {
+        alert("Transaction code is required!");
         return false;
       }
-      for (const payment of splitPayments) {
-        if (!payment.transactionCode) {
-          alert("All payment methods must have transaction codes");
-          return false;
-        }
+      if (!transactionCodes.bank) {
+        alert("Please select the bank");
+        return false;
+      }
+    } else if (paymentMethod === 'sacco_to_mpesa') {
+      if (!transactionCodes.sacco_to_mpesa) {
+        alert("Transaction code is required!");
+        return false;
+      }
+      if (!transactionCodes.bank) {
+        alert("Please select the Sacco");
+        return false;
       }
     }
     return true;
@@ -298,19 +333,37 @@ export default function RepairSales() {
       return;
     }
 
-    if (selectedParts.length === 0) {
-      alert("Please add at least one part");
-      return;
-    }
+    // Parts are now optional - service-only repairs are allowed
+    // if (selectedParts.length === 0) {
+    //   alert("Please add at least one part");
+    //   return;
+    // }
 
     if (!validateTransactionCodes()) {
       return;
     }
 
-    // If payment not made, set to pending
-    const paidAmount = paymentMade === 'yes' ? getTotalPaid() : 0;
-    const balance = totals.total - paidAmount;
-    const paymentStatus = paymentMade === 'no' ? 'pending' : (balance <= 0 ? 'fully_paid' : paidAmount > 0 ? 'partial' : 'pending');
+    // Use agreed amount as the final total
+    const finalTotal = Number(form.totalAgreedAmount);
+    const depositAmount = Number(form.depositAmount || 0);
+    
+    // If deposit exists, use deposit as paid amount, otherwise use payment method amount
+    const paidAmount = depositAmount > 0 ? depositAmount : (paymentMade === 'yes' ? getTotalPaid() : 0);
+    const balance = finalTotal - paidAmount;
+    const paymentStatus = depositAmount > 0 
+      ? (balance <= 0 ? 'fully_paid' : 'partial')
+      : (paymentMade === 'no' ? 'pending' : (balance <= 0 ? 'fully_paid' : paidAmount > 0 ? 'partial' : 'pending'));
+
+    // Determine status based on payment and approval
+    let repairStatus: RepairStatus;
+    if (paymentMade === 'no') {
+      repairStatus = 'PAYMENT_PENDING';
+    } else if (paymentMade === 'yes' && paidAmount >= finalTotal) {
+      // Payment made but needs admin approval
+      repairStatus = 'PAYMENT_PENDING'; // Will be changed to FULLY_PAID after approval
+    } else {
+      repairStatus = 'PAYMENT_PENDING';
+    }
 
     // Create repair record
     const repair = {
@@ -326,23 +379,28 @@ export default function RepairSales() {
         qty: p.qty,
         cost: p.cost,
       })),
+      additionalItems: additionalLaborItems.map(item => ({
+        itemName: item.itemName,
+        source: item.source,
+        itemId: item.itemId,
+      })),
       outsourcedCost: totals.totalOutsourced,
-      laborCost: totals.additionalLaborCost + totals.additionalLaborTotal + totals.additionalLaborItemsTotal,
-      status: paymentMade === 'no' || customerStatus === 'coming_back'
-        ? 'PAYMENT_PENDING' as const
-        : (paymentStatus === 'fully_paid' ? 'FULLY_PAID' as const : 'PAYMENT_PENDING' as const),
+      laborCost: 0, // No longer tracking labor cost separately
+      status: repairStatus,
       shopId: currentShop?.id,
       paymentStatus: paymentStatus as 'pending' | 'partial' | 'fully_paid',
       customerStatus: customerStatus,
       totalAgreedAmount: Number(form.totalAgreedAmount),
       paymentTiming: form.paymentTiming,
       depositAmount: Number(form.depositAmount || 0),
-      paymentMade: paymentMade === 'yes', // Store if payment was made
-      pendingTransactionCodes: paymentMade === 'no' ? {
+      paymentMade: paymentMade === 'yes',
+      paymentApproved: false, // Admin must approve
+      amountPaid: paidAmount,
+      balance: balance,
+      pendingTransactionCodes: {
         paymentMethod,
         transactionCodes: { ...transactionCodes },
-        splitPayments: [...splitPayments],
-      } : undefined, // Store payment method info for later confirmation
+      },
     };
 
     const repairId = Date.now().toString();
@@ -362,40 +420,10 @@ export default function RepairSales() {
         });
       });
 
-    // Add payment records only if payment was made
-    if (paymentMade === 'yes') {
-      if (paymentMethod === 'split_payment') {
-        splitPayments.forEach(payment => {
-          addPayment({
-            type: payment.method,
-            amount: payment.amount,
-            state: paymentStatus === 'fully_paid' ? 'fully_paid' : 'partial',
-            bank: payment.bank as any,
-            depositReference: payment.transactionCode,
-            shopId: currentShop?.id,
-            relatedTo: 'repair',
-            relatedId: repairId,
-            deposited: payment.method === 'cash' ? false : true,
-          });
-        });
-      } else {
-        addPayment({
-          type: paymentMethod === 'cash_to_mpesa' ? 'cash' : paymentMethod === 'mpesa_to_paybill' ? 'mpesa' : 'bank_deposit',
-          amount: paidAmount,
-          state: paymentStatus === 'fully_paid' ? 'fully_paid' : 'partial',
-          bank: paymentMethod === 'bank_to_paybill' ? transactionCodes.bank as any : undefined,
-          depositReference: paymentMethod === 'cash_to_mpesa' ? transactionCodes.cash_to_mpesa : 
-                           paymentMethod === 'mpesa_to_paybill' ? transactionCodes.mpesa_to_paybill :
-                           transactionCodes.bank_to_paybill,
-          shopId: currentShop?.id,
-          relatedTo: 'repair',
-          relatedId: repairId,
-          deposited: paymentMethod === 'cash_to_mpesa' ? true : paymentMethod !== 'bank_to_paybill',
-        });
-      }
-    }
+    // Add payment records only if payment was made (but not yet approved)
+    // Payment will be recorded after admin approval
 
-    // Create receipt data
+    // Create receipt data - simplified to show only phone, parts, and total
     const receiptData = {
       id: Date.now().toString(),
       date: new Date(),
@@ -405,34 +433,28 @@ export default function RepairSales() {
         ...selectedParts.map(p => ({
           name: p.itemName,
           qty: p.qty,
-          price: p.cost,
+          price: 0, // Cost not shown on receipt
         })),
         ...additionalLaborItems.map(item => ({
           name: item.itemName,
           qty: 1,
-          price: item.cost,
+          price: 0, // Cost not shown on receipt
         })),
       ],
-      total: totals.total,
+      total: finalTotal,
+      totalAgreedAmount: finalTotal,
       paymentMethod,
-      paymentStatus,
+      paymentStatus: depositAmount > 0 ? 'partial' : (paymentMade === 'yes' ? 'paid' : 'not_paid'),
       amountPaid: paidAmount,
       balance,
-      transactionCodes: paymentMethod === 'split_payment' 
-        ? splitPayments.map(p => ({ method: p.method, code: p.transactionCode, bank: p.bank }))
-        : paymentMethod === 'cash_to_mpesa' 
-          ? [{ method: 'cash_to_mpesa', code: transactionCodes.cash_to_mpesa }]
-          : paymentMethod === 'mpesa_to_paybill'
-            ? [{ method: 'mpesa_to_paybill', code: transactionCodes.mpesa_to_paybill }]
-            : [{ method: 'bank_to_paybill', code: transactionCodes.bank_to_paybill, bank: transactionCodes.bank }],
-      outsourcedCost: totals.totalOutsourced,
-      laborCost: totals.additionalLaborCost + totals.additionalLaborTotal + totals.additionalLaborItemsTotal,
       customerName: form.customerName,
       customerPhone: form.customerPhone,
       phoneModel: `${form.phoneBrand} ${form.phoneModel}`.trim(),
       issue: form.issue,
       technician: technician,
       customerStatus,
+      paymentApproved: false,
+      depositAmount: depositAmount,
     };
 
     // Reset form
@@ -446,20 +468,23 @@ export default function RepairSales() {
       totalAgreedAmount: "",
       paymentTiming: 'after',
       depositAmount: "",
-      additionalLaborCost: "",
-      outsourcedCost: "",
     });
     setSelectedParts([]);
     setAdditionalLaborItems([]);
     setCustomerStatus('waiting');
     setPaymentMethod('mpesa_to_paybill');
     setTransactionCodes({
-      cash_to_mpesa: "",
+      cash_to_deposit: "",
       mpesa_to_paybill: "",
-      bank_to_paybill: "",
+      mpesa_to_mpesa_shop: "",
+      bank_to_mpesa_shop: "",
+      bank_to_shop_bank: "",
+      sacco_to_mpesa: "",
       bank: "",
+      customBank: "",
     });
-    setSplitPayments([]);
+    setSelectedInventoryItem(null);
+    setAdditionalLaborItemSource('inventory');
 
     // Navigate to receipt
     navigate('/receipt', { state: { sale: receiptData } });
@@ -602,9 +627,21 @@ export default function RepairSales() {
               className="border border-gray-300 rounded-md px-3 py-2 w-full"
               placeholder="If part needs to be sourced from another location"
               value={form.depositAmount}
-              onChange={(e) => setForm({ ...form, depositAmount: e.target.value })}
+              onChange={(e) => {
+                const deposit = e.target.value;
+                setForm({ ...form, depositAmount: deposit });
+                // Auto-set payment made to yes if deposit is entered
+                if (deposit && Number(deposit) > 0) {
+                  setPaymentMade('yes');
+                }
+              }}
             />
             <p className="text-xs text-gray-500 mt-1">Leave empty if no deposit required</p>
+            {form.depositAmount && Number(form.depositAmount) > 0 && form.totalAgreedAmount && (
+              <p className="text-xs text-blue-600 mt-1">
+                Remaining Balance: KES {(Number(form.totalAgreedAmount) - Number(form.depositAmount)).toLocaleString()}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -632,7 +669,6 @@ export default function RepairSales() {
               setPartSource(e.target.value as PartSource);
               if (e.target.value === 'in-house') {
                 setSelectedSupplierId("");
-                setOutsourcedPartCost("");
               }
             }}
           >
@@ -641,64 +677,55 @@ export default function RepairSales() {
           </select>
 
           {partSource === 'outsourced' && (
-            <>
-              <div className="relative">
-                <select
-                  className="border border-gray-300 rounded-md px-3 py-2 w-full"
-                  value={selectedSupplierId}
-                  onChange={(e) => {
-                    if (e.target.value === 'add_new') {
-                      setShowAddSupplier(true);
-                    } else {
-                      setSelectedSupplierId(e.target.value);
-                    }
-                  }}
-                >
-                  <option value="">Select Supplier</option>
-                  {suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </option>
-                  ))}
-                  <option value="add_new">+ Add New Supplier</option>
-                </select>
-                {showAddSupplier && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md p-3 shadow-lg z-10">
-                    <input
-                      type="text"
-                      className="border border-gray-300 rounded-md px-3 py-2 w-full mb-2"
-                      placeholder="Supplier name"
-                      value={newSupplierName}
-                      onChange={(e) => setNewSupplierName(e.target.value)}
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={addNewSupplier}
-                        className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                      >
-                        Add
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowAddSupplier(false);
-                          setNewSupplierName("");
-                        }}
-                        className="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+            <div className="relative">
+              <select
+                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                value={selectedSupplierId}
+                onChange={(e) => {
+                  if (e.target.value === 'add_new') {
+                    setShowAddSupplier(true);
+                  } else {
+                    setSelectedSupplierId(e.target.value);
+                  }
+                }}
+              >
+                <option value="">Select Supplier</option>
+                {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+                <option value="add_new">+ Add New Supplier</option>
+              </select>
+              {showAddSupplier && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md p-3 shadow-lg z-10">
+                  <input
+                    type="text"
+                    className="border border-gray-300 rounded-md px-3 py-2 w-full mb-2"
+                    placeholder="Supplier name"
+                    value={newSupplierName}
+                    onChange={(e) => setNewSupplierName(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={addNewSupplier}
+                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                    >
+                      Add
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowAddSupplier(false);
+                        setNewSupplierName("");
+                      }}
+                      className="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700"
+                    >
+                      Cancel
+                    </button>
                   </div>
-                )}
-              </div>
-              <input
-                type="number"
-                className="border border-gray-300 rounded-md px-3 py-2"
-                placeholder="Cost (KES)"
-                value={outsourcedPartCost}
-                onChange={(e) => setOutsourcedPartCost(e.target.value)}
-              />
-            </>
+                </div>
+              )}
+            </div>
           )}
 
           {partSource === 'in-house' && (
@@ -721,7 +748,6 @@ export default function RepairSales() {
                   <th className="p-2 text-left text-sm">Part</th>
                   <th className="p-2 text-left text-sm">Source</th>
                   <th className="p-2 text-left text-sm">Supplier</th>
-                  <th className="p-2 text-right text-sm">Cost</th>
                   <th className="p-2 text-center text-sm">Actions</th>
                 </tr>
               </thead>
@@ -739,7 +765,6 @@ export default function RepairSales() {
                       </span>
                     </td>
                     <td className="p-2 text-sm">{part.supplierName || '-'}</td>
-                    <td className="p-2 text-right text-sm">KES {part.cost.toLocaleString()}</td>
                     <td className="p-2 text-center">
                       <button
                         onClick={() => removePart(index)}
@@ -756,40 +781,15 @@ export default function RepairSales() {
         )}
       </div>
 
-      {/* Costs & Payment */}
+        {/* Costs & Payment */}
       <div className="bg-white p-6 rounded shadow">
         <h3 className="text-lg font-semibold mb-4">Costs & Payment</h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Technician
-            </label>
-            <input
-              type="text"
-              className="border border-gray-300 rounded-md px-3 py-2 w-full bg-gray-100"
-              value={technician}
-              readOnly
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Additional Labor Cost (KES)</label>
-            <input
-              type="number"
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
-              placeholder="0"
-              value={form.additionalLaborCost}
-              onChange={(e) => setForm({ ...form, additionalLaborCost: e.target.value })}
-            />
-            <p className="text-xs text-gray-500 mt-1">For general repair labor</p>
-          </div>
-        </div>
-
-        {/* Additional Labor Items (Screen Protector, Charger, etc.) */}
-        <div className="border-t pt-4 mt-4">
+        {/* Additional Items & Services */}
+        <div>
           <h4 className="font-semibold mb-3">Additional Items & Services</h4>
           <p className="text-sm text-gray-600 mb-3">Add items like screen protector, charger, case, etc.</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
             <input
               type="text"
               className="border border-gray-300 rounded-md px-3 py-2"
@@ -797,13 +797,36 @@ export default function RepairSales() {
               value={additionalLaborItemName}
               onChange={(e) => setAdditionalLaborItemName(e.target.value)}
             />
-            <input
-              type="number"
+            <select
               className="border border-gray-300 rounded-md px-3 py-2"
-              placeholder="Cost (KES)"
-              value={additionalLaborItemCost}
-              onChange={(e) => setAdditionalLaborItemCost(e.target.value)}
-            />
+              value={additionalLaborItemSource}
+              onChange={(e) => setAdditionalLaborItemSource(e.target.value as 'inventory' | 'outsourced')}
+            >
+              <option value="inventory">From Inventory</option>
+              <option value="outsourced">Outsourced</option>
+            </select>
+            {additionalLaborItemSource === 'inventory' ? (
+              <select
+                className="border border-gray-300 rounded-md px-3 py-2"
+                value={selectedInventoryItem || ""}
+                onChange={(e) => setSelectedInventoryItem(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">Select Inventory Item</option>
+                {items && items.filter(i => i.stock > 0).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} (Stock: {item.stock})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                className="border border-gray-300 rounded-md px-3 py-2"
+                placeholder="Supplier name"
+                value={outsourcedItemSupplier}
+                onChange={(e) => setOutsourcedItemSupplier(e.target.value)}
+              />
+            )}
             <button
               onClick={addAdditionalLaborItem}
               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
@@ -818,42 +841,39 @@ export default function RepairSales() {
                 <thead className="bg-gray-100">
                   <tr>
                     <th className="p-2 text-left text-sm">Item</th>
-                    <th className="p-2 text-right text-sm">Cost</th>
+                    <th className="p-2 text-left text-sm">Source</th>
                     <th className="p-2 text-center text-sm">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {additionalLaborItems.map((item) => (
-                    <tr key={item.id} className="border-t">
-                      <td className="p-2 text-sm">{item.itemName}</td>
-                      <td className="p-2 text-right text-sm font-semibold">KES {item.cost.toLocaleString()}</td>
-                      <td className="p-2 text-center">
-                        <button
-                          onClick={() => removeAdditionalLaborItem(item.id)}
-                          className="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
+                      <tr key={item.id} className="border-t">
+                        <td className="p-2 text-sm">
+                          {item.source === 'inventory' ? item.itemName : `Supplier: ${item.itemName}`}
+                        </td>
+                        <td className="p-2 text-sm">
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            item.source === 'inventory' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-orange-100 text-orange-800'
+                          }`}>
+                            {item.source === 'inventory' ? 'Inventory' : 'Outsourced'}
+                          </span>
+                        </td>
+                        <td className="p-2 text-center">
+                          <button
+                            onClick={() => removeAdditionalLaborItem(item.id)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Additional Outsourced Cost (KES)</label>
-            <input
-              type="number"
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
-              placeholder="0"
-              value={form.outsourcedCost}
-              onChange={(e) => setForm({ ...form, outsourcedCost: e.target.value })}
-            />
-          </div>
         </div>
 
         {/* Payment Section */}
@@ -904,62 +924,198 @@ export default function RepairSales() {
                     value={paymentMethod}
                     onChange={(e) => {
                       setPaymentMethod(e.target.value as PaymentMethod);
-                      setSplitPayments([]);
+                      // split payments not used
                     }}
                   >
-                    <option value="cash_to_mpesa">Cash to Mpesa Deposit</option>
-                    <option value="mpesa_to_paybill">Mpesa to Paybill</option>
-                    <option value="split_payment">Split Payment</option>
-                    <option value="bank_to_paybill">Bank to Paybill</option>
+                    <option value="cash_to_deposit">Cash to Deposit</option>
+                    <option value="mpesa_to_paybill">M-pesa to Paybill</option>
+                    <option value="mpesa_to_mpesa_shop">M-pesa to M-pesa Shop</option>
+                    <option value="bank_to_mpesa_shop">Bank to M-pesa Shop</option>
+                    <option value="bank_to_shop_bank">Bank to Shop Bank</option>
+                    <option value="sacco_to_mpesa">Sacco to M-pesa</option>
                   </select>
                 </div>
 
-                {/* Cash to Mpesa */}
-                {paymentMethod === 'cash_to_mpesa' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Transaction Code (Required) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
-                  placeholder="Enter MPESA transaction code after depositing cash"
-                  value={transactionCodes.cash_to_mpesa}
-                  onChange={(e) => setTransactionCodes({ ...transactionCodes, cash_to_mpesa: e.target.value.toUpperCase() })}
-                />
-                  <p className="text-xs text-red-600 mt-1">Staff must deposit cash to MPESA and provide the code</p>
-                </div>
+                {/* Cash to Deposit */}
+                {paymentMethod === 'cash_to_deposit' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Transaction Code (Required) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                      placeholder="Enter transaction code after depositing cash"
+                      value={transactionCodes.cash_to_deposit}
+                      onChange={(e) => setTransactionCodes({ ...transactionCodes, cash_to_deposit: e.target.value.toUpperCase() })}
+                    />
+                    <p className="text-xs text-red-600 mt-1">Staff must deposit cash and provide the code</p>
+                  </div>
                 )}
 
                 {/* Mpesa to Paybill */}
                 {paymentMethod === 'mpesa_to_paybill' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  MPESA Transaction Code (Required) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
-                  placeholder="Enter MPESA transaction code"
-                  value={transactionCodes.mpesa_to_paybill}
-                  onChange={(e) => setTransactionCodes({ ...transactionCodes, mpesa_to_paybill: e.target.value.toUpperCase() })}
-                />
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      MPESA Transaction Code (Required) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                      placeholder="Enter MPESA transaction code"
+                      value={transactionCodes.mpesa_to_paybill}
+                      onChange={(e) => setTransactionCodes({ ...transactionCodes, mpesa_to_paybill: e.target.value.toUpperCase() })}
+                    />
+                  </div>
                 )}
 
-                {/* Bank to Paybill */}
-                {paymentMethod === 'bank_to_paybill' && (
+                {/* Mpesa to M-pesa Shop */}
+                {paymentMethod === 'mpesa_to_mpesa_shop' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      MPESA Transaction Code (Required) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                      placeholder="Enter MPESA transaction code"
+                      value={transactionCodes.mpesa_to_mpesa_shop}
+                      onChange={(e) => setTransactionCodes({ ...transactionCodes, mpesa_to_mpesa_shop: e.target.value.toUpperCase() })}
+                    />
+                  </div>
+                )}
+
+                {/* Bank to M-pesa Shop */}
+                {paymentMethod === 'bank_to_mpesa_shop' && (
                   <>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Bank <span className="text-red-500">*</span>
                       </label>
                       <select
+                        className="border border-gray-300 rounded-md px-3 py-2 w-full mb-2"
+                        value={transactionCodes.bank === transactionCodes.customBank ? 'custom' : transactionCodes.bank}
+                        onChange={(e) => {
+                          const bankValue = e.target.value;
+                          if (bankValue === 'custom') {
+                            setTransactionCodes({ 
+                              ...transactionCodes, 
+                              bank: transactionCodes.customBank || '',
+                            });
+                          } else {
+                            setTransactionCodes({ 
+                              ...transactionCodes, 
+                              bank: bankValue,
+                              customBank: ''
+                            });
+                          }
+                        }}
+                      >
+                        <option value="">Select Bank</option>
+                        <option value="KCB">KCB</option>
+                        <option value="Equity">Equity</option>
+                        <option value="Cooperative">Cooperative</option>
+                        <option value="Absa">Absa</option>
+                        <option value="Standard Chartered">Standard Chartered</option>
+                        <option value="custom">Enter Bank Name</option>
+                      </select>
+                      {(transactionCodes.bank === transactionCodes.customBank || transactionCodes.bank === '') && (
+                        <input
+                          type="text"
+                          className="border border-gray-300 rounded-md px-3 py-2 w-full mt-2"
+                          placeholder="Enter bank name"
+                          value={transactionCodes.customBank}
+                          onChange={(e) => setTransactionCodes({ ...transactionCodes, customBank: e.target.value, bank: e.target.value })}
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Transaction Code (Required) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                        placeholder="Enter transaction code"
+                        value={transactionCodes.bank_to_mpesa_shop}
+                        onChange={(e) => setTransactionCodes({ ...transactionCodes, bank_to_mpesa_shop: e.target.value.toUpperCase() })}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Bank to Shop Bank */}
+                {paymentMethod === 'bank_to_shop_bank' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Bank <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        className="border border-gray-300 rounded-md px-3 py-2 w-full mb-2"
+                        value={transactionCodes.bank === transactionCodes.customBank ? 'custom' : transactionCodes.bank}
+                        onChange={(e) => {
+                          const bankValue = e.target.value;
+                          if (bankValue === 'custom') {
+                            setTransactionCodes({ 
+                              ...transactionCodes, 
+                              bank: transactionCodes.customBank || '',
+                            });
+                          } else {
+                            setTransactionCodes({ 
+                              ...transactionCodes, 
+                              bank: bankValue,
+                              customBank: ''
+                            });
+                          }
+                        }}
+                      >
+                        <option value="">Select Bank</option>
+                        <option value="KCB">KCB</option>
+                        <option value="Equity">Equity</option>
+                        <option value="Cooperative">Cooperative</option>
+                        <option value="Absa">Absa</option>
+                        <option value="Standard Chartered">Standard Chartered</option>
+                        <option value="custom">Enter Bank Name</option>
+                      </select>
+                      {(transactionCodes.bank === transactionCodes.customBank || transactionCodes.bank === '') && (
+                        <input
+                          type="text"
+                          className="border border-gray-300 rounded-md px-3 py-2 w-full mt-2"
+                          placeholder="Enter bank name"
+                          value={transactionCodes.customBank}
+                          onChange={(e) => setTransactionCodes({ ...transactionCodes, customBank: e.target.value, bank: e.target.value })}
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Transaction Code (Required) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                        placeholder="Enter transaction code"
+                        value={transactionCodes.bank_to_shop_bank}
+                        onChange={(e) => setTransactionCodes({ ...transactionCodes, bank_to_shop_bank: e.target.value.toUpperCase() })}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Sacco to M-pesa */}
+                {paymentMethod === 'sacco_to_mpesa' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Sacco <span className="text-red-500">*</span>
+                      </label>
+                      <select
                         className="border border-gray-300 rounded-md px-3 py-2 w-full"
                         value={transactionCodes.bank}
                         onChange={(e) => setTransactionCodes({ ...transactionCodes, bank: e.target.value })}
                       >
-                        <option value="">Select Bank</option>
+                        <option value="">Select Sacco</option>
                         <option value="KCB">KCB</option>
                         <option value="Equity">Equity</option>
                         <option value="Cooperative">Cooperative</option>
@@ -975,106 +1131,14 @@ export default function RepairSales() {
                       <input
                         type="text"
                         className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
-                        placeholder="Enter bank transaction code"
-                        value={transactionCodes.bank_to_paybill}
-                        onChange={(e) => setTransactionCodes({ ...transactionCodes, bank_to_paybill: e.target.value.toUpperCase() })}
+                        placeholder="Enter transaction code"
+                        value={transactionCodes.sacco_to_mpesa}
+                        onChange={(e) => setTransactionCodes({ ...transactionCodes, sacco_to_mpesa: e.target.value.toUpperCase() })}
                       />
                     </div>
                   </>
                 )}
 
-                {/* Split Payment */}
-                {paymentMethod === 'split_payment' && (
-              <div className="space-y-4">
-                <div className="border p-4 rounded bg-gray-50">
-                  <h5 className="font-semibold mb-3">Add Payment Method</h5>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <select
-                      className="border border-gray-300 rounded-md px-3 py-2"
-                      value={splitPaymentMethod}
-                      onChange={(e) => setSplitPaymentMethod(e.target.value as 'cash' | 'mpesa' | 'bank_deposit')}
-                    >
-                      <option value="cash">Cash</option>
-                      <option value="mpesa">MPESA</option>
-                      <option value="bank_deposit">Bank Deposit</option>
-                    </select>
-                    <input
-                      type="number"
-                      className="border border-gray-300 rounded-md px-3 py-2"
-                      placeholder="Amount"
-                      value={splitPaymentAmount}
-                      onChange={(e) => setSplitPaymentAmount(e.target.value)}
-                    />
-                    <input
-                      type="text"
-                      className="border border-gray-300 rounded-md px-3 py-2 uppercase"
-                      placeholder="Transaction Code"
-                      value={splitPaymentCode}
-                      onChange={(e) => setSplitPaymentCode(e.target.value.toUpperCase())}
-                    />
-                    {splitPaymentMethod === 'bank_deposit' && (
-                      <select
-                        className="border border-gray-300 rounded-md px-3 py-2"
-                        value={splitPaymentBank}
-                        onChange={(e) => setSplitPaymentBank(e.target.value)}
-                      >
-                        <option value="">Select Bank</option>
-                        <option value="KCB">KCB</option>
-                        <option value="Equity">Equity</option>
-                        <option value="Cooperative">Cooperative</option>
-                        <option value="Absa">Absa</option>
-                        <option value="Standard Chartered">Standard Chartered</option>
-                      </select>
-                    )}
-                    {splitPaymentMethod !== 'bank_deposit' && <div></div>}
-                    <button
-                      onClick={addSplitPayment}
-                      className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-
-                {splitPayments.length > 0 && (
-                  <div>
-                    <h5 className="font-semibold mb-2">Payment Methods Added:</h5>
-                    <table className="w-full border">
-                      <thead className="bg-gray-100">
-                        <tr>
-                          <th className="p-2 text-left text-sm">Method</th>
-                          <th className="p-2 text-right text-sm">Amount</th>
-                          <th className="p-2 text-left text-sm">Transaction Code</th>
-                          <th className="p-2 text-left text-sm">Bank</th>
-                          <th className="p-2 text-center text-sm">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {splitPayments.map((payment, index) => (
-                          <tr key={index} className="border-t">
-                            <td className="p-2 text-sm capitalize">{payment.method.replace('_', ' ')}</td>
-                            <td className="p-2 text-right text-sm">KES {payment.amount.toLocaleString()}</td>
-                            <td className="p-2 text-sm font-mono">{payment.transactionCode}</td>
-                            <td className="p-2 text-sm">{payment.bank || '-'}</td>
-                            <td className="p-2 text-center">
-                              <button
-                                onClick={() => removeSplitPayment(index)}
-                                className="text-red-600 hover:text-red-800 text-sm"
-                              >
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div className="mt-2 text-right">
-                      <span className="font-semibold">Total: KES {getTotalPaid().toLocaleString()}</span>
-                    </div>
-                  </div>
-                )}
-                </div>
-                )}
               </>
             )}
           </div>
@@ -1083,44 +1147,26 @@ export default function RepairSales() {
         {/* Summary */}
         <div className="border-t pt-4 mt-4 bg-gray-50 p-4 rounded">
           <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Parts Total:</span>
-              <span className="font-semibold">KES {totals.partsTotal.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Additional Labor (Parts):</span>
-              <span className="font-semibold">KES {totals.additionalLaborTotal.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Additional Items & Services:</span>
-              <span className="font-semibold">KES {totals.additionalLaborItemsTotal.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Additional Labor (General):</span>
-              <span className="font-semibold">KES {totals.additionalLaborCost.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Outsourced Parts:</span>
-              <span className="font-semibold text-orange-600">KES {totals.outsourcedPartsCost.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Additional Outsourced:</span>
-              <span className="font-semibold text-orange-600">KES {totals.additionalOutsourced.toLocaleString()}</span>
-            </div>
             <div className="flex justify-between border-t pt-2 font-bold text-lg">
-              <span>TOTAL:</span>
-              <span className="text-green-600">KES {totals.total.toLocaleString()}</span>
+              <span>Total Agreed Amount:</span>
+              <span className="text-green-600">KES {form.totalAgreedAmount ? Number(form.totalAgreedAmount).toLocaleString() : '0'}</span>
             </div>
-            {paymentMethod === 'split_payment' && (
+            {paymentMade === 'yes' && (
               <div className="flex justify-between border-t pt-2">
                 <span>Amount Paid:</span>
                 <span className="font-semibold text-green-600">KES {getTotalPaid().toLocaleString()}</span>
               </div>
             )}
-            {getTotalPaid() < totals.total && (
+            {form.totalAgreedAmount && paymentMade === 'yes' && getTotalPaid() < Number(form.totalAgreedAmount) && (
               <div className="flex justify-between">
                 <span className="text-red-600">Balance:</span>
-                <span className="font-semibold text-red-600">KES {(totals.total - getTotalPaid()).toLocaleString()}</span>
+                <span className="font-semibold text-red-600">KES {(Number(form.totalAgreedAmount) - getTotalPaid()).toLocaleString()}</span>
+              </div>
+            )}
+            {paymentMade === 'no' && (
+              <div className="flex justify-between border-t pt-2">
+                <span className="text-orange-600">Payment Status:</span>
+                <span className="font-semibold text-orange-600">Not Paid - Will pay later</span>
               </div>
             )}
           </div>
