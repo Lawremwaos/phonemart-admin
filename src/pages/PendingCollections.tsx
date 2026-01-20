@@ -46,7 +46,8 @@ export default function PendingCollections() {
       case 'pending_collection':
         filtered = filtered.filter(repair =>
           (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)) &&
-          repair.paymentStatus === 'fully_paid'
+          repair.paymentStatus === 'fully_paid' &&
+          repair.paymentApproved // Only show repairs where payment has been approved by admin
         );
         break;
       case 'pending_payment':
@@ -59,9 +60,19 @@ export default function PendingCollections() {
         break;
       default:
         // Show all repairs where customer has left phone
-        filtered = filtered.filter(repair =>
-          repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)
-        );
+        // For staff: only show repairs ready for collection (payment approved)
+        // For admin: show all pending repairs
+        if (!currentUser?.roles.includes('admin')) {
+          filtered = filtered.filter(repair =>
+            (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)) &&
+            repair.paymentStatus === 'fully_paid' &&
+            repair.paymentApproved
+          );
+        } else {
+          filtered = filtered.filter(repair =>
+            repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)
+          );
+        }
     }
 
     return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -97,19 +108,41 @@ export default function PendingCollections() {
 
   const stats = useMemo(() => {
     const allPending = repairs.filter(r => r.customerStatus === 'coming_back' || (r.depositAmount && r.depositAmount > 0));
+    // For staff: only count repairs ready for collection (payment approved)
+    // For admin: show all stats
+    if (!currentUser?.roles.includes('admin')) {
+      const readyForCollection = allPending.filter(r => 
+        r.paymentStatus === 'fully_paid' && r.paymentApproved
+      );
+      return {
+        total: readyForCollection.length,
+        pendingCollection: readyForCollection.length,
+        pendingPayment: 0, // Staff don't see pending payments
+        totalPendingAmount: 0,
+      };
+    }
     return {
       total: allPending.length,
-      pendingCollection: allPending.filter(r => r.paymentStatus === 'fully_paid').length,
+      pendingCollection: allPending.filter(r => r.paymentStatus === 'fully_paid' && r.paymentApproved).length,
       pendingPayment: allPending.filter(r => r.paymentStatus === 'pending' || r.paymentStatus === 'partial').length,
       totalPendingAmount: allPending
         .filter(r => r.paymentStatus === 'pending' || r.paymentStatus === 'partial')
         .reduce((sum, r) => sum + r.balance, 0),
     };
-  }, [repairs]);
+  }, [repairs, currentUser]);
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6">Pending Collections & Payments</h1>
+      <h1 className="text-3xl font-bold mb-6">
+        {currentUser?.roles.includes('admin') 
+          ? 'Pending Collections & Payments' 
+          : 'Pending Collections'}
+      </h1>
+      {!currentUser?.roles.includes('admin') && (
+        <p className="text-gray-600 mb-4">
+          Confirm when customers collect their phones. Payment approvals are handled by admin.
+        </p>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -244,7 +277,8 @@ export default function PendingCollections() {
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      {repair.paymentStatus !== 'fully_paid' && (
+                      {/* Only show "Confirm Payment" button to ADMIN - staff cannot approve payments */}
+                      {repair.paymentStatus !== 'fully_paid' && currentUser?.roles.includes('admin') && (
                         <button
                           onClick={() => {
                             setSelectedRepair(repair);
@@ -259,6 +293,7 @@ export default function PendingCollections() {
                           Confirm Payment
                         </button>
                       )}
+                      {/* Staff can only confirm collection when payment is fully paid AND approved by admin */}
                       {repair.paymentStatus === 'fully_paid' && repair.paymentApproved && repair.status !== 'COLLECTED' && (
                         <button
                           onClick={() => {
@@ -266,10 +301,16 @@ export default function PendingCollections() {
                               confirmCollection(repair.id);
                             }
                           }}
-                          className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm ml-2"
+                          className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"
                         >
                           Confirm Collection
                         </button>
+                      )}
+                      {/* Show status for staff when payment is pending approval */}
+                      {repair.paymentStatus === 'fully_paid' && !repair.paymentApproved && (
+                        <span className="text-sm text-yellow-600 font-semibold">
+                          Awaiting Admin Approval
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -280,8 +321,8 @@ export default function PendingCollections() {
         )}
       </div>
 
-      {/* Payment Confirmation Modal */}
-      {showPaymentModal && selectedRepair && (
+      {/* Payment Confirmation Modal - ADMIN ONLY */}
+      {showPaymentModal && selectedRepair && currentUser?.roles.includes('admin') && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
             <h2 className="text-2xl font-bold mb-4">Confirm Payment</h2>

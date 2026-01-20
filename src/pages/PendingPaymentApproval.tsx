@@ -5,23 +5,28 @@ import { usePayment } from "../context/PaymentContext";
 
 export default function PendingPaymentApproval() {
   const { repairs, approvePayment } = useRepair();
-  const { currentShop, currentUser, shops } = useShop();
+  const { currentUser, shops } = useShop();
   const { addPayment } = usePayment();
 
-  // Filter repairs that need payment approval
+  // ADMIN ONLY - Redirect non-admins
+  if (!currentUser || !currentUser.roles.includes('admin')) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+          <p className="font-bold">Access Denied</p>
+          <p>Only administrators can approve payments. Staff should use "Pending Collections" to confirm phone pickup.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Filter repairs that need payment approval (admin sees all shops)
   const pendingApprovals = useMemo(() => {
-    let filtered = repairs.filter(repair => {
+    return repairs.filter(repair => {
       const hasPayment = repair.paymentMade || repair.amountPaid > 0;
       return hasPayment && !repair.paymentApproved && repair.amountPaid > 0;
     });
-
-    // Filter by shop if not admin
-    if (!currentUser?.roles.includes('admin')) {
-      filtered = filtered.filter(repair => repair.shopId === currentShop?.id);
-    }
-
-    return filtered;
-  }, [repairs, currentShop, currentUser]);
+  }, [repairs]);
 
   const getShopName = (shopId?: string) => {
     if (!shopId) return 'Unknown';
