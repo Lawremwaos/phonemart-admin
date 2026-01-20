@@ -180,7 +180,22 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
           .from("users")
           .select("*")
           .order("created_at", { ascending: false });
-        if (usersError) throw usersError;
+        
+        // If table doesn't exist, show helpful error
+        if (usersError) {
+          if (usersError.message?.includes('relation') || usersError.message?.includes('does not exist')) {
+            console.error(
+              "❌ Users table not found in Supabase!\n" +
+              "Please run the SQL schema update. See UPDATE_SCHEMA_FOR_USERS.md for instructions.\n" +
+              "The 'users' and 'shops' tables need to be created first."
+            );
+            // Set empty arrays so app doesn't crash
+            setShops([]);
+            setUsers([]);
+            return;
+          }
+          throw usersError;
+        }
         if (cancelled) return;
 
         let loadedUsers: User[] = (usersData || []).map((u: any) => ({
