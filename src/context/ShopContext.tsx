@@ -241,6 +241,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         setUsers(loadedUsers);
+        console.log("Loaded users from Supabase:", loadedUsers.length, loadedUsers.map(u => u.email));
       } catch (e) {
         console.error("Error loading shops/users from Supabase:", e);
         // Fallback to empty arrays
@@ -254,8 +255,21 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const login = useCallback((email: string, password: string): boolean => {
-    const user = users.find(u => u.email === email && u.password === password);
+    // Normalize email (trim and lowercase for comparison)
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPassword = password.trim();
+    
+    // Debug logging
+    console.log("Login attempt:", { email: normalizedEmail, usersCount: users.length });
+    console.log("Available users:", users.map(u => ({ email: u.email, name: u.name })));
+    
+    const user = users.find(u => 
+      u.email.toLowerCase() === normalizedEmail && 
+      u.password === normalizedPassword
+    );
+    
     if (user) {
+      console.log("Login successful:", user.name);
       setCurrentUser(user);
       // Set user's shop as current shop
       const userShop = shops.find(s => s.id === user.shopId);
@@ -264,6 +278,10 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
       }
       setIsAuthenticated(true);
       return true;
+    } else {
+      console.error("Login failed - user not found or password incorrect");
+      console.log("Searched for:", { email: normalizedEmail });
+      console.log("Available emails:", users.map(u => u.email));
     }
     return false;
   }, [users, shops]);
