@@ -42,6 +42,7 @@ export default function RepairSales() {
   const { addDebt } = useSupplierDebt();
 
   const [customerStatus, setCustomerStatus] = useState<'waiting' | 'coming_back'>('waiting');
+  const [isServiceOnly, setIsServiceOnly] = useState(false); // Service-only repair (no parts)
   const [additionalLaborItems, setAdditionalLaborItems] = useState<AdditionalLaborItem[]>([]);
   const [additionalLaborItemName, setAdditionalLaborItemName] = useState("");
   const [additionalLaborItemSource, setAdditionalLaborItemSource] = useState<'inventory' | 'outsourced'>('inventory');
@@ -665,17 +666,35 @@ export default function RepairSales() {
       <div className="bg-white p-6 rounded shadow">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold">Parts Used</h3>
-          <p className="text-sm text-gray-600">You can add multiple parts (e.g., screen + battery)</p>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="serviceOnly"
+              checked={isServiceOnly}
+              onChange={(e) => {
+                setIsServiceOnly(e.target.checked);
+                if (e.target.checked) {
+                  setSelectedParts([]); // Clear parts if service only
+                }
+              }}
+              className="w-4 h-4"
+            />
+            <label htmlFor="serviceOnly" className="text-sm text-gray-700">
+              Service Only (No Parts - e.g., Cleaning, Water Damage)
+            </label>
+          </div>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-          <input
-            type="text"
-            className="border border-gray-300 rounded-md px-3 py-2"
-            placeholder="Type the part name"
-            value={partName}
-            onChange={(e) => setPartName(e.target.value)}
-          />
+        {!isServiceOnly && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <input
+                type="text"
+                className="border border-gray-300 rounded-md px-3 py-2"
+                placeholder="Type the part name"
+                value={partName}
+                onChange={(e) => setPartName(e.target.value)}
+              />
 
           <select
             className="border border-gray-300 rounded-md px-3 py-2"
@@ -705,11 +724,13 @@ export default function RepairSales() {
                 }}
               >
                 <option value="">Select Supplier</option>
-                {suppliers.map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>
-                    {supplier.name}
-                  </option>
-                ))}
+                {suppliers
+                  .filter(s => s.categories.includes('spare_parts'))
+                  .map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </option>
+                  ))}
                 <option value="add_new">+ Add New Supplier</option>
               </select>
               {showAddSupplier && (
@@ -747,15 +768,15 @@ export default function RepairSales() {
             <div></div>
           )}
 
-          <button
-            onClick={addPart}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 col-span-4 md:col-span-1"
-          >
-            Add Part
-          </button>
-        </div>
+              <button
+                onClick={addPart}
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 col-span-4 md:col-span-1"
+              >
+                Add Part
+              </button>
+            </div>
 
-        {selectedParts.length > 0 && (
+            {selectedParts.length > 0 && (
           <div className="mt-4">
             <table className="w-full">
               <thead className="bg-gray-100">
@@ -793,10 +814,18 @@ export default function RepairSales() {
               </tbody>
             </table>
           </div>
+            )}
+          </>
+        )}
+        {isServiceOnly && (
+          <div className="bg-blue-50 border border-blue-200 rounded p-4">
+            <p className="text-blue-800 font-semibold">Service Only Repair</p>
+            <p className="text-sm text-blue-700 mt-1">No parts will be used for this repair (e.g., cleaning, water damage repair, software update).</p>
+          </div>
         )}
       </div>
 
-        {/* Costs & Payment */}
+      {/* Costs & Payment */}
       <div className="bg-white p-6 rounded shadow">
         <h3 className="text-lg font-semibold mb-4">Costs & Payment</h3>
         

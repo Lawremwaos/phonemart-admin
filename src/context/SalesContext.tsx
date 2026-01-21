@@ -54,9 +54,34 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
   const [sales, setSales] = useState<Sale[]>([]);
   const [openWholesaleSale, setOpenWholesaleSale] = useState<Sale | null>(null);
 
-  // Load sales from Supabase on mount
+  // Helper function to load sale with items
+  const loadSaleWithItems = useCallback(async (saleData: any): Promise<Sale> => {
+    const { data: itemsData } = await supabase
+      .from("sale_items")
+      .select("*")
+      .eq("sale_id", saleData.id);
+
+    return {
+      id: saleData.id,
+      date: new Date(saleData.date),
+      shopId: saleData.shop_id || undefined,
+      saleType: saleData.sale_type as 'in-shop' | 'wholesale' | 'retail',
+      items: (itemsData || []).map((i: any) => ({
+        name: i.name,
+        qty: i.qty,
+        price: Number(i.price) || 0,
+      })),
+      total: Number(saleData.total) || 0,
+      status: saleData.status as 'open' | 'closed',
+      closedAt: saleData.closed_at ? new Date(saleData.closed_at) : undefined,
+    };
+  }, []);
+
+  // Load sales from Supabase on mount and set up real-time subscription
   useEffect(() => {
     let cancelled = false;
+    
+    // Initial load
     (async () => {
       try {
         const { data: salesData, error: salesError } = await supabase
@@ -67,28 +92,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         if (cancelled) return;
 
         const salesWithItems: Sale[] = await Promise.all(
-          (salesData || []).map(async (s: any) => {
-            const { data: itemsData, error: itemsError } = await supabase
-              .from("sale_items")
-              .select("*")
-              .eq("sale_id", s.id);
-            if (itemsError) throw itemsError;
-
-            return {
-              id: s.id,
-              date: new Date(s.date),
-              shopId: s.shop_id || undefined,
-              saleType: s.sale_type as 'in-shop' | 'wholesale' | 'retail',
-              items: (itemsData || []).map((i: any) => ({
-                name: i.name,
-                qty: i.qty,
-                price: Number(i.price) || 0,
-              })),
-              total: Number(s.total) || 0,
-              status: s.status as 'open' | 'closed',
-              closedAt: s.closed_at ? new Date(s.closed_at) : undefined,
-            };
-          })
+          (salesData || []).map(s => loadSaleWithItems(s))
         );
         setSales(salesWithItems.filter((s) => s.status === 'closed'));
 
@@ -108,10 +112,50 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         setOpenWholesaleSale(null);
       }
     })();
+
+    // Set up real-time subscription
+    const channel = supabase
+      .channel('sales-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'sales' },
+        async () => {
+          if (cancelled) return;
+          
+          try {
+            const { data: salesData } = await supabase
+              .from("sales")
+              .select("*")
+              .order("date", { ascending: false });
+            
+            if (salesData) {
+              const salesWithItems: Sale[] = await Promise.all(
+                salesData.map(s => loadSaleWithItems(s))
+              );
+              setSales(salesWithItems.filter((s) => s.status === 'closed'));
+
+              // Update open wholesale sale
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const openSale = salesWithItems.find((s) => {
+                if (s.status !== 'open' || s.saleType !== 'wholesale') return false;
+                const saleDate = new Date(s.date);
+                saleDate.setHours(0, 0, 0, 0);
+                return saleDate.getTime() === today.getTime();
+              });
+              setOpenWholesaleSale(openSale || null);
+            }
+          } catch (e) {
+            console.error("Error reloading sales:", e);
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      supabase.removeChannel(channel);
     };
-  }, []);
+  }, [loadSaleWithItems]);
 
   const addSale = useCallback((items: Array<{ name: string; qty: number; price: number }>, total: number, shopId?: string, saleType: 'in-shop' | 'wholesale' | 'retail' = 'in-shop') => {
     (async () => {

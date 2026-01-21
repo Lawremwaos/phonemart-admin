@@ -24,9 +24,11 @@ const SupplierContext = createContext<SupplierContextType | null>(null);
 export const SupplierProvider = ({ children }: { children: React.ReactNode }) => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
-  // Load from Supabase on mount
+  // Load from Supabase on mount and set up real-time subscription
   useEffect(() => {
     let cancelled = false;
+    
+    // Initial load
     (async () => {
       try {
         const { data, error } = await supabase
@@ -48,12 +50,43 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
       } catch (e) {
         console.error("Error loading suppliers from Supabase:", e);
         setSuppliers([]);
-      } finally {
-        // no-op
       }
     })();
+
+    // Set up real-time subscription
+    const channel = supabase
+      .channel('suppliers-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'suppliers' },
+        async () => {
+          if (cancelled) return;
+          try {
+            const { data, error } = await supabase
+              .from("suppliers")
+              .select("*")
+              .order("created_at", { ascending: false });
+            if (!error && data) {
+              const mapped: Supplier[] = data.map((s: any) => ({
+                id: s.id,
+                name: s.name,
+                phone: s.phone || undefined,
+                email: s.email || undefined,
+                address: s.address || undefined,
+                categories: (s.categories || []) as any,
+                createdAt: new Date(s.created_at),
+              }));
+              setSuppliers(mapped);
+            }
+          } catch (e) {
+            console.error("Error reloading suppliers:", e);
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      supabase.removeChannel(channel);
     };
   }, []);
 

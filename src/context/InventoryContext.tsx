@@ -96,9 +96,11 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
   const [stockAllocations, setStockAllocations] = useState<StockAllocation[]>([]);
   const { currentUser } = useShop();
 
-  // Load items from Supabase on mount
+  // Load items from Supabase on mount and set up real-time subscription
   useEffect(() => {
     let cancelled = false;
+    
+    // Initial load
     (async () => {
       try {
         const { data, error } = await supabase
@@ -128,14 +130,80 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         setItems([]);
       }
     })();
+
+    // Set up real-time subscription
+    const channel = supabase
+      .channel('inventory-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'inventory_items' },
+        async () => {
+          if (cancelled) return;
+          try {
+            const { data, error } = await supabase
+              .from("inventory_items")
+              .select("*")
+              .order("created_at", { ascending: false });
+            if (!error && data) {
+              const mapped: InventoryItem[] = data.map((item: any) => ({
+                id: item.id,
+                name: item.name,
+                category: item.category as 'Phone' | 'Spare' | 'Accessory',
+                itemType: item.item_type || undefined,
+                stock: item.stock || 0,
+                price: Number(item.price) || 0,
+                reorderLevel: item.reorder_level || 0,
+                initialStock: item.initial_stock || item.stock || 0,
+                shopId: item.shop_id || undefined,
+                supplier: item.supplier || undefined,
+                costPrice: item.cost_price ? Number(item.cost_price) : undefined,
+                adminCostPrice: item.admin_cost_price ? Number(item.admin_cost_price) : undefined,
+                pendingAllocation: item.pending_allocation || false,
+              }));
+              setItems(mapped);
+            }
+          } catch (e) {
+            console.error("Error reloading inventory:", e);
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      supabase.removeChannel(channel);
     };
   }, []);
 
-  // Load purchases from Supabase
+  // Helper to load purchase with items
+  const loadPurchaseWithItems = useCallback(async (purchaseData: any): Promise<Purchase> => {
+    const { data: itemsData } = await supabase
+      .from("purchase_items")
+      .select("*")
+      .eq("purchase_id", purchaseData.id);
+    
+    return {
+      id: purchaseData.id,
+      date: new Date(purchaseData.date),
+      supplier: purchaseData.supplier,
+      total: Number(purchaseData.total) || 0,
+      shopId: purchaseData.shop_id || undefined,
+      confirmed: purchaseData.confirmed || false,
+      confirmedBy: purchaseData.confirmed_by || undefined,
+      confirmedDate: purchaseData.confirmed_date ? new Date(purchaseData.confirmed_date) : undefined,
+      items: (itemsData || []).map((pi: any) => ({
+        itemId: pi.item_id,
+        itemName: pi.item_name,
+        qty: pi.qty,
+        costPrice: Number(pi.cost_price) || 0,
+      })),
+    };
+  }, []);
+
+  // Load purchases from Supabase and set up real-time subscription
   useEffect(() => {
     let cancelled = false;
+    
+    // Initial load
     (async () => {
       try {
         const { data: purchasesData, error: purchasesError } = await supabase
@@ -146,29 +214,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         if (cancelled) return;
 
         const purchasesWithItems: Purchase[] = await Promise.all(
-          (purchasesData || []).map(async (p: any) => {
-            const { data: itemsData, error: itemsError } = await supabase
-              .from("purchase_items")
-              .select("*")
-              .eq("purchase_id", p.id);
-            if (itemsError) throw itemsError;
-            return {
-              id: p.id,
-              date: new Date(p.date),
-              supplier: p.supplier,
-              total: Number(p.total) || 0,
-              shopId: p.shop_id || undefined,
-              confirmed: p.confirmed || false,
-              confirmedBy: p.confirmed_by || undefined,
-              confirmedDate: p.confirmed_date ? new Date(p.confirmed_date) : undefined,
-              items: (itemsData || []).map((pi: any) => ({
-                itemId: pi.item_id,
-                itemName: pi.item_name,
-                qty: pi.qty,
-                costPrice: Number(pi.cost_price) || 0,
-              })),
-            };
-          })
+          (purchasesData || []).map(p => loadPurchaseWithItems(p))
         );
         setPurchases(purchasesWithItems);
       } catch (e) {
@@ -176,14 +222,68 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         setPurchases([]);
       }
     })();
+
+    // Set up real-time subscription
+    const channel = supabase
+      .channel('purchases-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'purchases' },
+        async () => {
+          if (cancelled) return;
+          try {
+            const { data: purchasesData } = await supabase
+              .from("purchases")
+              .select("*")
+              .order("date", { ascending: false });
+            if (purchasesData) {
+              const purchasesWithItems: Purchase[] = await Promise.all(
+                purchasesData.map(p => loadPurchaseWithItems(p))
+              );
+              setPurchases(purchasesWithItems);
+            }
+          } catch (e) {
+            console.error("Error reloading purchases:", e);
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [loadPurchaseWithItems]);
+
+  // Helper to load allocation with lines
+  const loadAllocationWithLines = useCallback(async (allocationData: any): Promise<StockAllocation> => {
+    const { data: linesData } = await supabase
+      .from("stock_allocation_lines")
+      .select("*")
+      .eq("allocation_id", allocationData.id);
+    
+    return {
+      id: allocationData.id,
+      itemId: allocationData.item_id,
+      itemName: allocationData.item_name,
+      totalQty: allocationData.total_qty,
+      status: allocationData.status as 'pending' | 'approved' | 'rejected',
+      requestedBy: allocationData.requested_by || undefined,
+      requestedDate: new Date(allocationData.requested_date),
+      approvedBy: allocationData.approved_by || undefined,
+      approvedDate: allocationData.approved_date ? new Date(allocationData.approved_date) : undefined,
+      allocations: (linesData || []).map((l: any) => ({
+        shopId: l.shop_id,
+        shopName: l.shop_name,
+        qty: l.qty,
+      })),
     };
   }, []);
 
-  // Load stock allocations from Supabase
+  // Load stock allocations from Supabase and set up real-time subscription
   useEffect(() => {
     let cancelled = false;
+    
+    // Initial load
     (async () => {
       try {
         const { data: allocsData, error: allocsError } = await supabase
@@ -194,29 +294,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         if (cancelled) return;
 
         const allocationsWithLines: StockAllocation[] = await Promise.all(
-          (allocsData || []).map(async (a: any) => {
-            const { data: linesData, error: linesError } = await supabase
-              .from("stock_allocation_lines")
-              .select("*")
-              .eq("allocation_id", a.id);
-            if (linesError) throw linesError;
-            return {
-              id: a.id,
-              itemId: a.item_id,
-              itemName: a.item_name,
-              totalQty: a.total_qty,
-              status: a.status as 'pending' | 'approved' | 'rejected',
-              requestedBy: a.requested_by || undefined,
-              requestedDate: new Date(a.requested_date),
-              approvedBy: a.approved_by || undefined,
-              approvedDate: a.approved_date ? new Date(a.approved_date) : undefined,
-              allocations: (linesData || []).map((l: any) => ({
-                shopId: l.shop_id,
-                shopName: l.shop_name,
-                qty: l.qty,
-              })),
-            };
-          })
+          (allocsData || []).map(a => loadAllocationWithLines(a))
         );
         setStockAllocations(allocationsWithLines);
       } catch (e) {
@@ -224,10 +302,37 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         setStockAllocations([]);
       }
     })();
+
+    // Set up real-time subscription
+    const channel = supabase
+      .channel('stock-allocations-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'stock_allocations' },
+        async () => {
+          if (cancelled) return;
+          try {
+            const { data: allocsData } = await supabase
+              .from("stock_allocations")
+              .select("*")
+              .order("requested_date", { ascending: false });
+            if (allocsData) {
+              const allocationsWithLines: StockAllocation[] = await Promise.all(
+                allocsData.map(a => loadAllocationWithLines(a))
+              );
+              setStockAllocations(allocationsWithLines);
+            }
+          } catch (e) {
+            console.error("Error reloading stock allocations:", e);
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      supabase.removeChannel(channel);
     };
-  }, []);
+  }, [loadAllocationWithLines]);
 
   const addItem = useCallback((itemData: Omit<InventoryItem, 'id'>) => {
     (async () => {

@@ -73,9 +73,63 @@ const RepairContext = createContext<RepairContextType | null>(null);
 export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
   const [repairs, setRepairs] = useState<Repair[]>([]);
 
-  // Load repairs from Supabase on mount
+  // Helper function to load repair with details
+  const loadRepairWithDetails = useCallback(async (repairData: any): Promise<Repair> => {
+    const { data: partsData } = await supabase
+      .from("repair_parts")
+      .select("*")
+      .eq("repair_id", repairData.id);
+    
+    const { data: additionalData } = await supabase
+      .from("additional_repair_items")
+      .select("*")
+      .eq("repair_id", repairData.id);
+
+    return {
+      id: repairData.id,
+      date: new Date(repairData.date),
+      customerName: repairData.customer_name,
+      phoneNumber: repairData.phone_number,
+      imei: repairData.imei || "",
+      phoneModel: repairData.phone_model,
+      issue: repairData.issue,
+      technician: repairData.technician || "",
+      partsUsed: (partsData || []).map((p: any) => ({
+        itemId: p.item_id || 0,
+        itemName: p.item_name,
+        qty: p.qty,
+        cost: Number(p.cost) || 0,
+      })),
+      additionalItems: (additionalData || []).map((a: any) => ({
+        itemName: a.item_name,
+        source: a.source as 'inventory' | 'outsourced',
+        itemId: a.item_id || undefined,
+      })),
+      outsourcedCost: Number(repairData.outsourced_cost) || 0,
+      laborCost: Number(repairData.labor_cost) || 0,
+      totalCost: Number(repairData.total_cost) || 0,
+      status: repairData.status as RepairStatus,
+      shopId: repairData.shop_id || undefined,
+      paymentStatus: repairData.payment_status as 'pending' | 'partial' | 'fully_paid',
+      amountPaid: Number(repairData.amount_paid) || 0,
+      balance: Number(repairData.balance) || 0,
+      customerStatus: repairData.customer_status as 'waiting' | 'coming_back' | undefined,
+      totalAgreedAmount: repairData.total_agreed_amount ? Number(repairData.total_agreed_amount) : undefined,
+      paymentTiming: repairData.payment_timing as 'before' | 'after' | undefined,
+      depositAmount: repairData.deposit_amount ? Number(repairData.deposit_amount) : undefined,
+      paymentApproved: repairData.payment_approved || false,
+      paymentMade: repairData.payment_made || false,
+      pendingTransactionCodes: repairData.pending_transaction_codes || undefined,
+      ticketNumber: repairData.ticket_number || undefined,
+      collected: repairData.collected || false,
+    };
+  }, []);
+
+  // Load repairs from Supabase on mount and set up real-time subscription
   useEffect(() => {
     let cancelled = false;
+    
+    // Initial load
     (async () => {
       try {
         const { data: repairsData, error: repairsError } = await supabase
@@ -86,60 +140,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         if (cancelled) return;
 
         const repairsWithDetails: Repair[] = await Promise.all(
-          (repairsData || []).map(async (r: any) => {
-            // Load repair parts
-            const { data: partsData, error: partsError } = await supabase
-              .from("repair_parts")
-              .select("*")
-              .eq("repair_id", r.id);
-            if (partsError) throw partsError;
-
-            // Load additional items
-            const { data: additionalData, error: additionalError } = await supabase
-              .from("additional_repair_items")
-              .select("*")
-              .eq("repair_id", r.id);
-            if (additionalError) throw additionalError;
-
-            return {
-              id: r.id,
-              date: new Date(r.date),
-              customerName: r.customer_name,
-              phoneNumber: r.phone_number,
-              imei: r.imei || "",
-              phoneModel: r.phone_model,
-              issue: r.issue,
-              technician: r.technician || "",
-              partsUsed: (partsData || []).map((p: any) => ({
-                itemId: p.item_id || 0,
-                itemName: p.item_name,
-                qty: p.qty,
-                cost: Number(p.cost) || 0,
-              })),
-              additionalItems: (additionalData || []).map((a: any) => ({
-                itemName: a.item_name,
-                source: a.source as 'inventory' | 'outsourced',
-                itemId: a.item_id || undefined,
-              })),
-              outsourcedCost: Number(r.outsourced_cost) || 0,
-              laborCost: Number(r.labor_cost) || 0,
-              totalCost: Number(r.total_cost) || 0,
-              status: r.status as RepairStatus,
-              shopId: r.shop_id || undefined,
-              paymentStatus: r.payment_status as 'pending' | 'partial' | 'fully_paid',
-              amountPaid: Number(r.amount_paid) || 0,
-              balance: Number(r.balance) || 0,
-              customerStatus: r.customer_status as 'waiting' | 'coming_back' | undefined,
-              totalAgreedAmount: r.total_agreed_amount ? Number(r.total_agreed_amount) : undefined,
-              paymentTiming: r.payment_timing as 'before' | 'after' | undefined,
-              depositAmount: r.deposit_amount ? Number(r.deposit_amount) : undefined,
-              paymentApproved: r.payment_approved || false,
-              paymentMade: r.payment_made || false,
-              pendingTransactionCodes: r.pending_transaction_codes || undefined,
-              ticketNumber: r.ticket_number || undefined,
-              collected: r.collected || false,
-            };
-          })
+          (repairsData || []).map(r => loadRepairWithDetails(r))
         );
         setRepairs(repairsWithDetails);
       } catch (e) {
@@ -147,10 +148,40 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         setRepairs([]);
       }
     })();
+
+    // Set up real-time subscription
+    const channel = supabase
+      .channel('repairs-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'repairs' },
+        async () => {
+          if (cancelled) return;
+          
+          // Reload all repairs when any change occurs
+          try {
+            const { data: repairsData } = await supabase
+              .from("repairs")
+              .select("*")
+              .order("date", { ascending: false });
+            
+            if (repairsData) {
+              const repairsWithDetails: Repair[] = await Promise.all(
+                repairsData.map(r => loadRepairWithDetails(r))
+              );
+              setRepairs(repairsWithDetails);
+            }
+          } catch (e) {
+            console.error("Error reloading repairs:", e);
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      supabase.removeChannel(channel);
     };
-  }, []);
+  }, [loadRepairWithDetails]);
 
   const addRepair = useCallback((repairData: Omit<Repair, 'id' | 'date' | 'totalCost'> & { amountPaid?: number; balance?: number }) => {
     (async () => {
