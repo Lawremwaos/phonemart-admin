@@ -9,7 +9,7 @@ type FilterType = 'all' | 'pending_collection' | 'pending_payment' | 'fully_paid
 export default function PendingCollections() {
   const navigate = useNavigate();
   const { repairs, confirmPayment, confirmCollection } = useRepair();
-  const { shops, currentUser, currentShop } = useShop();
+  const { shops, currentUser } = useShop();
   const { addPayment } = usePayment();
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchTerm, setSearchTerm] = useState("");
