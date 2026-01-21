@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
 import { usePayment } from "../context/PaymentContext";
@@ -6,8 +7,9 @@ import { usePayment } from "../context/PaymentContext";
 type FilterType = 'all' | 'pending_collection' | 'pending_payment' | 'fully_paid';
 
 export default function PendingCollections() {
+  const navigate = useNavigate();
   const { repairs, confirmPayment, confirmCollection } = useRepair();
-  const { shops, currentUser } = useShop();
+  const { shops, currentUser, currentShop } = useShop();
   const { addPayment } = usePayment();
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchTerm, setSearchTerm] = useState("");
@@ -302,6 +304,44 @@ export default function PendingCollections() {
                           onClick={() => {
                             if (window.confirm(`Confirm that ${repair.customerName} has collected their phone?`)) {
                               confirmCollection(repair.id);
+                              
+                              // Generate receipt after collection
+                              const receiptData = {
+                                id: repair.id,
+                                date: repair.date,
+                                shopId: repair.shopId,
+                                saleType: 'repair' as const,
+                                items: [
+                                  ...repair.partsUsed.map(p => ({
+                                    name: p.itemName,
+                                    qty: p.qty,
+                                    price: 0, // Cost not shown on receipt
+                                  })),
+                                  ...(repair.additionalItems || []).map(item => ({
+                                    name: item.itemName,
+                                    qty: 1,
+                                    price: 0, // Cost not shown on receipt
+                                  })),
+                                ],
+                                total: repair.totalAgreedAmount || repair.totalCost,
+                                totalAgreedAmount: repair.totalAgreedAmount || repair.totalCost,
+                                paymentMethod: repair.pendingTransactionCodes?.paymentMethod || 'unknown',
+                                paymentStatus: 'paid',
+                                amountPaid: repair.amountPaid,
+                                balance: 0,
+                                customerName: repair.customerName,
+                                customerPhone: repair.phoneNumber,
+                                phoneModel: repair.phoneModel,
+                                issue: repair.issue,
+                                technician: repair.technician,
+                                customerStatus: repair.customerStatus,
+                                paymentApproved: true,
+                                depositAmount: repair.depositAmount || 0,
+                                ticketNumber: repair.ticketNumber,
+                              };
+                              
+                              // Navigate to receipt
+                              navigate('/receipt', { state: { sale: receiptData } });
                             }
                           }}
                           className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"

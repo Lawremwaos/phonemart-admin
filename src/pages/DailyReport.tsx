@@ -24,7 +24,7 @@ import {
 export default function DailyReport() {
   const { sales, getRevenueByPeriod } = useSales();
   const { items } = useInventory();
-  const { currentShop, currentUser } = useShop();
+  const { currentShop, currentUser, shops } = useShop();
   const { getTotalCashCollected, getTotalMpesaCollected, getTotalBankDeposits, getPendingCashDeposits } = usePayment();
   const { repairs } = useRepair();
   
@@ -428,6 +428,153 @@ export default function DailyReport() {
           </div>
         )}
       </div>
+
+      {/* Admin Only: Repair Tickets Report */}
+      {currentUser?.roles.includes('admin') && (
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-semibold mb-4">Repair Tickets Report - {formatDate(selectedDate)}</h3>
+          {(() => {
+            // Filter repairs with tickets (exclude deposits)
+            const ticketsWithRepairs = selectedDateRepairs.filter(r => r.ticketNumber);
+            
+            // Group by shop
+            const ticketsByShop = new Map<string, typeof ticketsWithRepairs>();
+            ticketsWithRepairs.forEach(repair => {
+              const shopId = repair.shopId || 'unassigned';
+              if (!ticketsByShop.has(shopId)) {
+                ticketsByShop.set(shopId, []);
+              }
+              ticketsByShop.get(shopId)!.push(repair);
+            });
+
+            // Calculate totals per shop
+            const shopTotals = Array.from(ticketsByShop.entries()).map(([shopId, repairs]) => {
+              const revenue = repairs.reduce((sum, r) => sum + (r.totalAgreedAmount || r.totalCost), 0);
+              const outsourcedCost = repairs.reduce((sum, r) => sum + r.outsourcedCost, 0);
+              const partsCost = repairs.reduce((sum, r) => 
+                sum + r.partsUsed.reduce((pSum, p) => pSum + (p.cost * p.qty), 0), 0
+              );
+              const grossProfit = revenue - outsourcedCost - partsCost;
+              const laborCost = repairs.reduce((sum, r) => sum + r.laborCost, 0);
+              const netProfit = grossProfit - laborCost;
+              
+              return {
+                shopId,
+                shopName: shops.find(s => s.id === shopId)?.name || 'Unassigned',
+                ticketCount: repairs.length,
+                revenue,
+                grossProfit,
+                netProfit,
+                repairs,
+              };
+            });
+
+            // Calculate combined totals
+            const combinedRevenue = shopTotals.reduce((sum, s) => sum + s.revenue, 0);
+            const combinedGrossProfit = shopTotals.reduce((sum, s) => sum + s.grossProfit, 0);
+            const combinedNetProfit = shopTotals.reduce((sum, s) => sum + s.netProfit, 0);
+            const totalTickets = ticketsWithRepairs.length;
+
+            if (ticketsWithRepairs.length === 0) {
+              return <p className="text-gray-600 text-center py-8">No repair tickets for this date.</p>;
+            }
+
+            return (
+              <div className="space-y-6">
+                {/* Combined Summary */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-lg mb-3">All Shops Combined</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Total Tickets</p>
+                      <p className="text-xl font-bold">{totalTickets}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Total Revenue</p>
+                      <p className="text-xl font-bold text-green-600">KES {combinedRevenue.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Gross Profit</p>
+                      <p className="text-xl font-bold text-blue-600">KES {combinedGrossProfit.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Net Profit</p>
+                      <p className="text-xl font-bold text-purple-600">KES {combinedNetProfit.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Per Shop Breakdown */}
+                {shopTotals.map((shop) => (
+                  <div key={shop.shopId} className="border rounded-lg p-4">
+                    <h4 className="font-semibold text-lg mb-3">{shop.shopName}</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                      <div>
+                        <p className="text-sm text-gray-600">Tickets</p>
+                        <p className="text-lg font-bold">{shop.ticketCount}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Revenue</p>
+                        <p className="text-lg font-bold text-green-600">KES {shop.revenue.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Gross Profit</p>
+                        <p className="text-lg font-bold text-blue-600">KES {shop.grossProfit.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Net Profit</p>
+                        <p className="text-lg font-bold text-purple-600">KES {shop.netProfit.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    
+                    {/* Tickets List */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="p-2 text-left">Ticket #</th>
+                            <th className="p-2 text-left">Customer</th>
+                            <th className="p-2 text-left">Phone</th>
+                            <th className="p-2 text-right">Revenue</th>
+                            <th className="p-2 text-right">Gross Profit</th>
+                            <th className="p-2 text-right">Net Profit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {shop.repairs.map((repair) => {
+                            const revenue = repair.totalAgreedAmount || repair.totalCost;
+                            const outsourcedCost = repair.outsourcedCost;
+                            const partsCost = repair.partsUsed.reduce((sum, p) => sum + (p.cost * p.qty), 0);
+                            const grossProfit = revenue - outsourcedCost - partsCost;
+                            const netProfit = grossProfit - repair.laborCost;
+                            
+                            return (
+                              <tr key={repair.id} className="border-t">
+                                <td className="p-2 font-mono">{repair.ticketNumber}</td>
+                                <td className="p-2">{repair.customerName}</td>
+                                <td className="p-2">{repair.phoneModel}</td>
+                                <td className="p-2 text-right font-semibold text-green-600">
+                                  KES {revenue.toLocaleString()}
+                                </td>
+                                <td className="p-2 text-right font-semibold text-blue-600">
+                                  KES {grossProfit.toLocaleString()}
+                                </td>
+                                <td className="p-2 text-right font-semibold text-purple-600">
+                                  KES {netProfit.toLocaleString()}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }

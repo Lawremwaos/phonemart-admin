@@ -365,6 +365,11 @@ export default function RepairSales() {
       repairStatus = 'PAYMENT_PENDING';
     }
 
+    // Generate ticket number (unless deposit)
+    // If deposit is made, no ticket number (receipt will be generated)
+    // If no deposit, assign ticket number
+    const ticketNumber = depositAmount > 0 ? undefined : `TKT-${Date.now().toString().slice(-6)}`;
+
     // Create repair record
     const repair = {
       customerName: form.customerName,
@@ -401,6 +406,8 @@ export default function RepairSales() {
         paymentMethod,
         transactionCodes: { ...transactionCodes },
       },
+      ticketNumber: ticketNumber,
+      collected: false,
     };
 
     const repairId = Date.now().toString();
@@ -486,8 +493,16 @@ export default function RepairSales() {
     setSelectedInventoryItem(null);
     setAdditionalLaborItemSource('inventory');
 
-    // Navigate to receipt
-    navigate('/receipt', { state: { sale: receiptData } });
+    // Only navigate to receipt if deposit is made
+    // Otherwise, just show success message and navigate to pending collections
+    if (depositAmount > 0) {
+      // Deposit made - generate receipt
+      navigate('/receipt', { state: { sale: receiptData } });
+    } else {
+      // No deposit - just assign ticket and go to pending collections
+      alert(`Repair sale completed! Ticket Number: ${ticketNumber}\n\nRepair will be sent to admin for payment approval.`);
+      navigate('/pending-collections');
+    }
   }
 
   return (
@@ -1176,7 +1191,9 @@ export default function RepairSales() {
           onClick={handleCompleteRepairSale}
           className="w-full mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
         >
-          Complete Repair Sale & Generate Receipt
+          {form.depositAmount && Number(form.depositAmount) > 0 
+            ? 'Complete Repair Sale & Generate Receipt' 
+            : 'Complete Repair Sale & Assign Ticket'}
         </button>
       </div>
     </div>

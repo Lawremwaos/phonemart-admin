@@ -48,6 +48,8 @@ export type Repair = {
     paymentMethod: string;
     transactionCodes: any;
   };
+  ticketNumber?: string; // Ticket number assigned to repair (not for deposits)
+  collected?: boolean; // Whether phone has been collected
 };
 
 type RepairContextType = {
@@ -133,6 +135,8 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
               paymentApproved: r.payment_approved || false,
               paymentMade: r.payment_made || false,
               pendingTransactionCodes: r.pending_transaction_codes || undefined,
+              ticketNumber: r.ticket_number || undefined,
+              collected: r.collected || false,
             };
           })
         );
@@ -183,6 +187,8 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
           payment_approved: repairData.paymentApproved || false,
           payment_made: repairData.paymentMade || false,
           pending_transaction_codes: repairData.pendingTransactionCodes || null,
+          ticket_number: (repairData as any).ticketNumber || null,
+          collected: (repairData as any).collected || false,
         })
         .select("*")
         .single();
@@ -280,10 +286,12 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         totalAgreedAmount: newRepairData.total_agreed_amount ? Number(newRepairData.total_agreed_amount) : undefined,
         paymentTiming: newRepairData.payment_timing as 'before' | 'after' | undefined,
         depositAmount: newRepairData.deposit_amount ? Number(newRepairData.deposit_amount) : undefined,
-        paymentApproved: newRepairData.payment_approved || false,
-        paymentMade: newRepairData.payment_made || false,
-        pendingTransactionCodes: newRepairData.pending_transaction_codes || undefined,
-      };
+              paymentApproved: newRepairData.payment_approved || false,
+              paymentMade: newRepairData.payment_made || false,
+              pendingTransactionCodes: newRepairData.pending_transaction_codes || undefined,
+              ticketNumber: newRepairData.ticket_number || undefined,
+              collected: newRepairData.collected || false,
+            };
       
       setRepairs((prev) => [newRepair, ...prev]);
     })();
@@ -439,7 +447,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
     (async () => {
       const { error } = await supabase
         .from("repairs")
-        .update({ status: 'COLLECTED' })
+        .update({ status: 'COLLECTED', collected: true })
         .eq("id", repairId);
       if (error) {
         console.error("Error confirming collection:", error);
@@ -451,6 +459,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
             return {
               ...repair,
               status: 'COLLECTED' as RepairStatus,
+              collected: true,
             };
           }
           return repair;
