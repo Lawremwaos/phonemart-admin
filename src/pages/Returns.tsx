@@ -9,6 +9,7 @@ export type ReturnRecord = {
   date: Date;
   customerName: string;
   customerPhone: string;
+  phoneModel: string;
   repairId?: string;
   itemName: string;
   itemType: 'screen' | 'battery' | 'camera' | 'speaker' | 'charger' | 'protector' | 'other';
@@ -58,6 +59,7 @@ export default function Returns() {
   const [formData, setFormData] = useState({
     customerName: "",
     customerPhone: "",
+    phoneModel: "",
     repairId: "",
     itemName: "",
     itemType: 'screen' as ReturnRecord['itemType'],
@@ -72,6 +74,31 @@ export default function Returns() {
     saveReturnsToStorage(returns);
   }, [returns]);
 
+  // Auto-fill from existing repair when name + phone model + item name match
+  useEffect(() => {
+    const name = formData.customerName.trim().toLowerCase();
+    const model = formData.phoneModel.trim().toLowerCase();
+    const item = formData.itemName.trim().toLowerCase();
+    if (!name || !model || !item) return;
+
+    const matchedRepair = repairs.find(r =>
+      r.customerName.trim().toLowerCase() === name &&
+      r.phoneModel.trim().toLowerCase() === model &&
+      r.partsUsed.some(p => p.itemName.trim().toLowerCase() === item)
+    );
+    if (matchedRepair) {
+      const matchedPart = matchedRepair.partsUsed.find(p => p.itemName.trim().toLowerCase() === item);
+      setFormData(prev => ({
+        ...prev,
+        repairId: matchedRepair.id,
+        customerPhone: matchedRepair.phoneNumber,
+        phoneModel: matchedRepair.phoneModel,
+        // Use part cost as costPrice hint if available
+        costPrice: matchedPart ? matchedPart.cost : prev.costPrice,
+      }));
+    }
+  }, [formData.customerName, formData.phoneModel, formData.itemName, repairs]);
+
   // Filter returns by shop
   const filteredReturns = useMemo(() => {
     if (currentUser?.roles.includes('admin')) {
@@ -85,6 +112,7 @@ export default function Returns() {
     setFormData({
       customerName: "",
       customerPhone: "",
+      phoneModel: "",
       repairId: "",
       itemName: "",
       itemType: 'screen',
@@ -96,7 +124,7 @@ export default function Returns() {
   };
 
   const handleSave = () => {
-    if (!formData.customerName || !formData.itemName || !formData.supplierName || !formData.faultDescription) {
+    if (!formData.customerName || !formData.phoneModel || !formData.itemName || !formData.supplierName || !formData.faultDescription) {
       alert("Please fill in all required fields");
       return;
     }
@@ -113,8 +141,12 @@ export default function Returns() {
       return;
     }
     // Ensure customer matches original repair
-    if (repair.customerName !== formData.customerName || repair.phoneNumber !== formData.customerPhone) {
-      alert("Customer details must match the original repair record.");
+    if (
+      repair.customerName.toLowerCase() !== formData.customerName.toLowerCase() ||
+      repair.phoneNumber !== formData.customerPhone ||
+      repair.phoneModel.toLowerCase() !== formData.phoneModel.toLowerCase()
+    ) {
+      alert("Customer name, phone, and phone model must match the original repair record.");
       return;
     }
 
@@ -123,6 +155,7 @@ export default function Returns() {
       date: new Date(),
       customerName: formData.customerName,
       customerPhone: formData.customerPhone,
+      phoneModel: formData.phoneModel,
       repairId: formData.repairId || undefined,
       itemName: formData.itemName,
       itemType: formData.itemType,
@@ -142,6 +175,7 @@ export default function Returns() {
     setFormData({
       customerName: "",
       customerPhone: "",
+      phoneModel: "",
       repairId: "",
       itemName: "",
       itemType: 'screen',
@@ -157,6 +191,7 @@ export default function Returns() {
     setFormData({
       customerName: "",
       customerPhone: "",
+      phoneModel: "",
       repairId: "",
       itemName: "",
       itemType: 'screen',
@@ -232,6 +267,18 @@ export default function Returns() {
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Phone Model <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                value={formData.phoneModel}
+                onChange={(e) => setFormData({ ...formData, phoneModel: e.target.value })}
+                placeholder="e.g., iPhone 13, Samsung A12"
+              />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Repair ID (Optional)</label>
               <select
                 className="border border-gray-300 rounded-md px-3 py-2 w-full"
@@ -245,6 +292,7 @@ export default function Returns() {
                       ...prev,
                       customerName: repair.customerName,
                       customerPhone: repair.phoneNumber,
+                      phoneModel: repair.phoneModel,
                     }));
                   }
                 }}

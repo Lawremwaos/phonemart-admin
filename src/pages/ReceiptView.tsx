@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Receipt from "../components/Receipt";
 import { useShop } from "../context/ShopContext";
@@ -10,6 +10,7 @@ export default function ReceiptView() {
   const navigate = useNavigate();
   const { currentShop } = useShop();
   const receiptRef = useRef<HTMLDivElement>(null);
+  const [whatsAppNumber, setWhatsAppNumber] = useState("");
   
   const sale = location.state?.sale as Sale | undefined;
 
@@ -48,8 +49,10 @@ export default function ReceiptView() {
       currentShop?.address,
       currentShop?.phone
     );
-    // Use your work WhatsApp number
-    shareViaWhatsApp(text, '+254715592682');
+    // Use custom number if provided, otherwise customer phone if available, otherwise default work number
+    const customerPhone = (sale as any).customerPhone as string | undefined;
+    const targetNumber = whatsAppNumber.trim() || customerPhone || '+254715592682';
+    shareViaWhatsApp(text, targetNumber);
   };
 
   const handleShareEmail = () => {
@@ -70,6 +73,15 @@ export default function ReceiptView() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
           <h2 className="text-2xl font-bold">Digital Receipt</h2>
           <div className="flex flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="tel"
+                value={whatsAppNumber}
+                onChange={(e) => setWhatsAppNumber(e.target.value)}
+                className="border border-gray-300 rounded px-3 py-2 text-sm"
+                placeholder="WhatsApp number (optional)"
+              />
+            </div>
             <button
               onClick={handleDownloadPDF}
               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center gap-2"
