@@ -48,8 +48,9 @@ export default function PendingCollections() {
       case 'pending_collection':
         filtered = filtered.filter(repair =>
           (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)) &&
-          repair.paymentStatus === 'fully_paid' &&
-          repair.paymentApproved // Only show repairs where payment has been approved by admin
+          (repair.paymentStatus === 'fully_paid' || (repair.paymentStatus === 'partial' && repair.depositAmount && repair.depositAmount > 0)) &&
+          repair.paymentApproved && // Only show repairs where payment has been approved by admin
+          repair.status !== 'COLLECTED' // Don't show already collected repairs
         );
         break;
       case 'pending_payment':
@@ -67,12 +68,14 @@ export default function PendingCollections() {
         if (!currentUser?.roles.includes('admin')) {
           filtered = filtered.filter(repair =>
             (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)) &&
-            repair.paymentStatus === 'fully_paid' &&
-            repair.paymentApproved
+            (repair.paymentStatus === 'fully_paid' || (repair.paymentStatus === 'partial' && repair.depositAmount && repair.depositAmount > 0)) &&
+            repair.paymentApproved &&
+            repair.status !== 'COLLECTED' // Don't show already collected repairs
           );
         } else {
           filtered = filtered.filter(repair =>
-            repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)
+            (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)) &&
+            repair.status !== 'COLLECTED' // Don't show already collected repairs
           );
         }
     }
@@ -96,6 +99,9 @@ export default function PendingCollections() {
   };
 
   const getStatusBadge = (repair: typeof repairs[0]) => {
+    if (repair.status === 'COLLECTED') {
+      return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">Collected</span>;
+    }
     if (repair.paymentStatus === 'fully_paid' && repair.paymentApproved && (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0))) {
       return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Ready for Collection</span>;
     }
@@ -103,6 +109,9 @@ export default function PendingCollections() {
       return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Awaiting Admin Approval</span>;
     }
     if (repair.paymentStatus === 'partial') {
+      if (repair.depositAmount && repair.depositAmount > 0) {
+        return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">Pending Collection - Balance: KES {repair.balance.toLocaleString()}</span>;
+      }
       return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Partial Payment</span>;
     }
     if (repair.paymentStatus === 'pending') {
@@ -298,61 +307,130 @@ export default function PendingCollections() {
                           Confirm Payment
                         </button>
                       )}
-                      {/* Staff can only confirm collection when payment is fully paid AND approved by admin */}
-                      {repair.paymentStatus === 'fully_paid' && repair.paymentApproved && repair.status !== 'COLLECTED' && (
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`Confirm that ${repair.customerName} has collected their phone?`)) {
-                              confirmCollection(repair.id);
-                              
-                              // Generate receipt after collection
-                              const receiptData = {
-                                id: repair.id,
-                                date: repair.date,
-                                shopId: repair.shopId,
-                                saleType: 'repair' as const,
-                                items: [
-                                  ...repair.partsUsed.map(p => ({
-                                    name: p.itemName,
-                                    qty: p.qty,
-                                    price: 0, // Cost not shown on receipt
-                                  })),
-                                  ...(repair.additionalItems || []).map(item => ({
-                                    name: item.itemName,
-                                    qty: 1,
-                                    price: 0, // Cost not shown on receipt
-                                  })),
-                                ],
-                                total: repair.totalAgreedAmount || repair.totalCost,
-                                totalAgreedAmount: repair.totalAgreedAmount || repair.totalCost,
-                                paymentMethod: repair.pendingTransactionCodes?.paymentMethod || 'unknown',
-                                paymentStatus: 'paid',
-                                amountPaid: repair.amountPaid,
-                                balance: 0,
-                                customerName: repair.customerName,
-                                customerPhone: repair.phoneNumber,
-                                phoneModel: repair.phoneModel,
-                                issue: repair.issue,
-                                technician: repair.technician,
-                                customerStatus: repair.customerStatus,
-                                paymentApproved: true,
-                                depositAmount: repair.depositAmount || 0,
-                                ticketNumber: repair.ticketNumber,
-                              };
-                              
-                              // Navigate to receipt
-                              navigate('/receipt', { state: { sale: receiptData } });
-                            }
-                          }}
-                          className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"
-                        >
-                          Confirm Collection
-                        </button>
+                      {/* Staff can confirm collection when:
+                          1. Payment is fully paid AND approved by admin, OR
+                          2. Deposit was made (partial payment) AND approved by admin
+                      */}
+                      {repair.status !== 'COLLECTED' && (
+                        <>
+                          {/* For fully paid repairs */}
+                          {repair.paymentStatus === 'fully_paid' && repair.paymentApproved && (
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Confirm that ${repair.customerName} has collected their phone? This will complete the repair sale and generate the receipt.`)) {
+                                  confirmCollection(repair.id);
+                                  
+                                  // Generate receipt after collection
+                                  const receiptData = {
+                                    id: repair.id,
+                                    date: repair.date,
+                                    shopId: repair.shopId,
+                                    saleType: 'repair' as const,
+                                    items: [
+                                      ...repair.partsUsed.map(p => ({
+                                        name: p.itemName,
+                                        qty: p.qty,
+                                        price: 0, // Cost not shown on receipt
+                                      })),
+                                      ...(repair.additionalItems || []).map(item => ({
+                                        name: item.itemName,
+                                        qty: 1,
+                                        price: 0, // Cost not shown on receipt
+                                      })),
+                                    ],
+                                    total: repair.totalAgreedAmount || repair.totalCost,
+                                    totalAgreedAmount: repair.totalAgreedAmount || repair.totalCost,
+                                    paymentMethod: repair.pendingTransactionCodes?.paymentMethod || 'unknown',
+                                    paymentStatus: 'paid',
+                                    amountPaid: repair.amountPaid,
+                                    balance: 0,
+                                    customerName: repair.customerName,
+                                    customerPhone: repair.phoneNumber,
+                                    phoneModel: repair.phoneModel,
+                                    issue: repair.issue,
+                                    technician: repair.technician,
+                                    customerStatus: repair.customerStatus,
+                                    paymentApproved: true,
+                                    depositAmount: repair.depositAmount || 0,
+                                    ticketNumber: repair.ticketNumber,
+                                  };
+                                  
+                                  // Navigate to receipt
+                                  navigate('/receipt', { state: { sale: receiptData } });
+                                }
+                              }}
+                              className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"
+                            >
+                              Confirm Collection
+                            </button>
+                          )}
+                          
+                          {/* For deposits (partial payment) - can also confirm collection after admin approval */}
+                          {repair.paymentStatus === 'partial' && repair.paymentApproved && repair.depositAmount && repair.depositAmount > 0 && (
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Confirm that ${repair.customerName} has collected their phone? Remaining balance: KES ${repair.balance.toLocaleString()}. This will complete the repair sale and generate the receipt.`)) {
+                                  confirmCollection(repair.id);
+                                  
+                                  // Generate receipt after collection
+                                  const receiptData = {
+                                    id: repair.id,
+                                    date: repair.date,
+                                    shopId: repair.shopId,
+                                    saleType: 'repair' as const,
+                                    items: [
+                                      ...repair.partsUsed.map(p => ({
+                                        name: p.itemName,
+                                        qty: p.qty,
+                                        price: 0,
+                                      })),
+                                      ...(repair.additionalItems || []).map(item => ({
+                                        name: item.itemName,
+                                        qty: 1,
+                                        price: 0,
+                                      })),
+                                    ],
+                                    total: repair.totalAgreedAmount || repair.totalCost,
+                                    totalAgreedAmount: repair.totalAgreedAmount || repair.totalCost,
+                                    paymentMethod: repair.pendingTransactionCodes?.paymentMethod || 'unknown',
+                                    paymentStatus: 'partial',
+                                    amountPaid: repair.amountPaid,
+                                    balance: repair.balance,
+                                    customerName: repair.customerName,
+                                    customerPhone: repair.phoneNumber,
+                                    phoneModel: repair.phoneModel,
+                                    issue: repair.issue,
+                                    technician: repair.technician,
+                                    customerStatus: repair.customerStatus,
+                                    paymentApproved: true,
+                                    depositAmount: repair.depositAmount || 0,
+                                    ticketNumber: repair.ticketNumber,
+                                  };
+                                  
+                                  // Navigate to receipt
+                                  navigate('/receipt', { state: { sale: receiptData } });
+                                }
+                              }}
+                              className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"
+                            >
+                              Confirm Collection
+                            </button>
+                          )}
+                          
+                          {/* Show status for staff when payment is pending approval */}
+                          {((repair.paymentStatus === 'fully_paid' && !repair.paymentApproved) || 
+                            (repair.paymentStatus === 'partial' && !repair.paymentApproved)) && (
+                            <span className="text-sm text-yellow-600 font-semibold">
+                              Awaiting Admin Approval
+                            </span>
+                          )}
+                        </>
                       )}
-                      {/* Show status for staff when payment is pending approval */}
-                      {repair.paymentStatus === 'fully_paid' && !repair.paymentApproved && (
-                        <span className="text-sm text-yellow-600 font-semibold">
-                          Awaiting Admin Approval
+                      
+                      {/* Show collected status */}
+                      {repair.status === 'COLLECTED' && (
+                        <span className="text-sm text-gray-600 font-semibold">
+                          ✓ Collected
                         </span>
                       )}
                     </td>
