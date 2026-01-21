@@ -46,14 +46,19 @@ export default function PendingPaymentApproval() {
   };
 
   const handleApprovePayment = (repair: typeof repairs[0]) => {
-    if (!window.confirm(`Approve payment of KES ${repair.amountPaid.toLocaleString()} for ${repair.customerName}?`)) {
+    const balance = repair.balance;
+    const confirmMessage = balance > 0
+      ? `Approve payment of KES ${repair.amountPaid.toLocaleString()} for ${repair.customerName}?\n\nBalance remaining: KES ${balance.toLocaleString()}\n\nNote: Staff cannot confirm collection until remaining balance is paid and approved.`
+      : `Approve payment of KES ${repair.amountPaid.toLocaleString()} for ${repair.customerName}?\n\nThis will allow staff to confirm collection.`;
+    
+    if (!window.confirm(confirmMessage)) {
       return;
     }
 
     // Approve the payment
     approvePayment(repair.id);
 
-    // Record the payment
+    // Record the payment (transaction codes are already filled by staff on repair sale page)
     if (repair.pendingTransactionCodes) {
       const { paymentMethod, transactionCodes } = repair.pendingTransactionCodes;
       let paymentType: 'cash' | 'mpesa' | 'bank_deposit' = 'cash';
@@ -85,7 +90,10 @@ export default function PendingPaymentApproval() {
       });
     }
 
-    alert('Payment approved successfully!');
+    alert(balance > 0 
+      ? `Payment approved! Remaining balance: KES ${balance.toLocaleString()}. Staff must wait for balance payment approval before confirming collection.`
+      : 'Payment approved successfully! Staff can now confirm collection.'
+    );
   };
 
   return (
@@ -159,12 +167,22 @@ export default function PendingPaymentApproval() {
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => handleApprovePayment(repair)}
-                        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-                      >
-                        Approve Payment
-                      </button>
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => handleApprovePayment(repair)}
+                          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 w-full"
+                        >
+                          Approve Payment
+                        </button>
+                        {repair.pendingTransactionCodes && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            <div>Method: {repair.pendingTransactionCodes.paymentMethod.replace(/_/g, ' ')}</div>
+                            {repair.pendingTransactionCodes.transactionCodes && (
+                              <div>Code: {Object.values(repair.pendingTransactionCodes.transactionCodes).find((v: any) => v && v !== '') || 'N/A'}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

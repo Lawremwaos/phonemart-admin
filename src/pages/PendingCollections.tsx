@@ -64,18 +64,18 @@ export default function PendingCollections() {
       default:
         // Show all repairs where customer has left phone
         // For staff: only show repairs ready for collection (payment approved)
-        // For admin: show all pending repairs
+        // For admin: show all pending repairs (including those awaiting approval)
         if (!currentUser?.roles.includes('admin')) {
           filtered = filtered.filter(repair =>
             (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)) &&
             (repair.paymentStatus === 'fully_paid' || (repair.paymentStatus === 'partial' && repair.depositAmount && repair.depositAmount > 0)) &&
             repair.paymentApproved &&
-            repair.status !== 'COLLECTED' // Don't show already collected repairs
+            repair.status !== 'COLLECTED'
           );
         } else {
+          // Admin sees all repairs where customer left phone (including pending approval)
           filtered = filtered.filter(repair =>
-            (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)) &&
-            repair.status !== 'COLLECTED' // Don't show already collected repairs
+            (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0))
           );
         }
     }
@@ -307,14 +307,14 @@ export default function PendingCollections() {
                           Confirm Payment
                         </button>
                       )}
-                      {/* Staff can confirm collection when:
-                          1. Payment is fully paid AND approved by admin, OR
-                          2. Deposit was made (partial payment) AND approved by admin
+                      {/* Staff can confirm collection ONLY when:
+                          1. Payment is fully paid AND approved by admin (no balance), OR
+                          2. Deposit was made AND balance is 0 (fully paid as deposit) AND approved by admin
                       */}
                       {repair.status !== 'COLLECTED' && (
                         <>
-                          {/* For fully paid repairs */}
-                          {repair.paymentStatus === 'fully_paid' && repair.paymentApproved && (
+                          {/* For fully paid repairs (no balance) - can confirm collection */}
+                          {repair.paymentStatus === 'fully_paid' && repair.paymentApproved && repair.balance === 0 && (
                             <button
                               onClick={() => {
                                 if (window.confirm(`Confirm that ${repair.customerName} has collected their phone? This will complete the repair sale and generate the receipt.`)) {
@@ -365,56 +365,11 @@ export default function PendingCollections() {
                             </button>
                           )}
                           
-                          {/* For deposits (partial payment) - can also confirm collection after admin approval */}
-                          {repair.paymentStatus === 'partial' && repair.paymentApproved && repair.depositAmount && repair.depositAmount > 0 && (
-                            <button
-                              onClick={() => {
-                                if (window.confirm(`Confirm that ${repair.customerName} has collected their phone? Remaining balance: KES ${repair.balance.toLocaleString()}. This will complete the repair sale and generate the receipt.`)) {
-                                  confirmCollection(repair.id);
-                                  
-                                  // Generate receipt after collection
-                                  const receiptData = {
-                                    id: repair.id,
-                                    date: repair.date,
-                                    shopId: repair.shopId,
-                                    saleType: 'repair' as const,
-                                    items: [
-                                      ...repair.partsUsed.map(p => ({
-                                        name: p.itemName,
-                                        qty: p.qty,
-                                        price: 0,
-                                      })),
-                                      ...(repair.additionalItems || []).map(item => ({
-                                        name: item.itemName,
-                                        qty: 1,
-                                        price: 0,
-                                      })),
-                                    ],
-                                    total: repair.totalAgreedAmount || repair.totalCost,
-                                    totalAgreedAmount: repair.totalAgreedAmount || repair.totalCost,
-                                    paymentMethod: repair.pendingTransactionCodes?.paymentMethod || 'unknown',
-                                    paymentStatus: 'partial',
-                                    amountPaid: repair.amountPaid,
-                                    balance: repair.balance,
-                                    customerName: repair.customerName,
-                                    customerPhone: repair.phoneNumber,
-                                    phoneModel: repair.phoneModel,
-                                    issue: repair.issue,
-                                    technician: repair.technician,
-                                    customerStatus: repair.customerStatus,
-                                    paymentApproved: true,
-                                    depositAmount: repair.depositAmount || 0,
-                                    ticketNumber: repair.ticketNumber,
-                                  };
-                                  
-                                  // Navigate to receipt
-                                  navigate('/receipt', { state: { sale: receiptData } });
-                                }
-                              }}
-                              className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"
-                            >
-                              Confirm Collection
-                            </button>
+                          {/* For deposits with balance - CANNOT confirm collection until balance is paid and approved */}
+                          {repair.paymentStatus === 'partial' && repair.depositAmount && repair.depositAmount > 0 && repair.balance > 0 && (
+                            <span className="text-sm text-orange-600 font-semibold">
+                              Balance pending approval: KES {repair.balance.toLocaleString()}
+                            </span>
                           )}
                           
                           {/* Show status for staff when payment is pending approval */}
