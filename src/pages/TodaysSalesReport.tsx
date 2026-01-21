@@ -1,12 +1,14 @@
 import { useSales } from "../context/SalesContext";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
+import { useSupplierDebt } from "../context/SupplierDebtContext";
 import { shareViaWhatsApp, shareViaEmail } from "../utils/receiptUtils";
 
 export default function TodaysSalesReport() {
   const { getTodaysSalesReport, getDailySales } = useSales();
   const { repairs } = useRepair();
   const { currentShop, currentUser } = useShop();
+  const { getAllUnpaidDebts } = useSupplierDebt();
   const report = getTodaysSalesReport();
   const todaysSales = getDailySales();
   
@@ -34,7 +36,15 @@ export default function TodaysSalesReport() {
     });
   };
 
+  // Check if there are unpaid supplier costs that need to be filled
+  const unpaidDebts = getAllUnpaidDebts();
+  const hasUnfilledCosts = unpaidDebts.some((debt: any) => debt.costPerUnit === 0);
+
   const handleShareWhatsApp = () => {
+    if (hasUnfilledCosts) {
+      alert("Please fill in all supplier costs on the Supplier Management page before sending the report.");
+      return;
+    }
     let text = `*TODAY'S SALES REPORT*\n`;
     text += `${formatDate(new Date())}\n`;
     text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
@@ -96,6 +106,10 @@ export default function TodaysSalesReport() {
   };
 
   const handleShareEmail = () => {
+    if (hasUnfilledCosts) {
+      alert("Please fill in all supplier costs on the Supplier Management page before sending the report.");
+      return;
+    }
     const subject = `Today's Sales Report - ${formatDate(new Date())}`;
     let body = `TODAY'S SALES REPORT\n`;
     body += `${formatDate(new Date())}\n`;

@@ -15,6 +15,8 @@ type AdditionalLaborItem = {
   itemName: string;
   source: 'inventory' | 'outsourced';
   itemId?: number; // For inventory items
+  supplierId?: string; // For outsourced items
+  supplierName?: string; // For outsourced items
 };
 
 type RepairPart = {
@@ -191,20 +193,24 @@ export default function RepairSales() {
       ]);
       setSelectedInventoryItem(null);
     } else {
-      // Outsourced item - require supplier name
-      if (!outsourcedItemSupplier.trim()) {
-        alert("Please enter supplier name");
+      // Outsourced item - require supplier selection
+      if (!outsourcedItemSupplier) {
+        alert("Please select a supplier");
         return;
       }
+      const supplier = suppliers.find(s => s.id === outsourcedItemSupplier || s.name === outsourcedItemSupplier);
       setAdditionalLaborItems(prev => [
         ...prev,
         {
           id: Date.now().toString(),
-          itemName: outsourcedItemSupplier.trim(), // Store supplier name as itemName for outsourced
+          itemName: additionalLaborItemName.trim(), // Store actual item name
           source: additionalLaborItemSource,
           itemId: undefined,
+          supplierId: supplier?.id,
+          supplierName: supplier?.name,
         },
       ]);
+      setAdditionalLaborItemName("");
       setOutsourcedItemSupplier("");
     }
   }
@@ -414,7 +420,7 @@ export default function RepairSales() {
     const repairId = Date.now().toString();
     addRepair(repair);
 
-    // Track supplier debts for outsourced parts
+    // Track supplier debts for outsourced parts (cost will be filled later on supplier page)
     selectedParts
       .filter(p => p.source === 'outsourced' && p.supplierId)
       .forEach(part => {
@@ -423,9 +429,27 @@ export default function RepairSales() {
           supplierName: part.supplierName || 'Unknown',
           itemName: part.itemName,
           quantity: part.qty,
-          costPerUnit: part.cost,
+          costPerUnit: 0, // Cost will be filled on supplier page
           repairId: repairId,
+          type: 'repair',
         });
+      });
+
+    // Track supplier debts for outsourced additional items (screen protector, case, etc.)
+    additionalLaborItems
+      .filter(item => item.source === 'outsourced' && item.supplierId)
+      .forEach(item => {
+        if (item.supplierId && item.supplierName) {
+          addDebt({
+            supplierId: item.supplierId,
+            supplierName: item.supplierName,
+            itemName: item.itemName,
+            quantity: 1,
+            costPerUnit: 0, // Cost will be filled on supplier page
+            repairId: repairId,
+            type: 'repair',
+          });
+        }
       });
 
     // Add payment records only if payment was made (but not yet approved)
@@ -863,13 +887,20 @@ export default function RepairSales() {
                 ))}
               </select>
             ) : (
-              <input
-                type="text"
+              <select
                 className="border border-gray-300 rounded-md px-3 py-2"
-                placeholder="Supplier name"
                 value={outsourcedItemSupplier}
                 onChange={(e) => setOutsourcedItemSupplier(e.target.value)}
-              />
+              >
+                <option value="">Select Supplier</option>
+                {suppliers
+                  .filter(s => s.categories.includes('accessories'))
+                  .map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </option>
+                  ))}
+              </select>
             )}
             <button
               onClick={addAdditionalLaborItem}

@@ -1,12 +1,16 @@
 import { useState, useMemo } from "react";
 import { useSupplier } from "../context/SupplierContext";
 import { useInventory } from "../context/InventoryContext";
-// import { useShop } from "../context/ShopContext";
+import { useRepair } from "../context/RepairContext";
+import { useSupplierDebt } from "../context/SupplierDebtContext";
+import { useShop } from "../context/ShopContext";
 
 export default function SupplierManagement() {
   const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useSupplier();
   const { purchases } = useInventory();
-  // const { currentUser } = useShop();
+  const { repairs } = useRepair();
+  const { debts, updateDebtCost, markAsPaid, getTodaysDebtsBySupplier } = useSupplierDebt();
+  const { currentUser } = useShop();
   const [isAdding, setIsAdding] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -326,6 +330,115 @@ export default function SupplierManagement() {
           })()}
         </div>
       )}
+
+      {/* Supplier Costs & Sales Tracking */}
+      <div className="bg-white p-6 rounded shadow">
+        <h3 className="text-lg font-semibold mb-4">Supplier Costs & Sales Tracking</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Fill in the cost of items sold by suppliers from repair sales and accessory sales. This will calculate net profit.
+        </p>
+        
+        {suppliers.map((supplier) => {
+          // Get repairs linked to this supplier
+          const supplierRepairs = repairs.filter(repair => {
+            // Check if repair has parts or items from this supplier
+            const hasOutsourcedParts = repair.partsUsed.some(part => {
+              const debt = debts.find(d => d.repairId === repair.id && d.supplierId === supplier.id && d.itemName === part.itemName);
+              return debt !== undefined;
+            });
+            const hasOutsourcedItems = repair.additionalItems?.some(item => {
+              const debt = debts.find(d => d.repairId === repair.id && d.supplierId === supplier.id && d.itemName === item.itemName);
+              return debt !== undefined;
+            });
+            return hasOutsourcedParts || hasOutsourcedItems;
+          });
+
+          // Get today's unpaid debts for this supplier
+          const todaysDebts = getTodaysDebtsBySupplier(supplier.id);
+          const totalOwedToday = todaysDebts.reduce((sum: number, debt: any) => sum + debt.totalCost, 0);
+
+          if (supplierRepairs.length === 0 && todaysDebts.length === 0) {
+            return null;
+          }
+
+          return (
+            <div key={supplier.id} className="mb-6 border rounded-lg p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="font-bold text-lg">{supplier.name}</h4>
+                {currentUser?.roles.includes('admin') && totalOwedToday > 0 && (
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm text-gray-600">
+                      Today's Debt: <span className="font-bold text-red-600">KES {totalOwedToday.toLocaleString()}</span>
+                    </span>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Confirm payment of KES ${totalOwedToday.toLocaleString()} to ${supplier.name}?`)) {
+                          todaysDebts.forEach(debt => {
+                            markAsPaid(debt.id, currentUser.name);
+                          });
+                          alert('Payment confirmed!');
+                        }
+                      }}
+                      className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700"
+                    >
+                      Confirm Payment
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Repairs with this supplier */}
+              {supplierRepairs.map((repair) => {
+                const repairDebts = debts.filter(d => d.repairId === repair.id && d.supplierId === supplier.id);
+                const repairRevenue = repair.totalAgreedAmount || repair.totalCost;
+                const repairCosts = repairDebts.reduce((sum, d) => sum + d.totalCost, 0);
+                const netProfit = repairRevenue - repairCosts;
+
+                return (
+                  <div key={repair.id} className="mb-4 p-4 bg-gray-50 rounded border">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="font-semibold">Repair Sale - {repair.customerName}</p>
+                        <p className="text-sm text-gray-600">{repair.phoneModel} | {new Date(repair.date).toLocaleDateString()}</p>
+                        <p className="text-sm">Revenue: <span className="font-bold">KES {repairRevenue.toLocaleString()}</span></p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-gray-600">Total Costs: <span className="font-bold">KES {repairCosts.toLocaleString()}</span></p>
+                        <p className="text-sm font-bold text-green-600">Net Profit: KES {netProfit.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-3 space-y-2">
+                      {repairDebts.map((debt: any) => (
+                        <div key={debt.id} className="flex items-center gap-4 p-2 bg-white rounded">
+                          <span className="flex-1 text-sm">{debt.itemName} x {debt.quantity}</span>
+                          <div className="flex items-center gap-2">
+                            <label className="text-sm text-gray-600">Cost per unit:</label>
+                            <input
+                              type="number"
+                              value={debt.costPerUnit || ''}
+                              onChange={(e) => {
+                                const cost = Number(e.target.value) || 0;
+                                updateDebtCost(debt.id, cost);
+                              }}
+                              className="w-24 border border-gray-300 rounded px-2 py-1 text-sm"
+                              placeholder="0"
+                            />
+                            <span className="text-sm text-gray-600">KES</span>
+                            <span className="text-sm font-semibold w-24 text-right">
+                              Total: KES {debt.totalCost.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
 
       {/* Suppliers List */}
       <div className="bg-white p-6 rounded shadow">

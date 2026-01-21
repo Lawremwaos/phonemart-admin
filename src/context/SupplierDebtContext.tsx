@@ -9,18 +9,23 @@ export type SupplierDebt = {
   costPerUnit: number;
   totalCost: number;
   date: Date;
-  repairId: string;
+  repairId?: string;
+  saleId?: string;
+  type: 'repair' | 'sale' | 'purchase';
   paid: boolean;
   paidDate?: Date;
+  paidBy?: string;
 };
 
 type SupplierDebtContextType = {
   debts: SupplierDebt[];
   addDebt: (debt: Omit<SupplierDebt, 'id' | 'date' | 'totalCost' | 'paid'>) => void;
-  markAsPaid: (debtId: string) => void;
+  updateDebtCost: (debtId: string, costPerUnit: number) => void;
+  markAsPaid: (debtId: string, paidBy?: string) => void;
   getTotalDebtBySupplier: (supplierId: string) => number;
   getDebtsBySupplier: (supplierId: string) => SupplierDebt[];
   getAllUnpaidDebts: () => SupplierDebt[];
+  getTodaysDebtsBySupplier: (supplierId: string) => SupplierDebt[];
 };
 
 const SupplierDebtContext = createContext<SupplierDebtContextType | null>(null);
@@ -36,14 +41,29 @@ export const SupplierDebtProvider = ({ children }: { children: React.ReactNode }
       date: new Date(),
       totalCost,
       paid: false,
+      type: debtData.type || 'repair',
     };
     setDebts((prev) => [...prev, newDebt]);
   }, []);
 
-  const markAsPaid = useCallback((debtId: string) => {
+  const updateDebtCost = useCallback((debtId: string, costPerUnit: number) => {
+    setDebts((prev) =>
+      prev.map((debt) => {
+        if (debt.id === debtId) {
+          const totalCost = costPerUnit * debt.quantity;
+          return { ...debt, costPerUnit, totalCost };
+        }
+        return debt;
+      })
+    );
+  }, []);
+
+  const markAsPaid = useCallback((debtId: string, paidBy?: string) => {
     setDebts((prev) =>
       prev.map((debt) =>
-        debt.id === debtId ? { ...debt, paid: true, paidDate: new Date() } : debt
+        debt.id === debtId 
+          ? { ...debt, paid: true, paidDate: new Date(), paidBy } 
+          : debt
       )
     );
   }, []);
@@ -62,15 +82,28 @@ export const SupplierDebtProvider = ({ children }: { children: React.ReactNode }
     return debts.filter((debt) => !debt.paid);
   }, [debts]);
 
+  const getTodaysDebtsBySupplier = useCallback((supplierId: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return debts.filter((debt) => {
+      if (debt.supplierId !== supplierId || debt.paid) return false;
+      const debtDate = new Date(debt.date);
+      debtDate.setHours(0, 0, 0, 0);
+      return debtDate.getTime() === today.getTime();
+    });
+  }, [debts]);
+
   return (
     <SupplierDebtContext.Provider
       value={{
         debts,
         addDebt,
+        updateDebtCost,
         markAsPaid,
         getTotalDebtBySupplier,
         getDebtsBySupplier,
         getAllUnpaidDebts,
+        getTodaysDebtsBySupplier,
       }}
     >
       {children}
