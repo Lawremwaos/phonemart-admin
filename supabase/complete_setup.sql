@@ -119,11 +119,16 @@ create table if not exists repairs (
   deposit_amount numeric,
   payment_approved boolean not null default false,
   payment_made boolean not null default false,
-  pending_transaction_codes jsonb,
-  ticket_number text,
-  collected boolean not null default false
+  pending_transaction_codes jsonb
 );
-create index if not exists repairs_ticket_number_idx on repairs(ticket_number);
+
+-- Add ticket_number and collected columns if they don't exist
+ALTER TABLE repairs 
+ADD COLUMN IF NOT EXISTS ticket_number text,
+ADD COLUMN IF NOT EXISTS collected boolean NOT NULL DEFAULT false;
+
+-- Create index on ticket_number
+CREATE INDEX IF NOT EXISTS repairs_ticket_number_idx ON repairs(ticket_number);
 
 create table if not exists repair_parts (
   id bigserial primary key,
