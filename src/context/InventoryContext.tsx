@@ -47,6 +47,9 @@ export type Purchase = {
   }>;
   total: number;
   shopId?: string;
+  confirmed?: boolean;
+  confirmedBy?: string;
+  confirmedDate?: Date;
 };
 
 export type Exchange = {
@@ -75,6 +78,7 @@ type InventoryContextType = {
   addStock: (itemId: number, qty: number) => void;
   deductStock: (name: string, qty: number) => void;
   addPurchase: (purchase: Omit<Purchase, 'id' | 'date'>) => void;
+  confirmPurchase: (purchaseId: string) => void;
   addExchange: (exchange: Omit<Exchange, 'id' | 'date'>) => void;
   confirmExchangeReceipt: (exchangeId: string) => void;
   completeExchange: (exchangeId: string) => void;
@@ -154,6 +158,9 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
               supplier: p.supplier,
               total: Number(p.total) || 0,
               shopId: p.shop_id || undefined,
+              confirmed: p.confirmed || false,
+              confirmedBy: p.confirmed_by || undefined,
+              confirmedDate: p.confirmed_date ? new Date(p.confirmed_date) : undefined,
               items: (itemsData || []).map((pi: any) => ({
                 itemId: pi.item_id,
                 itemName: pi.item_name,
@@ -395,6 +402,9 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         supplier: newPurchaseData.supplier,
         total: Number(newPurchaseData.total) || 0,
         shopId: newPurchaseData.shop_id || undefined,
+        confirmed: newPurchaseData.confirmed || false,
+        confirmedBy: newPurchaseData.confirmed_by || undefined,
+        confirmedDate: newPurchaseData.confirmed_date ? new Date(newPurchaseData.confirmed_date) : undefined,
         items: (itemsData || []).map((pi: any) => ({
           itemId: pi.item_id,
           itemName: pi.item_name,
@@ -405,6 +415,40 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       setPurchases((prev) => [newPurchase, ...prev]);
     })();
   }, [items, addItem, updateItem]);
+
+  const confirmPurchase = useCallback((purchaseId: string) => {
+    (async () => {
+      const purchase = purchases.find(p => p.id === purchaseId);
+      if (!purchase || purchase.confirmed) return;
+
+      const { error } = await supabase
+        .from("purchases")
+        .update({
+          confirmed: true,
+          confirmed_by: currentUser?.name || 'admin',
+          confirmed_date: new Date().toISOString(),
+        })
+        .eq("id", purchaseId);
+      
+      if (error) {
+        console.error("Error confirming purchase:", error);
+        return;
+      }
+
+      setPurchases((prev) =>
+        prev.map((p) =>
+          p.id === purchaseId
+            ? {
+                ...p,
+                confirmed: true,
+                confirmedBy: currentUser?.name || 'admin',
+                confirmedDate: new Date(),
+              }
+            : p
+        )
+      );
+    })();
+  }, [purchases, currentUser]);
 
   const addExchange = useCallback((exchangeData: Omit<Exchange, 'id' | 'date'>) => {
     const newExchange: Exchange = {
@@ -654,6 +698,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         addStock,
         deductStock,
         addPurchase,
+        confirmPurchase,
         addExchange,
         confirmExchangeReceipt,
         completeExchange,

@@ -1,9 +1,16 @@
 import { Link } from "react-router-dom";
 import { useInventory } from "../context/InventoryContext";
+import { useShop } from "../context/ShopContext";
 import InventoryAlerts from "../components/InventoryAlerts";
 
 export default function Inventory() {
   const { items } = useInventory();
+  const { currentShop, currentUser } = useShop();
+
+  // Filter items: Admin sees all, staff sees only their allocated items + previous items
+  const filteredItems = currentUser?.roles.includes('admin')
+    ? items
+    : items.filter(item => !item.shopId || item.shopId === currentShop?.id);
 
   return (
     <div>
@@ -34,7 +41,7 @@ export default function Inventory() {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => {
+            {filteredItems.map((item) => {
               const lowStock = item.stock <= item.reorderLevel;
               return (
                 <tr 

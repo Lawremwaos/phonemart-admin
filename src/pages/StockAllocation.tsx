@@ -3,16 +3,21 @@ import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
 
 export default function StockAllocation() {
-  const { items, stockAllocations, requestStockAllocation, approveStockAllocation, rejectStockAllocation } = useInventory();
+  const { items, stockAllocations, purchases, requestStockAllocation, approveStockAllocation, rejectStockAllocation } = useInventory();
   const { shops, currentUser } = useShop();
 
   const [selectedItemId, setSelectedItemId] = useState<number | "">("");
   const [allocations, setAllocations] = useState<Array<{ shopId: string; shopName: string; qty: number }>>([]);
 
   // Get items that need allocation (pendingAllocation = true and no shopId)
+  // Only show items from confirmed purchases
   const itemsNeedingAllocation = useMemo(() => {
+    const hasConfirmedPurchases = purchases.some(p => p.confirmed);
+    if (!hasConfirmedPurchases) {
+      return []; // No items available if no purchases are confirmed
+    }
     return items.filter(item => item.pendingAllocation && !item.shopId);
-  }, [items]);
+  }, [items, purchases]);
 
   // Get pending allocations
   const pendingAllocations = useMemo(() => {
@@ -110,12 +115,14 @@ export default function StockAllocation() {
       {!currentUser?.roles.includes('admin') && (
         <div className="bg-white p-6 rounded shadow">
           <h3 className="text-lg font-semibold mb-4">Request Stock Allocation</h3>
-          <p className="text-sm text-gray-600 mb-4">
-            Divide purchased stock among shops. Your allocation request will be sent to admin for approval.
-          </p>
+          {purchases.some(p => p.confirmed) ? (
+            <>
+              <p className="text-sm text-gray-600 mb-4">
+                Divide purchased stock among shops. Your allocation request will be sent to admin for approval.
+              </p>
 
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Item *</label>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Item *</label>
             <select
               value={selectedItemId}
               onChange={(e) => {
@@ -131,9 +138,9 @@ export default function StockAllocation() {
                 </option>
               ))}
             </select>
-          </div>
+              </div>
 
-          {selectedItem && (
+              {selectedItem && (
             <>
               <div className="mb-4 p-4 bg-blue-50 rounded">
                 <p className="font-semibold">{selectedItem.name}</p>
@@ -196,7 +203,17 @@ export default function StockAllocation() {
               >
                 Submit Allocation Request
               </button>
+              </>
+              )}
             </>
+          ) : (
+            <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
+              <p className="text-yellow-800 font-semibold">No confirmed purchases available</p>
+              <p className="text-sm text-yellow-700 mt-1">
+                You can only allocate items from purchases that have been confirmed by the admin. 
+                Please wait for the admin to confirm purchases first.
+              </p>
+            </div>
           )}
         </div>
       )}

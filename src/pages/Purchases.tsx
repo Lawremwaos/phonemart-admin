@@ -12,9 +12,21 @@ type PurchaseItem = {
 };
 
 export default function Purchases() {
-  const { items, purchases, addPurchase, addItem } = useInventory();
+  const { items, purchases, addPurchase, confirmPurchase } = useInventory();
   const { suppliers, addSupplier } = useSupplier();
   const { currentShop, currentUser } = useShop();
+
+  // Admin only - redirect non-admins
+  if (!currentUser || !currentUser.roles.includes('admin')) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+          <p className="font-bold">Access Denied</p>
+          <p>Only administrators can access the purchases page.</p>
+        </div>
+      </div>
+    );
+  }
   
   const [supplierId, setSupplierId] = useState("");
   const [supplierName, setSupplierName] = useState("");
@@ -148,22 +160,10 @@ export default function Purchases() {
             costPrice: purchaseItem.costPrice,
           });
         } else {
-          // Create new item in inventory - calculate new ID first
-          const newItemId = Math.max(...items.map(i => i.id), 0) + 1;
-          addItem({
-            name: purchaseItem.itemName,
-            category: purchaseItem.itemCategory,
-            stock: purchaseItem.qty,
-            price: 0, // Will be set when sold
-            reorderLevel: 0,
-            initialStock: purchaseItem.qty,
-            supplier: finalSupplierName,
-            adminCostPrice: purchaseItem.costPrice,
-            pendingAllocation: true,
-          });
-          
+          // New item - will be created by addPurchase in InventoryContext
+          // Use a temporary negative ID to indicate it's new
           processedItems.push({
-            itemId: newItemId,
+            itemId: -Date.now(), // Temporary ID, will be handled by addPurchase
             itemName: purchaseItem.itemName,
             qty: purchaseItem.qty,
             costPrice: purchaseItem.costPrice,
@@ -404,13 +404,17 @@ export default function Purchases() {
                   <th className="p-3 text-left">Supplier</th>
                   <th className="p-3 text-left">Items</th>
                   {currentUser?.roles.includes('admin') && (
-                    <th className="p-3 text-right">Total</th>
+                    <>
+                      <th className="p-3 text-right">Total</th>
+                      <th className="p-3 text-left">Status</th>
+                      <th className="p-3 text-left">Actions</th>
+                    </>
                   )}
                 </tr>
               </thead>
               <tbody>
                 {filteredPurchases.map((purchase) => (
-                  <tr key={purchase.id} className="border-t">
+                  <tr key={purchase.id} className={`border-t ${purchase.confirmed ? 'bg-green-50' : ''}`}>
                     <td className="p-3">
                       {new Date(purchase.date).toLocaleDateString()}
                     </td>
@@ -423,9 +427,40 @@ export default function Purchases() {
                       ))}
                     </td>
                     {currentUser?.roles.includes('admin') && (
-                      <td className="p-3 text-right font-semibold">
-                        KES {purchase.total.toLocaleString()}
-                      </td>
+                      <>
+                        <td className="p-3 text-right font-semibold">
+                          KES {purchase.total.toLocaleString()}
+                        </td>
+                        <td className="p-3">
+                          {purchase.confirmed ? (
+                            <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-sm font-semibold">
+                              ✓ Confirmed
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-sm font-semibold">
+                              Pending
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          {!purchase.confirmed ? (
+                            <button
+                              onClick={() => {
+                                if (window.confirm("Confirm this purchase? Staff will be able to allocate items after confirmation.")) {
+                                  confirmPurchase(purchase.id);
+                                }
+                              }}
+                              className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
+                            >
+                              Confirm Purchase
+                            </button>
+                          ) : (
+                            <span className="text-sm text-gray-500">
+                              Confirmed by {purchase.confirmedBy || 'admin'} on {purchase.confirmedDate ? new Date(purchase.confirmedDate).toLocaleDateString() : 'N/A'}
+                            </span>
+                          )}
+                        </td>
+                      </>
                     )}
                   </tr>
                 ))}
