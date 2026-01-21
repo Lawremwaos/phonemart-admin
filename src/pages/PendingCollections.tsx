@@ -384,9 +384,58 @@ export default function PendingCollections() {
                       
                       {/* Show collected status */}
                       {repair.status === 'COLLECTED' && (
-                        <span className="text-sm text-gray-600 font-semibold">
-                          ✓ Collected
-                        </span>
+                        <div className="flex flex-col gap-2">
+                          <span className="text-sm text-gray-600 font-semibold">
+                            ✓ Collected
+                          </span>
+                          {/* Admin can reprint receipt */}
+                          {currentUser?.roles.includes('admin') && (
+                            <button
+                              onClick={() => {
+                                // Generate receipt data for reprint
+                                const receiptData = {
+                                  id: repair.id,
+                                  date: repair.date,
+                                  shopId: repair.shopId,
+                                  saleType: 'repair' as const,
+                                  items: [
+                                    ...repair.partsUsed.map(p => ({
+                                      name: p.itemName,
+                                      qty: p.qty,
+                                      price: 0,
+                                    })),
+                                    ...(repair.additionalItems || []).map(item => ({
+                                      name: item.itemName,
+                                      qty: 1,
+                                      price: 0,
+                                    })),
+                                  ],
+                                  total: repair.totalAgreedAmount || repair.totalCost,
+                                  totalAgreedAmount: repair.totalAgreedAmount || repair.totalCost,
+                                  paymentMethod: repair.pendingTransactionCodes?.paymentMethod || 'unknown',
+                                  paymentStatus: repair.balance === 0 ? 'paid' : 'partial',
+                                  amountPaid: repair.amountPaid,
+                                  balance: repair.balance,
+                                  customerName: repair.customerName,
+                                  customerPhone: repair.phoneNumber,
+                                  phoneModel: repair.phoneModel,
+                                  issue: repair.issue,
+                                  technician: repair.technician,
+                                  customerStatus: repair.customerStatus,
+                                  paymentApproved: true,
+                                  depositAmount: repair.depositAmount || 0,
+                                  ticketNumber: repair.ticketNumber,
+                                };
+                                
+                                // Navigate to receipt
+                                navigate('/receipt', { state: { sale: receiptData } });
+                              }}
+                              className="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700"
+                            >
+                              Reprint Receipt
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>

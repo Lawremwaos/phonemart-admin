@@ -28,6 +28,7 @@ type SalesContextType = {
   addSale: (items: Array<{ name: string; qty: number; price: number }>, total: number, shopId?: string, saleType?: 'in-shop' | 'wholesale' | 'retail') => void;
   addItemToWholesaleSale: (item: { name: string; qty: number; price: number }, shopId?: string) => void;
   closeWholesaleSale: (paymentType: 'cash' | 'mpesa' | 'bank_deposit', depositReference?: string, bank?: string) => void;
+  deleteSale: (saleId: string) => void;
   getDailyRevenue: () => number;
   getWeeklyRevenue: () => number;
   getMonthlyRevenue: () => number;
@@ -438,6 +439,22 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [sales]);
 
+  const deleteSale = useCallback((saleId: string) => {
+    (async () => {
+      // Delete related sale items first
+      await supabase.from("sale_items").delete().eq("sale_id", saleId);
+      
+      // Delete the sale
+      const { error } = await supabase.from("sales").delete().eq("id", saleId);
+      if (error) {
+        console.error("Error deleting sale:", error);
+        return;
+      }
+      
+      setSales((prev) => prev.filter((sale) => sale.id !== saleId));
+    })();
+  }, []);
+
   return (
     <SalesContext.Provider
       value={{
@@ -446,6 +463,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         addSale,
         addItemToWholesaleSale,
         closeWholesaleSale,
+        deleteSale,
         getDailyRevenue,
         getWeeklyRevenue,
         getMonthlyRevenue,

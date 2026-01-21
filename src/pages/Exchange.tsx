@@ -9,7 +9,7 @@ type ExchangeItem = {
 };
 
 export default function Exchange() {
-  const { items, exchanges, addExchange, completeExchange } = useInventory();
+  const { items, exchanges, addExchange, confirmExchangeReceipt, completeExchange } = useInventory();
   const { shops, currentShop, currentUser } = useShop();
   
   const [toShopId, setToShopId] = useState("");
@@ -20,8 +20,17 @@ export default function Exchange() {
   // Get available shops (exclude current shop)
   const availableShops = shops.filter(shop => shop.id !== currentShop?.id);
 
-  // Get items from current shop
-  const shopItems = items.filter(item => item.shopId === currentShop?.id);
+  // Get items from current shop for exchange (staff can select from their shop's inventory)
+  // Also include unassigned items (shopId is null or undefined) for staff
+  const shopItems = items.filter(item => {
+    if (item.stock <= 0) return false;
+    if (currentUser?.roles.includes('admin')) {
+      // Admin can see all items
+      return true;
+    }
+    // Staff can see items from their shop or unassigned items
+    return !item.shopId || item.shopId === currentShop?.id;
+  });
 
   // Filter exchanges by shop
   const filteredExchanges = currentUser?.roles.includes('admin')
@@ -230,19 +239,41 @@ export default function Exchange() {
                       <span className={`px-2 py-1 rounded text-sm ${
                         exchange.status === 'completed' 
                           ? 'bg-green-100 text-green-800' 
+                          : exchange.status === 'confirmed'
+                          ? 'bg-blue-100 text-blue-800'
                           : 'bg-yellow-100 text-yellow-800'
                       }`}>
-                        {exchange.status === 'completed' ? 'Completed' : 'Pending'}
+                        {exchange.status === 'completed' ? 'Completed' : exchange.status === 'confirmed' ? 'Confirmed' : 'Pending'}
                       </span>
                     </td>
                     <td className="p-3">
-                      {exchange.status === 'pending' && (
+                      {/* Receiving staff can confirm receipt */}
+                      {exchange.status === 'pending' && exchange.toShopId === currentShop?.id && !currentUser?.roles.includes('admin') && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm("Confirm that you have received these items?")) {
+                              confirmExchangeReceipt(exchange.id);
+                            }
+                          }}
+                          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                        >
+                          Confirm Receipt
+                        </button>
+                      )}
+                      {/* Admin can complete ONLY after staff confirms receipt */}
+                      {exchange.status === 'confirmed' && currentUser?.roles.includes('admin') && (
                         <button
                           onClick={() => handleComplete(exchange.id)}
                           className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
                         >
-                          Complete
+                          Complete Exchange
                         </button>
+                      )}
+                      {/* Admin sees pending exchanges but cannot complete until confirmed */}
+                      {exchange.status === 'pending' && currentUser?.roles.includes('admin') && (
+                        <span className="text-sm text-yellow-600 font-semibold">
+                          Awaiting Receipt Confirmation
+                        </span>
                       )}
                     </td>
                   </tr>

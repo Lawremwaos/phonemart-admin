@@ -16,6 +16,7 @@ import PendingPaymentApproval from "./pages/PendingPaymentApproval";
 import TodaysSalesReport from "./pages/TodaysSalesReport";
 import Returns from "./pages/Returns";
 import StockAllocation from "./pages/StockAllocation";
+import AdminCustomerManagement from "./pages/AdminCustomerManagement";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useShop } from "./context/ShopContext";
@@ -81,9 +82,11 @@ function AppContent() {
           <li>
             <Link to="/inventory" className="block hover:text-gray-300 transition-colors">Inventory</Link>
           </li>
-          <li>
-            <Link to="/daily-report" className="block hover:text-gray-300 transition-colors">Daily Reports</Link>
-          </li>
+          {currentUser?.roles.includes('admin') && (
+            <li>
+              <Link to="/daily-report" className="block hover:text-gray-300 transition-colors">Daily Reports</Link>
+            </li>
+          )}
           <li>
             <Link to="/todays-sales-report" className="block hover:text-gray-300 transition-colors">Today's Sales Report</Link>
           </li>
@@ -94,6 +97,9 @@ function AppContent() {
             <>
               <li>
                 <Link to="/admin-settings" className="block hover:text-gray-300 transition-colors">Admin Settings</Link>
+              </li>
+              <li>
+                <Link to="/admin-customer-management" className="block hover:text-gray-300 transition-colors">Customer Management</Link>
               </li>
               <li>
                 <Link to="/stock-exchange-report" className="block hover:text-gray-300 transition-colors">Stock Exchange Report</Link>
@@ -209,7 +215,7 @@ function AppContent() {
           <Route
             path="/daily-report"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'manager']}>
+              <ProtectedRoute allowedRoles={['admin']}>
                 <DailyReport />
               </ProtectedRoute>
             }
@@ -219,6 +225,14 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <AdminSettings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin-customer-management"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminCustomerManagement />
               </ProtectedRoute>
             }
           />

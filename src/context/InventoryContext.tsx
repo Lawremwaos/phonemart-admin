@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { useShop } from "./ShopContext";
 
 export type StockAllocation = {
   id: string;
@@ -58,7 +59,9 @@ export type Exchange = {
     itemName: string;
     qty: number;
   }>;
-  status: 'pending' | 'completed';
+  status: 'pending' | 'confirmed' | 'completed';
+  confirmedBy?: string; // Staff who confirmed receipt
+  confirmedDate?: Date;
 };
 
 type InventoryContextType = {
@@ -73,6 +76,7 @@ type InventoryContextType = {
   deductStock: (name: string, qty: number) => void;
   addPurchase: (purchase: Omit<Purchase, 'id' | 'date'>) => void;
   addExchange: (exchange: Omit<Exchange, 'id' | 'date'>) => void;
+  confirmExchangeReceipt: (exchangeId: string) => void;
   completeExchange: (exchangeId: string) => void;
   requestStockAllocation: (allocation: Omit<StockAllocation, 'id' | 'requestedDate' | 'status'>) => void;
   approveStockAllocation: (allocationId: string) => void;
@@ -86,6 +90,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [stockAllocations, setStockAllocations] = useState<StockAllocation[]>([]);
+  const { currentUser } = useShop();
 
   // Load items from Supabase on mount
   useEffect(() => {
@@ -401,15 +406,47 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     })();
   }, [items, addItem, updateItem]);
 
-  const addExchange = (exchangeData: Omit<Exchange, 'id' | 'date'>) => {
+  const addExchange = useCallback((exchangeData: Omit<Exchange, 'id' | 'date'>) => {
     const newExchange: Exchange = {
       ...exchangeData,
       id: Date.now().toString(),
       date: new Date(),
       status: 'pending',
     };
-    setExchanges(prev => [...prev, newExchange]);
-  };
+    setExchanges(prev => {
+      const updated = [...prev, newExchange];
+      // Save to localStorage
+      try {
+        localStorage.setItem('phonemart_exchanges', JSON.stringify(updated));
+      } catch (error) {
+        console.error('Error saving exchange to storage:', error);
+      }
+      return updated;
+    });
+  }, []);
+
+  const confirmExchangeReceipt = useCallback((exchangeId: string) => {
+    setExchanges(prev => {
+      const updated = prev.map(e => {
+        if (e.id === exchangeId && e.status === 'pending') {
+          return {
+            ...e,
+            status: 'confirmed' as const,
+            confirmedBy: currentUser?.name || 'Unknown',
+            confirmedDate: new Date(),
+          };
+        }
+        return e;
+      });
+      // Update localStorage
+      try {
+        localStorage.setItem('phonemart_exchanges', JSON.stringify(updated));
+      } catch (error) {
+        console.error('Error updating exchange in storage:', error);
+      }
+      return updated;
+    });
+  }, [currentUser]);
 
   const requestStockAllocation = useCallback((allocationData: Omit<StockAllocation, 'id' | 'requestedDate' | 'status'>) => {
     (async () => {
@@ -590,11 +627,18 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       }
     });
 
-    setExchanges(prev =>
-      prev.map(e =>
+    setExchanges(prev => {
+      const updated = prev.map(e =>
         e.id === exchangeId ? { ...e, status: 'completed' as const } : e
-      )
-    );
+      );
+      // Update localStorage
+      try {
+        localStorage.setItem('phonemart_exchanges', JSON.stringify(updated));
+      } catch (error) {
+        console.error('Error updating exchange in storage:', error);
+      }
+      return updated;
+    });
   };
 
   return (
@@ -611,6 +655,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         deductStock,
         addPurchase,
         addExchange,
+        confirmExchangeReceipt,
         completeExchange,
         requestStockAllocation,
         approveStockAllocation,

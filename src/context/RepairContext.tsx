@@ -60,6 +60,7 @@ type RepairContextType = {
   confirmPayment: (repairId: string, transactionCodes: any, paymentMethod: string, splitPayments?: any[]) => void;
   approvePayment: (repairId: string) => void;
   confirmCollection: (repairId: string) => void;
+  deleteRepair: (repairId: string) => void;
   getRepairsByStatus: (status: RepairStatus) => Repair[];
   getRepairsByShop: (shopId: string) => Repair[];
   getTotalRepairRevenue: () => number;
@@ -488,6 +489,23 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
     return repairs.reduce((sum, repair) => sum + repair.laborCost, 0);
   }, [repairs]);
 
+  const deleteRepair = useCallback((repairId: string) => {
+    (async () => {
+      // Delete related records first (cascade should handle this, but being explicit)
+      await supabase.from("repair_parts").delete().eq("repair_id", repairId);
+      await supabase.from("additional_repair_items").delete().eq("repair_id", repairId);
+      
+      // Delete the repair
+      const { error } = await supabase.from("repairs").delete().eq("id", repairId);
+      if (error) {
+        console.error("Error deleting repair:", error);
+        return;
+      }
+      
+      setRepairs((prev) => prev.filter((repair) => repair.id !== repairId));
+    })();
+  }, []);
+
   return (
     <RepairContext.Provider
       value={{
@@ -498,6 +516,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         confirmPayment,
         approvePayment,
         confirmCollection,
+        deleteRepair,
         getRepairsByStatus,
         getRepairsByShop,
         getTotalRepairRevenue,
