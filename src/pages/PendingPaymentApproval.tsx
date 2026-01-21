@@ -178,7 +178,7 @@ export default function PendingPaymentApproval() {
                           <div className="text-xs text-gray-500 mt-1">
                             <div>Method: {repair.pendingTransactionCodes.paymentMethod.replace(/_/g, ' ')}</div>
                             {repair.pendingTransactionCodes.transactionCodes && (
-                              <div>Code: {Object.values(repair.pendingTransactionCodes.transactionCodes).find((v: any) => v && v !== '') || 'N/A'}</div>
+                              <div>Code: {String(Object.values(repair.pendingTransactionCodes.transactionCodes).find((v: any) => v && v !== '') || 'N/A')}</div>
                             )}
                           </div>
                         )}
