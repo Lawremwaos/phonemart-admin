@@ -364,13 +364,26 @@ export default function InventoryManagement() {
           <tbody>
             {filteredItems.map((item) => {
               const lowStock = item.stock <= item.reorderLevel;
+              // Color code by category
+              const categoryColor = 
+                item.category === 'Phone' ? 'bg-blue-50 border-blue-200' :
+                item.category === 'Spare' ? 'bg-orange-50 border-orange-200' :
+                'bg-green-50 border-green-200'; // Accessory
               return (
                 <tr
                   key={item.id}
-                  className={`border-t ${lowStock ? 'bg-red-50' : ''}`}
+                  className={`border-t ${lowStock ? 'bg-red-50' : categoryColor}`}
                 >
                   <td className="p-3 font-semibold">{item.name}</td>
-                  <td className="p-3">{item.category}</td>
+                  <td className="p-3">
+                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                      item.category === 'Phone' ? 'bg-blue-100 text-blue-800' :
+                      item.category === 'Spare' ? 'bg-orange-100 text-orange-800' :
+                      'bg-green-100 text-green-800'
+                    }`}>
+                      {item.category === 'Spare' ? 'Spare Part' : item.category}
+                    </span>
+                  </td>
                   <td className="p-3">{item.itemType || '-'}</td>
                   <td className={`p-3 font-semibold ${lowStock ? 'text-red-600' : ''}`}>
                     {item.stock}

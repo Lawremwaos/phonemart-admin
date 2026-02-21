@@ -14,6 +14,7 @@ import StockExchangeReport from "./pages/StockExchangeReport";
 import PendingCollections from "./pages/PendingCollections";
 import PendingPaymentApproval from "./pages/PendingPaymentApproval";
 import TodaysSalesReport from "./pages/TodaysSalesReport";
+import CostOfParts from "./pages/CostOfParts";
 import Returns from "./pages/Returns";
 import StockAllocation from "./pages/StockAllocation";
 import AdminCustomerManagement from "./pages/AdminCustomerManagement";
@@ -63,7 +64,7 @@ function AppContent() {
             <Link to="/pending-collections/pending-payment" className="block hover:text-gray-300 transition-colors">Pending Payment</Link>
           </li>
           <li>
-            <Link to="/pending-collections/ready-for-collection" className="block hover:text-gray-300 transition-colors">Ready for Collection</Link>
+            <Link to="/cost-of-parts" className="block hover:text-gray-300 transition-colors">Cost of Parts</Link>
           </li>
           <li>
             <Link to="/pending-collections/fully-paid" className="block hover:text-gray-300 transition-colors">Fully Paid</Link>
@@ -278,6 +279,14 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
                 <TodaysSalesReport />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cost-of-parts"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <CostOfParts />
               </ProtectedRoute>
             }
           />
