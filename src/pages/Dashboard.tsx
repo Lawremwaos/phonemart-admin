@@ -16,7 +16,6 @@ import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
 import { useRepair } from "../context/RepairContext";
 import { usePayment } from "../context/PaymentContext";
-import { useSupplierDebt } from "../context/SupplierDebtContext";
 import ShopSelector from "../components/ShopSelector";
 import AutomatedDailyReport from "../components/AutomatedDailyReport";
 
@@ -29,7 +28,6 @@ export default function Dashboard() {
   const { currentShop, currentUser } = useShop();
   const { repairs } = useRepair();
   const { getPendingCashDeposits } = usePayment();
-  const { debts } = useSupplierDebt();
 
   // Filter sales by current shop (or all shops for admin)
   const shopSales = useMemo(() => {
@@ -282,7 +280,7 @@ export default function Dashboard() {
     .sort((a, b) => b.sold - a.sold)
     .slice(0, 5);
 
-  // Outsourced items trend (last 7 days)
+  // Outsourced items trend (last 7 days) - derived from actual repair data
   const outsourcedItemsTrend = useMemo(() => {
     const data: Array<{ date: string; items: number; cost: number }> = [];
     const now = new Date();
@@ -292,14 +290,23 @@ export default function Dashboard() {
       date.setDate(date.getDate() - i);
       date.setHours(0, 0, 0, 0);
       
-      const dayDebts = debts.filter(debt => {
-        const debtDate = new Date(debt.date);
-        debtDate.setHours(0, 0, 0, 0);
-        return debtDate.getTime() === date.getTime();
+      const dayRepairs = repairs.filter(r => {
+        const repairDate = new Date(r.date);
+        repairDate.setHours(0, 0, 0, 0);
+        return repairDate.getTime() === date.getTime();
       });
       
-      const uniqueItems = new Set(dayDebts.map(d => d.itemName)).size;
-      const totalCost = dayDebts.reduce((sum, d) => sum + d.totalCost, 0);
+      let uniqueItems = 0;
+      let totalCost = 0;
+      const itemNames = new Set<string>();
+      dayRepairs.forEach(r => {
+        r.partsUsed.filter(p => p.cost > 0).forEach(p => {
+          itemNames.add(p.itemName);
+          totalCost += p.cost * p.qty;
+        });
+        totalCost += r.outsourcedCost || 0;
+      });
+      uniqueItems = itemNames.size;
       
       data.push({
         date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
@@ -309,31 +316,33 @@ export default function Dashboard() {
     }
     
     return data;
-  }, [debts]);
+  }, [repairs]);
 
-  // Top outsourced items (all time)
+  // Top outsourced items (all time) - derived from actual repair data
   const topOutsourcedItems = useMemo(() => {
     const itemMap = new Map<string, { name: string; qty: number; cost: number }>();
-    debts.forEach(debt => {
-      const existing = itemMap.get(debt.itemName);
-      if (existing) {
-        itemMap.set(debt.itemName, {
-          name: debt.itemName,
-          qty: existing.qty + debt.quantity,
-          cost: existing.cost + debt.totalCost,
-        });
-      } else {
-        itemMap.set(debt.itemName, {
-          name: debt.itemName,
-          qty: debt.quantity,
-          cost: debt.totalCost,
-        });
-      }
+    repairs.forEach(repair => {
+      repair.partsUsed.filter(p => p.cost > 0).forEach(part => {
+        const existing = itemMap.get(part.itemName);
+        if (existing) {
+          itemMap.set(part.itemName, {
+            name: part.itemName,
+            qty: existing.qty + part.qty,
+            cost: existing.cost + (part.cost * part.qty),
+          });
+        } else {
+          itemMap.set(part.itemName, {
+            name: part.itemName,
+            qty: part.qty,
+            cost: part.cost * part.qty,
+          });
+        }
+      });
     });
     return Array.from(itemMap.values())
       .sort((a, b) => b.cost - a.cost)
       .slice(0, 10);
-  }, [debts]);
+  }, [repairs]);
 
   return (
     <div className="space-y-6">

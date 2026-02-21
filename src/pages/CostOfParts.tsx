@@ -1,16 +1,59 @@
 import { useState, useMemo } from "react";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
-import { useSupplierDebt } from "../context/SupplierDebtContext";
 
 export default function CostOfParts() {
-  const { repairs } = useRepair();
+  const { repairs, updatePartCost } = useRepair();
   const { currentUser } = useShop();
-  const { debts, addDebt, updateDebtCost } = useSupplierDebt();
   const [searchTerm, setSearchTerm] = useState("");
   const [costInputs, setCostInputs] = useState<Record<string, string>>({});
-  const [savedCosts, setSavedCosts] = useState<Record<string, number>>({});
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
 
+  // Get outsourced items for a repair that still need cost input
+  function getOutsourcedItemsForRepair(repair: typeof repairs[0]) {
+    const items: Array<{
+      itemName: string;
+      qty: number;
+      source: 'part' | 'additional';
+      currentCost: number;
+    }> = [];
+
+    // Parts with zero cost (outsourced, cost not yet entered)
+    repair.partsUsed
+      .filter(p => p.cost === 0)
+      .forEach(part => {
+        items.push({
+          itemName: part.itemName,
+          qty: part.qty,
+          source: 'part',
+          currentCost: 0,
+        });
+      });
+
+    // Additional outsourced items not already covered in partsUsed
+    if (repair.additionalItems) {
+      repair.additionalItems
+        .filter(item => item.source === 'outsourced')
+        .forEach(item => {
+          const alreadyInParts = items.some(i => i.itemName === item.itemName);
+          const hasPartWithCost = repair.partsUsed.some(
+            p => p.itemName === item.itemName && p.cost > 0
+          );
+          if (!alreadyInParts && !hasPartWithCost) {
+            items.push({
+              itemName: item.itemName,
+              qty: 1,
+              source: 'additional',
+              currentCost: 0,
+            });
+          }
+        });
+    }
+
+    return items;
+  }
+
+  // Repairs that have outsourced parts needing cost input
   const repairsNeedingCosts = useMemo(() => {
     let filtered = repairs;
 
@@ -29,64 +72,29 @@ export default function CostOfParts() {
     }
 
     return filtered.filter(repair => {
-      const hasOutsourcedAdditional = repair.additionalItems?.some(
-        item => item.source === 'outsourced'
-      );
-
-      const hasZeroCostParts = repair.partsUsed.some(p => p.cost === 0);
-
-      if (!hasOutsourcedAdditional && !hasZeroCostParts) return false;
-
-      const allCostsFilled = getOutsourcedItemsForRepair(repair).every(item => {
-        const key = `${repair.id}-${item.itemName}`;
-        if (savedCosts[key] && savedCosts[key] > 0) return true;
-        const debt = debts.find(d => d.repairId === repair.id && d.itemName === item.itemName);
-        if (debt && debt.costPerUnit > 0) return true;
-        return false;
-      });
-
-      return !allCostsFilled;
+      const outsourcedItems = getOutsourcedItemsForRepair(repair);
+      return outsourcedItems.length > 0;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [repairs, debts, currentUser, searchTerm, savedCosts]);
+  }, [repairs, currentUser, searchTerm]);
 
-  function getOutsourcedItemsForRepair(repair: typeof repairs[0]) {
-    const outsourcedItems: Array<{
-      itemName: string;
-      supplierName?: string;
-      qty: number;
-      source: string;
-    }> = [];
+  // Repairs with costs already entered (for reference)
+  const repairsWithCosts = useMemo(() => {
+    let filtered = repairs;
 
-    if (repair.additionalItems) {
-      repair.additionalItems
-        .filter(item => item.source === 'outsourced')
-        .forEach(item => {
-          outsourcedItems.push({
-            itemName: item.itemName,
-            supplierName: (item as any).supplierName || 'Unknown Supplier',
-            qty: 1,
-            source: 'outsourced_additional',
-          });
-        });
+    if (!currentUser?.roles.includes('admin') && currentUser?.shopId) {
+      filtered = filtered.filter(repair => repair.shopId === currentUser.shopId);
     }
 
-    repair.partsUsed
-      .filter(p => p.cost === 0)
-      .forEach(part => {
-        const alreadyAdded = outsourcedItems.some(o => o.itemName === part.itemName);
-        if (!alreadyAdded) {
-          outsourcedItems.push({
-            itemName: part.itemName,
-            qty: part.qty,
-            source: 'outsourced_part',
-          });
-        }
-      });
+    return filtered.filter(repair => {
+      const hasOutsourcedParts = repair.additionalItems?.some(i => i.source === 'outsourced') ||
+        repair.partsUsed.some(p => p.cost > 0);
+      const allCostsFilled = getOutsourcedItemsForRepair(repair).length === 0;
+      return hasOutsourcedParts && allCostsFilled;
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 20);
+  }, [repairs, currentUser]);
 
-    return outsourcedItems;
-  }
-
-  const handleSaveCost = (repairId: string, itemName: string, qty: number, supplierName: string) => {
+  const handleSaveCost = async (repairId: string, itemName: string, qty: number) => {
     const key = `${repairId}-${itemName}`;
     const costValue = costInputs[key];
     const costPerUnit = Number(costValue);
@@ -95,46 +103,35 @@ export default function CostOfParts() {
       return;
     }
 
-    const existingDebt = debts.find(d => d.repairId === repairId && d.itemName === itemName);
-    if (existingDebt) {
-      updateDebtCost(existingDebt.id, costPerUnit);
-    } else {
-      addDebt({
-        supplierId: 'outsourced',
-        supplierName: supplierName || 'Unknown Supplier',
-        itemName,
-        quantity: qty,
-        costPerUnit,
-        repairId,
-        type: 'repair',
+    setSavingKeys(prev => new Set(prev).add(key));
+
+    try {
+      await updatePartCost(repairId, itemName, costPerUnit, qty);
+      setCostInputs(prev => {
+        const updated = { ...prev };
+        delete updated[key];
+        return updated;
+      });
+    } catch (err) {
+      console.error("Error saving cost:", err);
+      alert("Failed to save cost. Please try again.");
+    } finally {
+      setSavingKeys(prev => {
+        const updated = new Set(prev);
+        updated.delete(key);
+        return updated;
       });
     }
-
-    setSavedCosts(prev => ({ ...prev, [key]: costPerUnit }));
-    setCostInputs(prev => {
-      const updated = { ...prev };
-      delete updated[key];
-      return updated;
-    });
-    alert("Cost saved successfully!");
   };
 
   const handleCostInputChange = (key: string, value: string) => {
-    setCostInputs(prev => ({
-      ...prev,
-      [key]: value,
-    }));
+    setCostInputs(prev => ({ ...prev, [key]: value }));
   };
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+  const formatDate = (date: Date) =>
+    new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
-  };
 
   const getStatusLabel = (repair: typeof repairs[0]) => {
     if (repair.status === 'COLLECTED') return { text: 'Collected', color: 'bg-green-100 text-green-800' };
@@ -147,13 +144,11 @@ export default function CostOfParts() {
     <div className="p-6">
       <h1 className="text-3xl font-bold mb-6">Cost of Parts</h1>
       <p className="text-gray-600 mb-4">
-        Input the actual cost of outsourced spare parts used in repairs. This aligns with repair sales for accurate profit tracking.
+        Input the actual cost of outsourced spare parts used in repairs. Costs are saved to the database and persist across refreshes.
       </p>
 
       <div className="bg-white p-4 rounded shadow mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Search Repairs
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Search Repairs</label>
         <input
           type="text"
           className="border border-gray-300 rounded-md px-3 py-2 w-full"
@@ -169,7 +164,8 @@ export default function CostOfParts() {
         </p>
       </div>
 
-      <div className="space-y-4">
+      {/* Repairs needing cost input */}
+      <div className="space-y-4 mb-8">
         {repairsNeedingCosts.length === 0 ? (
           <div className="bg-white p-8 rounded shadow text-center text-gray-500">
             <p className="text-lg font-medium mb-2">No repairs needing cost input</p>
@@ -209,57 +205,39 @@ export default function CostOfParts() {
                   <div className="space-y-3">
                     {outsourcedItems.map((item) => {
                       const key = `${repair.id}-${item.itemName}`;
-                      const existingDebt = debts.find(
-                        d => d.repairId === repair.id && d.itemName === item.itemName
-                      );
-                      const alreadySaved = savedCosts[key] || (existingDebt && existingDebt.costPerUnit > 0);
-
+                      const isSaving = savingKeys.has(key);
                       return (
-                        <div
-                          key={key}
-                          className={`flex flex-wrap items-center gap-3 p-3 rounded border ${
-                            alreadySaved ? 'bg-green-50 border-green-200' : 'bg-orange-50 border-orange-200'
-                          }`}
-                        >
+                        <div key={key} className="flex flex-wrap items-center gap-3 p-3 rounded border bg-orange-50 border-orange-200">
                           <div className="flex-1 min-w-[200px]">
                             <p className="font-medium text-gray-900">{item.itemName}</p>
                             <p className="text-xs text-gray-600">
-                              {item.supplierName && <>Supplier: {item.supplierName} | </>}
-                              Qty: {item.qty}
+                              Qty: {item.qty} | Source: {item.source === 'additional' ? 'Outsourced' : 'Parts'}
                             </p>
                           </div>
-
-                          {alreadySaved ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-green-700 font-semibold">
-                                KES {(savedCosts[key] || existingDebt?.costPerUnit || 0).toLocaleString()} per unit
-                              </span>
-                              <span className="text-xs bg-green-200 text-green-800 px-2 py-0.5 rounded">Saved</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                placeholder="Cost per unit"
-                                value={costInputs[key] || ''}
-                                onChange={(e) => handleCostInputChange(key, e.target.value)}
-                                className="border-2 border-orange-300 rounded-md px-3 py-2 w-36 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                                min="0"
-                                step="1"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    handleSaveCost(repair.id, item.itemName, item.qty, item.supplierName || '');
-                                  }
-                                }}
-                              />
-                              <button
-                                onClick={() => handleSaveCost(repair.id, item.itemName, item.qty, item.supplierName || '')}
-                                className="bg-green-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-green-700"
-                              >
-                                Save
-                              </button>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              placeholder="Cost per unit"
+                              value={costInputs[key] || ''}
+                              onChange={(e) => handleCostInputChange(key, e.target.value)}
+                              className="border-2 border-orange-300 rounded-md px-3 py-2 w-36 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-200 bg-white text-gray-900"
+                              min="0"
+                              step="1"
+                              disabled={isSaving}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveCost(repair.id, item.itemName, item.qty);
+                              }}
+                            />
+                            <button
+                              onClick={() => handleSaveCost(repair.id, item.itemName, item.qty)}
+                              disabled={isSaving}
+                              className={`px-4 py-2 rounded text-sm font-semibold ${
+                                isSaving ? 'bg-gray-400 cursor-wait' : 'bg-green-600 hover:bg-green-700'
+                              } text-white`}
+                            >
+                              {isSaving ? 'Saving...' : 'Save Cost'}
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -271,13 +249,62 @@ export default function CostOfParts() {
         )}
       </div>
 
+      {/* Recently completed costs */}
+      {repairsWithCosts.length > 0 && (
+        <div className="bg-white p-6 rounded shadow">
+          <h3 className="text-lg font-semibold mb-4">Recently Completed Cost Entries</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="p-2 text-left">Date</th>
+                  <th className="p-2 text-left">Customer</th>
+                  <th className="p-2 text-left">Phone</th>
+                  <th className="p-2 text-left">Parts & Costs</th>
+                  <th className="p-2 text-right">Total Cost</th>
+                  <th className="p-2 text-right">Revenue</th>
+                  <th className="p-2 text-right">Profit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {repairsWithCosts.map(repair => {
+                  const partsCost = repair.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
+                  const revenue = repair.totalAgreedAmount || repair.totalCost;
+                  const profit = revenue - partsCost;
+                  return (
+                    <tr key={repair.id} className="border-t hover:bg-gray-50">
+                      <td className="p-2">{new Date(repair.date).toLocaleDateString()}</td>
+                      <td className="p-2 font-medium">{repair.customerName}</td>
+                      <td className="p-2">{repair.phoneModel}</td>
+                      <td className="p-2">
+                        {repair.partsUsed.filter(p => p.cost > 0).map((p, i) => (
+                          <span key={i} className="inline-block bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded mr-1 mb-1">
+                            {p.itemName}: KES {p.cost.toLocaleString()} x{p.qty}
+                          </span>
+                        ))}
+                      </td>
+                      <td className="p-2 text-right font-bold text-red-600">KES {partsCost.toLocaleString()}</td>
+                      <td className="p-2 text-right font-bold text-green-600">KES {revenue.toLocaleString()}</td>
+                      <td className={`p-2 text-right font-bold ${profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                        KES {profit.toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="mt-6 bg-blue-50 border border-blue-200 rounded p-4">
-        <h3 className="font-semibold text-blue-900 mb-2">How to Use:</h3>
+        <h3 className="font-semibold text-blue-900 mb-2">How it Works:</h3>
         <ol className="list-decimal list-inside text-sm text-blue-800 space-y-1">
           <li>After completing a repair sale with outsourced parts, the repair appears here</li>
           <li>Enter the actual cost per unit for each outsourced part</li>
-          <li>Click "Save" to record the cost</li>
-          <li>This cost is used for profit calculations and supplier payment tracking</li>
+          <li>Click "Save Cost" - the cost is saved to the database permanently</li>
+          <li>After saving, the repair moves to "Recently Completed" and the cost is used everywhere for profit calculations</li>
+          <li>Costs persist even after page refresh or re-login</li>
         </ol>
       </div>
     </div>

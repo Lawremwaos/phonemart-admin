@@ -6,7 +6,6 @@ import type { RepairStatus } from "../context/RepairContext";
 // import { usePayment } from "../context/PaymentContext";
 import { useShop } from "../context/ShopContext";
 import { useSupplier } from "../context/SupplierContext";
-import { useSupplierDebt } from "../context/SupplierDebtContext";
 
 type PartSource = 'in-house' | 'outsourced';
 
@@ -41,8 +40,6 @@ export default function RepairSales() {
   // Payments are recorded after admin approval on the Pending Payment Approval page
   const { currentShop, currentUser } = useShop();
   const { suppliers, addSupplier } = useSupplier();
-  const { addDebt } = useSupplierDebt();
-
   const [customerStatus, setCustomerStatus] = useState<'waiting' | 'coming_back'>('waiting');
   const [isServiceOnly, setIsServiceOnly] = useState(false); // Service-only repair (no parts)
   const [additionalLaborItems, setAdditionalLaborItems] = useState<AdditionalLaborItem[]>([]);
@@ -423,37 +420,8 @@ export default function RepairSales() {
       return;
     }
 
-    // Track supplier debts for outsourced parts (cost will be filled later on supplier page)
-    selectedParts
-      .filter(p => p.source === 'outsourced' && p.supplierId)
-      .forEach(part => {
-        addDebt({
-          supplierId: part.supplierId!,
-          supplierName: part.supplierName || 'Unknown',
-          itemName: part.itemName,
-          quantity: part.qty,
-          costPerUnit: 0, // Cost will be filled on supplier page
-          repairId: repairId,
-          type: 'repair',
-        });
-      });
-
-    // Track supplier debts for outsourced additional items (screen protector, case, etc.)
-    additionalLaborItems
-      .filter(item => item.source === 'outsourced' && item.supplierId)
-      .forEach(item => {
-        if (item.supplierId && item.supplierName) {
-          addDebt({
-            supplierId: item.supplierId,
-            supplierName: item.supplierName,
-            itemName: item.itemName,
-            quantity: 1,
-            costPerUnit: 0, // Cost will be filled on supplier page
-            repairId: repairId,
-            type: 'repair',
-          });
-        }
-      });
+    // Outsourced part costs are tracked via repair_parts in Supabase.
+    // Staff enters actual costs on the "Cost of Parts" page after the repair.
 
     // Add payment records only if payment was made (but not yet approved)
     // Payment will be recorded after admin approval

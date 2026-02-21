@@ -61,6 +61,7 @@ type RepairContextType = {
   approvePayment: (repairId: string) => void;
   confirmCollection: (repairId: string) => void;
   deleteRepair: (repairId: string) => void;
+  updatePartCost: (repairId: string, itemName: string, costPerUnit: number, qty: number) => Promise<void>;
   getRepairsByStatus: (status: RepairStatus) => Repair[];
   getRepairsByShop: (shopId: string) => Repair[];
   getTotalRepairRevenue: () => number;
@@ -536,6 +537,88 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
     return repairs.reduce((sum, repair) => sum + repair.laborCost, 0);
   }, [repairs]);
 
+  const updatePartCost = useCallback(async (repairId: string, itemName: string, costPerUnit: number, qty: number): Promise<void> => {
+    // Try to update existing repair_parts record
+    const { data: existingParts } = await supabase
+      .from("repair_parts")
+      .select("*")
+      .eq("repair_id", repairId)
+      .eq("item_name", itemName);
+
+    if (existingParts && existingParts.length > 0) {
+      const { error } = await supabase
+        .from("repair_parts")
+        .update({ cost: costPerUnit })
+        .eq("repair_id", repairId)
+        .eq("item_name", itemName);
+      if (error) {
+        console.error("Error updating part cost:", error);
+        return;
+      }
+    } else {
+      // Insert new repair_parts record for outsourced additional items
+      const { error } = await supabase
+        .from("repair_parts")
+        .insert({
+          repair_id: repairId,
+          item_name: itemName,
+          qty: qty,
+          cost: costPerUnit,
+          item_id: null,
+        });
+      if (error) {
+        console.error("Error inserting part cost:", error);
+        return;
+      }
+    }
+
+    // Recalculate outsourced_cost from all repair_parts for this repair
+    const { data: allParts } = await supabase
+      .from("repair_parts")
+      .select("*")
+      .eq("repair_id", repairId);
+
+    const totalPartsCost = (allParts || []).reduce(
+      (sum: number, p: any) => sum + (Number(p.cost) || 0) * (Number(p.qty) || 1), 0
+    );
+
+    // Update repair's outsourced_cost with total parts cost
+    await supabase
+      .from("repairs")
+      .update({ outsourced_cost: totalPartsCost })
+      .eq("id", repairId);
+
+    // Update local state
+    lastLocalUpdateRef.current = Date.now();
+    setRepairs((prev) =>
+      prev.map((repair) => {
+        if (repair.id !== repairId) return repair;
+
+        const updatedParts = repair.partsUsed.map(p =>
+          p.itemName === itemName ? { ...p, cost: costPerUnit } : p
+        );
+
+        // If item wasn't in partsUsed (was an additional outsourced item), add it
+        const existsInParts = repair.partsUsed.some(p => p.itemName === itemName);
+        if (!existsInParts) {
+          updatedParts.push({ itemId: 0, itemName, qty, cost: costPerUnit });
+        }
+
+        // Remove from additionalItems if cost is now tracked in partsUsed
+        const updatedAdditional = (repair.additionalItems || []).filter(
+          a => !(a.itemName === itemName && a.source === 'outsourced')
+        );
+
+        return {
+          ...repair,
+          partsUsed: updatedParts,
+          additionalItems: updatedAdditional,
+          outsourcedCost: totalPartsCost,
+        };
+      })
+    );
+  }, []);
+
   const deleteRepair = useCallback((repairId: string) => {
     (async () => {
       // Delete related records first (cascade should handle this, but being explicit)
@@ -565,6 +648,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         approvePayment,
         confirmCollection,
         deleteRepair,
+        updatePartCost,
         getRepairsByStatus,
         getRepairsByShop,
         getTotalRepairRevenue,
