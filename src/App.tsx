@@ -69,13 +69,20 @@ function AppContent() {
             <Link to="/pending-collections/fully-paid" className="block hover:text-gray-300 transition-colors">Fully Paid</Link>
           </li>
           {currentUser?.roles.includes('admin') && (
+            <>
+              <li>
+                <Link to="/purchases" className="block hover:text-gray-300 transition-colors">Purchases</Link>
+              </li>
+              <li>
+                <Link to="/stock-allocation" className="block hover:text-gray-300 transition-colors">Stock Allocation</Link>
+              </li>
+            </>
+          )}
+          {!currentUser?.roles.includes('admin') && (
             <li>
-              <Link to="/purchases" className="block hover:text-gray-300 transition-colors">Purchases</Link>
+              <Link to="/stock-allocation" className="block hover:text-gray-300 transition-colors">My Stock & Requests</Link>
             </li>
           )}
-          <li>
-            <Link to="/stock-allocation" className="block hover:text-gray-300 transition-colors">Stock Allocation</Link>
-          </li>
           <li>
             <Link to="/suppliers" className="block hover:text-gray-300 transition-colors">Suppliers</Link>
           </li>
