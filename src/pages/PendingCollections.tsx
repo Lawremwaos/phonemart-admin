@@ -9,7 +9,7 @@ type FilterType = 'all' | 'pending_collection' | 'pending_payment' | 'fully_paid
 export default function PendingCollections() {
   const navigate = useNavigate();
   const { filterType } = useParams<{ filterType?: string }>();
-  const { repairs, confirmPayment, confirmCollection } = useRepair();
+  const { repairs, confirmPayment, confirmCollection, approvePayment } = useRepair();
   const { shops, currentUser } = useShop();
   const { addPayment } = usePayment();
   
@@ -320,6 +320,20 @@ export default function PendingCollections() {
                           className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-sm"
                         >
                           Confirm Payment
+                        </button>
+                      )}
+                      {/* Admin approval button for fully paid repairs awaiting approval */}
+                      {repair.paymentStatus === 'fully_paid' && !repair.paymentApproved && currentUser?.roles.includes('admin') && filter === 'fully_paid' && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Approve payment for ${repair.customerName}? This will allow the phone to be released for collection.`)) {
+                              approvePayment(repair.id);
+                              alert("Payment approved! Phone can now be released for collection.");
+                            }
+                          }}
+                          className="bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700 text-sm font-semibold"
+                        >
+                          Approve Payment
                         </button>
                       )}
                       {/* Staff can confirm collection ONLY when:
