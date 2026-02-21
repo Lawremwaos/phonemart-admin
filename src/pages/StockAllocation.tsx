@@ -26,20 +26,26 @@ type StockRequest = {
 
 export default function StockAllocation() {
   const { items, purchases, updateItem, addItem } = useInventory();
-  const { currentUser, currentShop } = useShop();
+  const { currentUser, currentShop, shops } = useShop();
 
   // Store allocations and requests in state (in production, these would be in Supabase)
   const [staffAllocations, setStaffAllocations] = useState<StaffAllocation[]>([]);
   const [stockRequests, setStockRequests] = useState<StockRequest[]>([]);
 
-  // Form states
+  // Form states (for staff)
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<string>("");
   const [selectedItemId, setSelectedItemId] = useState<number | "">("");
   const [allocationQty, setAllocationQty] = useState(0);
   
-  // Request states
+  // Request states (for staff)
   const [requestItemId, setRequestItemId] = useState<number | "">("");
   const [requestQty, setRequestQty] = useState(0);
+
+  // Admin allocation states
+  const [adminSelectedPurchaseId, setAdminSelectedPurchaseId] = useState<string>("");
+  const [adminSelectedItemId, setAdminSelectedItemId] = useState<number | "">("");
+  const [adminSelectedShopId, setAdminSelectedShopId] = useState<string>("");
+  const [adminAllocationQty, setAdminAllocationQty] = useState(0);
 
   // Get confirmed purchases with items that need allocation
   const purchasesNeedingAllocation = useMemo(() => {
@@ -259,11 +265,240 @@ export default function StockAllocation() {
     alert("Request rejected");
   };
 
+  // Admin: Allocate stock from purchase to shop
+  const handleAdminAllocateStock = () => {
+    if (!adminSelectedPurchaseId || !adminSelectedItemId || !adminSelectedShopId || adminAllocationQty <= 0) {
+      alert("Please select purchase, item, shop, and enter quantity");
+      return;
+    }
+
+    const purchase = purchases.find(p => p.id === adminSelectedPurchaseId);
+    const purchaseItem = purchase?.items.find(i => i.itemId === adminSelectedItemId);
+    const inventoryItem = items.find(i => i.id === adminSelectedItemId);
+    const targetShop = shops.find(s => s.id === adminSelectedShopId);
+
+    if (!purchase || !purchaseItem || !inventoryItem || !targetShop) {
+      alert("Invalid selection");
+      return;
+    }
+
+    // Check available quantity (unallocated stock)
+    const alreadyAllocated = staffAllocations
+      .filter(a => a.purchaseId === adminSelectedPurchaseId && a.itemId === adminSelectedItemId)
+      .reduce((sum, a) => sum + a.qty, 0);
+    const available = inventoryItem.stock - alreadyAllocated;
+
+    if (adminAllocationQty > available) {
+      alert(`Only ${available} items available for allocation`);
+      return;
+    }
+
+    // Record allocation
+    const newAllocation: StaffAllocation = {
+      id: Date.now().toString(),
+      purchaseId: adminSelectedPurchaseId,
+      itemId: adminSelectedItemId,
+      itemName: purchaseItem.itemName,
+      qty: adminAllocationQty,
+      allocatedDate: new Date(),
+      staffName: `Admin Allocation to ${targetShop.name}`,
+      shopId: adminSelectedShopId,
+    };
+
+    setStaffAllocations(prev => [...prev, newAllocation]);
+
+    // Update inventory: allocate to target shop
+    const existingShopItem = items.find(i => 
+      i.name === inventoryItem.name && 
+      i.shopId === adminSelectedShopId
+    );
+
+    if (existingShopItem) {
+      updateItem(existingShopItem.id, { stock: existingShopItem.stock + adminAllocationQty });
+    } else {
+      addItem({
+        name: inventoryItem.name,
+        category: inventoryItem.category,
+        itemType: inventoryItem.itemType,
+        stock: adminAllocationQty,
+        price: inventoryItem.price,
+        reorderLevel: inventoryItem.reorderLevel,
+        initialStock: adminAllocationQty,
+        shopId: adminSelectedShopId,
+        supplier: inventoryItem.supplier,
+      });
+    }
+
+    // Deduct from unallocated stock
+    updateItem(inventoryItem.id, { stock: inventoryItem.stock - adminAllocationQty });
+
+    alert(`Allocation successful: ${adminAllocationQty} ${purchaseItem.itemName} allocated to ${targetShop.name}`);
+    setAdminSelectedPurchaseId("");
+    setAdminSelectedItemId("");
+    setAdminSelectedShopId("");
+    setAdminAllocationQty(0);
+  };
+
+  // Get available items from selected purchase for admin allocation
+  const adminAvailableItemsFromPurchase = useMemo(() => {
+    if (!adminSelectedPurchaseId) return [];
+    const purchase = purchases.find(p => p.id === adminSelectedPurchaseId);
+    if (!purchase) return [];
+    
+    return purchase.items.map(purchaseItem => {
+      const inventoryItem = items.find(i => i.id === purchaseItem.itemId);
+      const alreadyAllocated = staffAllocations
+        .filter(a => a.purchaseId === adminSelectedPurchaseId && a.itemId === purchaseItem.itemId)
+        .reduce((sum, a) => sum + a.qty, 0);
+      const available = (inventoryItem?.stock || 0) - alreadyAllocated;
+      
+      return {
+        ...purchaseItem,
+        available,
+        inventoryItem,
+      };
+    }).filter(item => item.available > 0);
+  }, [adminSelectedPurchaseId, purchases, items, staffAllocations]);
+
   if (currentUser?.roles.includes('admin')) {
-    // Admin view: Approve/reject stock requests
+    // Admin view: Allocate stock from purchases and approve/reject stock requests
     return (
       <div className="space-y-6">
         <h2 className="text-2xl font-bold">Stock Allocation Management</h2>
+
+        {/* Admin: Allocate Stock from Purchases */}
+        <div className="bg-white p-6 rounded shadow border-2 border-blue-200">
+          <h3 className="text-lg font-semibold mb-2 text-blue-800">Allocate Stock to Shops</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Distribute stock from confirmed purchases to shops/staff.
+          </p>
+
+          {purchases.filter(p => p.confirmed).length === 0 ? (
+            <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
+              <p className="text-yellow-800 font-semibold">No confirmed purchases available.</p>
+              <p className="text-sm text-yellow-700 mt-2">
+                Confirm purchases first before allocating stock.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Step 1: Select Purchase *
+                </label>
+                <select
+                  value={adminSelectedPurchaseId}
+                  onChange={(e) => {
+                    setAdminSelectedPurchaseId(e.target.value);
+                    setAdminSelectedItemId("");
+                    setAdminAllocationQty(0);
+                  }}
+                  className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                >
+                  <option value="">-- Select a purchase --</option>
+                  {purchases
+                    .filter(p => p.confirmed)
+                    .map((purchase) => (
+                      <option key={purchase.id} value={purchase.id}>
+                        {new Date(purchase.date).toLocaleDateString()} - {purchase.supplier} - {purchase.items.length} items
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {adminSelectedPurchaseId && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Step 2: Select Item *
+                    </label>
+                    <select
+                      value={adminSelectedItemId}
+                      onChange={(e) => {
+                        setAdminSelectedItemId(Number(e.target.value));
+                        setAdminAllocationQty(0);
+                      }}
+                      className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    >
+                      <option value="">-- Select item --</option>
+                      {adminAvailableItemsFromPurchase.map((item) => (
+                        <option key={item.itemId} value={item.itemId}>
+                          {item.itemName} (Available: {item.available})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {adminSelectedItemId && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Step 3: Select Shop/Staff *
+                        </label>
+                        <select
+                          value={adminSelectedShopId}
+                          onChange={(e) => {
+                            setAdminSelectedShopId(e.target.value);
+                            setAdminAllocationQty(0);
+                          }}
+                          className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                        >
+                          <option value="">-- Select shop --</option>
+                          {shops.map((shop) => (
+                            <option key={shop.id} value={shop.id}>
+                              {shop.name} - {shop.address}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {adminSelectedShopId && (
+                        <>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Step 4: Enter Quantity to Allocate *
+                            </label>
+                            <input
+                              type="number"
+                              value={adminAllocationQty || ""}
+                              onChange={(e) => setAdminAllocationQty(Number(e.target.value))}
+                              className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                              min="1"
+                              max={
+                                adminAvailableItemsFromPurchase.find(i => i.itemId === adminSelectedItemId)?.available || 0
+                              }
+                              placeholder="Enter quantity"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                              Available: <span className="font-semibold">{adminAvailableItemsFromPurchase.find(i => i.itemId === adminSelectedItemId)?.available || 0}</span>
+                            </p>
+                          </div>
+
+                          <button
+                            onClick={handleAdminAllocateStock}
+                            className={`w-full px-4 py-3 rounded font-semibold text-lg transition-colors ${
+                              !adminSelectedPurchaseId || !adminSelectedItemId || !adminSelectedShopId || adminAllocationQty <= 0
+                                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
+                            }`}
+                            disabled={!adminSelectedPurchaseId || !adminSelectedItemId || !adminSelectedShopId || adminAllocationQty <= 0}
+                          >
+                            ✓ Allocate Stock to Shop
+                          </button>
+                          {(!adminSelectedPurchaseId || !adminSelectedItemId || !adminSelectedShopId || adminAllocationQty <= 0) && (
+                            <p className="text-xs text-gray-500 text-center">
+                              Please complete all steps above to enable the button
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Pending Stock Requests */}
         <div className="bg-white p-6 rounded shadow">
