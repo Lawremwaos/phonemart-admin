@@ -485,12 +485,14 @@ export default function SupplierManagement() {
                         >
                           Edit
                         </button>
-                        <button
-                          onClick={() => handleDelete(supplier.id)}
-                          className="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          Delete
-                        </button>
+                        {currentUser?.roles.includes('admin') && (
+                          <button
+                            onClick={() => handleDelete(supplier.id)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -79,6 +79,7 @@ type InventoryContextType = {
   deductStock: (name: string, qty: number) => void;
   addPurchase: (purchase: Omit<Purchase, 'id' | 'date'>) => void;
   confirmPurchase: (purchaseId: string) => void;
+  deletePurchase: (purchaseId: string) => void;
   addExchange: (exchange: Omit<Exchange, 'id' | 'date'>) => void;
   confirmExchangeReceipt: (exchangeId: string) => void;
   completeExchange: (exchangeId: string) => void;
@@ -555,6 +556,22 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     })();
   }, [purchases, currentUser]);
 
+  const deletePurchase = useCallback((purchaseId: string) => {
+    (async () => {
+      // Delete purchase items first (cascade should handle this, but being explicit)
+      await supabase.from("purchase_items").delete().eq("purchase_id", purchaseId);
+      
+      // Delete the purchase
+      const { error } = await supabase.from("purchases").delete().eq("id", purchaseId);
+      if (error) {
+        console.error("Error deleting purchase:", error);
+        return;
+      }
+      
+      setPurchases((prev) => prev.filter((p) => p.id !== purchaseId));
+    })();
+  }, []);
+
   const addExchange = useCallback((exchangeData: Omit<Exchange, 'id' | 'date'>) => {
     const newExchange: Exchange = {
       ...exchangeData,
@@ -804,6 +821,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         deductStock,
         addPurchase,
         confirmPurchase,
+        deletePurchase,
         addExchange,
         confirmExchangeReceipt,
         completeExchange,
