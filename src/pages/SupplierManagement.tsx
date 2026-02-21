@@ -94,65 +94,49 @@ export default function SupplierManagement() {
         });
       });
 
-      // --- REPAIR OUTSOURCING DATA (Parts outsourced from this supplier for repairs) ---
+      // --- REPAIR DATA (Parts used in repairs with their costs) ---
       const repairRecords: Array<{
         repairId: string;
         customerName: string;
         phoneModel: string;
         date: Date;
         issue: string;
-        totalAgreedAmount: number;
-        outsourcedItems: Array<{ itemName: string; qty: number }>;
+        revenue: number;
+        partsCost: number;
+        profit: number;
+        parts: Array<{ itemName: string; qty: number; cost: number }>;
         status: string;
         ticketNumber?: string;
       }> = [];
 
       repairs.forEach(repair => {
-        const outsourcedFromSupplier: Array<{ itemName: string; qty: number }> = [];
+        // Only include repairs that have parts with costs entered
+        const partsWithCost = repair.partsUsed.filter(p => p.cost > 0);
+        if (partsWithCost.length === 0) return;
 
-        // Check additionalItems for outsourced parts
-        if (repair.additionalItems) {
-          repair.additionalItems
-            .filter(item => item.source === 'outsourced')
-            .forEach(item => {
-              // Match by supplier name in item data or by general association
-              outsourcedFromSupplier.push({
-                itemName: item.itemName,
-                qty: 1,
-              });
-            });
-        }
+        const revenue = repair.totalAgreedAmount || repair.totalCost;
+        const partsCost = partsWithCost.reduce((sum, p) => sum + (p.cost * p.qty), 0);
+        const profit = revenue - partsCost;
 
-        // Check partsUsed with zero cost (outsourced parts needing cost input)
-        repair.partsUsed
-          .filter(p => p.cost === 0)
-          .forEach(part => {
-            const alreadyAdded = outsourcedFromSupplier.some(o => o.itemName === part.itemName);
-            if (!alreadyAdded) {
-              outsourcedFromSupplier.push({
-                itemName: part.itemName,
-                qty: part.qty,
-              });
-            }
-          });
-
-        if (outsourcedFromSupplier.length > 0) {
-          repairRecords.push({
-            repairId: repair.id,
-            customerName: repair.customerName,
-            phoneModel: repair.phoneModel,
-            date: repair.date,
-            issue: repair.issue,
-            totalAgreedAmount: repair.totalAgreedAmount || repair.totalCost,
-            outsourcedItems: outsourcedFromSupplier,
-            status: repair.status,
-            ticketNumber: repair.ticketNumber,
-          });
-        }
+        repairRecords.push({
+          repairId: repair.id,
+          customerName: repair.customerName,
+          phoneModel: repair.phoneModel,
+          date: repair.date,
+          issue: repair.issue,
+          revenue,
+          partsCost,
+          profit,
+          parts: partsWithCost.map(p => ({ itemName: p.itemName, qty: p.qty, cost: p.cost })),
+          status: repair.status,
+          ticketNumber: repair.ticketNumber,
+        });
       });
 
       const totalRepairOutsourcing = repairRecords.length;
-      const totalRepairRevenue = repairRecords.reduce((sum, r) => sum + r.totalAgreedAmount, 0);
+      const totalRepairRevenue = repairRecords.reduce((sum, r) => sum + r.revenue, 0);
+      const totalRepairCost = repairRecords.reduce((sum, r) => sum + r.partsCost, 0);
+      const totalRepairProfit = repairRecords.reduce((sum, r) => sum + r.profit, 0);
       const grandTotal = totalPurchaseCost;
 
       return {
@@ -165,6 +149,8 @@ export default function SupplierManagement() {
         repairRecords,
         totalRepairOutsourcing,
         totalRepairRevenue,
+        totalRepairCost,
+        totalRepairProfit,
         // Combined
         grandTotal,
       };
@@ -175,9 +161,11 @@ export default function SupplierManagement() {
   const overallStats = useMemo(() => {
     const totalPurchases = supplierData.reduce((sum, d) => sum + d.totalPurchaseCost, 0);
     const totalRepairRevenue = supplierData.reduce((sum, d) => sum + d.totalRepairRevenue, 0);
+    const totalRepairCost = supplierData.reduce((sum, d) => sum + d.totalRepairCost, 0);
+    const totalRepairProfit = supplierData.reduce((sum, d) => sum + d.totalRepairProfit, 0);
     const totalOrders = supplierData.reduce((sum, d) => sum + d.supplierPurchases.length, 0);
     const totalRepairJobs = supplierData.reduce((sum, d) => sum + d.totalRepairOutsourcing, 0);
-    return { totalPurchases, totalRepairRevenue, totalOrders, totalRepairJobs };
+    return { totalPurchases, totalRepairRevenue, totalRepairCost, totalRepairProfit, totalOrders, totalRepairJobs };
   }, [supplierData]);
 
   const formatDate = (date: Date) =>
@@ -242,9 +230,9 @@ export default function SupplierManagement() {
           <p className="text-xs text-gray-500">{overallStats.totalOrders} purchase orders</p>
         </div>
         <div className="bg-white p-4 rounded shadow border-l-4 border-green-500">
-          <p className="text-sm text-gray-600">Repair Revenue (Outsourced)</p>
+          <p className="text-sm text-gray-600">Repair Revenue</p>
           <p className="text-2xl font-bold text-green-700">KES {overallStats.totalRepairRevenue.toLocaleString()}</p>
-          <p className="text-xs text-gray-500">{overallStats.totalRepairJobs} repair jobs</p>
+          <p className="text-xs text-gray-500">{overallStats.totalRepairJobs} repairs | Cost: KES {overallStats.totalRepairCost.toLocaleString()}</p>
         </div>
         <div className="bg-white p-4 rounded shadow border-l-4 border-purple-500">
           <p className="text-sm text-gray-600">Active Suppliers</p>
@@ -255,11 +243,11 @@ export default function SupplierManagement() {
           </p>
         </div>
         <div className="bg-white p-4 rounded shadow border-l-4 border-orange-500">
-          <p className="text-sm text-gray-600">Net Position</p>
-          <p className={`text-2xl font-bold ${overallStats.totalRepairRevenue - overallStats.totalPurchases >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-            KES {(overallStats.totalRepairRevenue - overallStats.totalPurchases).toLocaleString()}
+          <p className="text-sm text-gray-600">Repair Profit</p>
+          <p className={`text-2xl font-bold ${overallStats.totalRepairProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+            KES {overallStats.totalRepairProfit.toLocaleString()}
           </p>
-          <p className="text-xs text-gray-500">Revenue - Supplier Costs</p>
+          <p className="text-xs text-gray-500">Revenue - Parts Cost</p>
         </div>
       </div>
 
@@ -336,8 +324,14 @@ export default function SupplierManagement() {
                           )}
                           {hasRepairs && (
                             <div className="text-right">
-                              <p className="text-gray-600">Repair Revenue</p>
-                              <p className="font-bold text-green-700">KES {data.totalRepairRevenue.toLocaleString()}</p>
+                              <p className="text-gray-600">Repairs: Revenue / Cost / Profit</p>
+                              <p className="text-sm">
+                                <span className="font-bold text-green-700">KES {data.totalRepairRevenue.toLocaleString()}</span>
+                                <span className="text-gray-400 mx-1">/</span>
+                                <span className="font-bold text-red-600">KES {data.totalRepairCost.toLocaleString()}</span>
+                                <span className="text-gray-400 mx-1">/</span>
+                                <span className={`font-bold ${data.totalRepairProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>KES {data.totalRepairProfit.toLocaleString()}</span>
+                              </p>
                               <p className="text-xs text-gray-500">{data.totalRepairOutsourcing} repairs</p>
                             </div>
                           )}
@@ -450,8 +444,10 @@ export default function SupplierManagement() {
                                     <th className="p-2 text-left">Date</th>
                                     <th className="p-2 text-left">Customer</th>
                                     <th className="p-2 text-left">Phone Model</th>
-                                    <th className="p-2 text-left">Outsourced Parts</th>
-                                    <th className="p-2 text-right">Repair Revenue</th>
+                                    <th className="p-2 text-left">Parts Used</th>
+                                    <th className="p-2 text-right">Revenue</th>
+                                    <th className="p-2 text-right">Parts Cost</th>
+                                    <th className="p-2 text-right">Profit</th>
                                     <th className="p-2 text-center">Status</th>
                                     {currentUser?.roles.includes('admin') && <th className="p-2 text-center">Actions</th>}
                                   </tr>
@@ -469,14 +465,18 @@ export default function SupplierManagement() {
                                       <td className="p-2">{record.phoneModel}</td>
                                       <td className="p-2">
                                         <div className="space-y-1">
-                                          {record.outsourcedItems.map((item, idx) => (
+                                          {record.parts.map((part, idx) => (
                                             <span key={idx} className="inline-block bg-orange-100 text-orange-800 text-xs px-2 py-0.5 rounded mr-1">
-                                              {item.itemName} x{item.qty}
+                                              {part.itemName} x{part.qty} @ KES {part.cost.toLocaleString()}
                                             </span>
                                           ))}
                                         </div>
                                       </td>
-                                      <td className="p-2 text-right font-bold">KES {record.totalAgreedAmount.toLocaleString()}</td>
+                                      <td className="p-2 text-right font-bold text-green-700">KES {record.revenue.toLocaleString()}</td>
+                                      <td className="p-2 text-right font-bold text-red-600">KES {record.partsCost.toLocaleString()}</td>
+                                      <td className={`p-2 text-right font-bold ${record.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                                        KES {record.profit.toLocaleString()}
+                                      </td>
                                       <td className="p-2 text-center">
                                         <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
                                           record.status === 'COLLECTED' ? 'bg-gray-100 text-gray-800' :
@@ -506,8 +506,10 @@ export default function SupplierManagement() {
                                 </tbody>
                                 <tfoot className="bg-green-50 font-semibold">
                                   <tr>
-                                    <td className="p-2" colSpan={4}>Total Repair Revenue</td>
+                                    <td className="p-2" colSpan={4}>Totals</td>
                                     <td className="p-2 text-right text-green-800">KES {data.totalRepairRevenue.toLocaleString()}</td>
+                                    <td className="p-2 text-right text-red-700">KES {data.totalRepairCost.toLocaleString()}</td>
+                                    <td className={`p-2 text-right ${data.totalRepairProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>KES {data.totalRepairProfit.toLocaleString()}</td>
                                     <td></td>
                                     {currentUser?.roles.includes('admin') && <td></td>}
                                   </tr>
@@ -520,19 +522,23 @@ export default function SupplierManagement() {
                         {/* Summary for this supplier */}
                         <div className="bg-gray-50 rounded p-4 border">
                           <h5 className="font-semibold mb-2">Summary: {data.supplier.name}</h5>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                             <div>
-                              <p className="text-gray-600">Total Paid (Purchases)</p>
+                              <p className="text-gray-600">Purchase Orders</p>
                               <p className="text-lg font-bold text-blue-700">KES {data.totalPurchaseCost.toLocaleString()}</p>
                             </div>
                             <div>
-                              <p className="text-gray-600">Revenue from Repairs</p>
+                              <p className="text-gray-600">Repair Revenue</p>
                               <p className="text-lg font-bold text-green-700">KES {data.totalRepairRevenue.toLocaleString()}</p>
                             </div>
                             <div>
-                              <p className="text-gray-600">Net (Revenue - Costs)</p>
-                              <p className={`text-lg font-bold ${data.totalRepairRevenue - data.totalPurchaseCost >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                KES {(data.totalRepairRevenue - data.totalPurchaseCost).toLocaleString()}
+                              <p className="text-gray-600">Parts Cost</p>
+                              <p className="text-lg font-bold text-red-600">KES {data.totalRepairCost.toLocaleString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600">Repair Profit</p>
+                              <p className={`text-lg font-bold ${data.totalRepairProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                                KES {data.totalRepairProfit.toLocaleString()}
                               </p>
                             </div>
                           </div>

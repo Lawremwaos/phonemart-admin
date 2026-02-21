@@ -87,7 +87,7 @@ export default function Dashboard() {
       .reduce((sum, repair) => sum + repair.amountPaid, 0);
   }, [shopRepairs]);
 
-  // Calculate today's outsourced costs
+  // Calculate today's actual parts costs from repair_parts data
   const todayOutsourcedCosts = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -97,7 +97,10 @@ export default function Dashboard() {
         repairDate.setHours(0, 0, 0, 0);
         return repairDate.getTime() === today.getTime();
       })
-      .reduce((sum, repair) => sum + repair.outsourcedCost, 0);
+      .reduce((sum, repair) => {
+        const partsCost = repair.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
+        return sum + partsCost;
+      }, 0);
   }, [shopRepairs]);
 
   // Admin sees aggregated data, others see shop-specific data
@@ -304,7 +307,7 @@ export default function Dashboard() {
           itemNames.add(p.itemName);
           totalCost += p.cost * p.qty;
         });
-        totalCost += r.outsourcedCost || 0;
+        
       });
       uniqueItems = itemNames.size;
       

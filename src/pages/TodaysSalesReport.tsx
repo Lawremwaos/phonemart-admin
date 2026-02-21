@@ -57,6 +57,8 @@ export default function TodaysSalesReport() {
   const repairAnalysis = useMemo(() => {
     return filteredRepairs.map(repair => {
       const revenue = repair.totalAgreedAmount || repair.totalCost;
+
+      // All parts with their costs (from repair_parts table)
       const partsBreakdown = repair.partsUsed.map(part => {
         const costPerUnit = part.cost > 0 ? part.cost : getCostPrice(part.itemName);
         const supplier = getSupplierForItem(part.itemName);
@@ -70,8 +72,10 @@ export default function TodaysSalesReport() {
         };
       });
 
+      // Additional outsourced items not yet in partsUsed (cost not entered yet)
       const outsourcedBreakdown = (repair.additionalItems || [])
         .filter(item => item.source === 'outsourced')
+        .filter(item => !repair.partsUsed.some(p => p.itemName === item.itemName))
         .map(item => ({
           itemName: item.itemName,
           qty: 1,
@@ -82,19 +86,16 @@ export default function TodaysSalesReport() {
         }));
 
       const allParts = [...partsBreakdown, ...outsourcedBreakdown];
+      // Total cost = sum of all parts costs only (no double counting with outsourcedCost)
       const totalPartsCost = allParts.reduce((sum, p) => sum + p.totalCost, 0);
-      const totalOutsourcedCost = repair.outsourcedCost || 0;
-      const totalCost = totalPartsCost + totalOutsourcedCost + (repair.laborCost || 0);
-      const profit = revenue - totalCost;
+      const profit = revenue - totalPartsCost;
 
       return {
         repair,
         revenue,
         allParts,
         totalPartsCost,
-        totalOutsourcedCost,
-        laborCost: repair.laborCost || 0,
-        totalCost,
+        totalCost: totalPartsCost,
         profit,
       };
     });
@@ -231,8 +232,6 @@ export default function TodaysSalesReport() {
             text += ` [${p.supplier}]\n`;
           });
         }
-        if (ra.totalOutsourcedCost > 0) text += `   Outsourced Cost: KES ${ra.totalOutsourcedCost.toLocaleString()}\n`;
-        if (ra.laborCost > 0) text += `   Labor Cost: KES ${ra.laborCost.toLocaleString()}\n`;
         text += `   Total Cost: KES ${ra.totalCost.toLocaleString()}\n`;
         text += `   ${b('Profit: KES ' + ra.profit.toLocaleString())}\n`;
       });
@@ -476,18 +475,7 @@ export default function TodaysSalesReport() {
                             </span>
                           </div>
                         ))}
-                        {ra.totalOutsourcedCost > 0 && (
-                          <div className="flex justify-between text-sm border-t pt-1 mt-1">
-                            <span className="text-gray-600">Outsourced Cost</span>
-                            <span className="font-semibold text-red-600">KES {ra.totalOutsourcedCost.toLocaleString()}</span>
-                          </div>
-                        )}
-                        {ra.laborCost > 0 && (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-600">Labor Cost</span>
-                            <span className="font-semibold text-red-600">KES {ra.laborCost.toLocaleString()}</span>
-                          </div>
-                        )}
+                        
                       </div>
                     </div>
                   )}

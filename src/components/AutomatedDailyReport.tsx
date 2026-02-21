@@ -35,7 +35,7 @@ export default function AutomatedDailyReport() {
   const todayPartsCost = useMemo(() => {
     return todayRepairs.reduce((sum, r) => {
       const partsCost = r.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
-      return sum + partsCost + (r.outsourcedCost || 0);
+      return sum + partsCost;
     }, 0);
   }, [todayRepairs]);
 

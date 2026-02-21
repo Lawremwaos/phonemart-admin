@@ -530,7 +530,9 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
   }, [repairs]);
 
   const getTotalOutsourcedCosts = useCallback(() => {
-    return repairs.reduce((sum, repair) => sum + repair.outsourcedCost, 0);
+    return repairs.reduce((sum, repair) => {
+      return sum + repair.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
+    }, 0);
   }, [repairs]);
 
   const getTotalLaborCosts = useCallback(() => {
@@ -572,23 +574,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
       }
     }
 
-    // Recalculate outsourced_cost from all repair_parts for this repair
-    const { data: allParts } = await supabase
-      .from("repair_parts")
-      .select("*")
-      .eq("repair_id", repairId);
-
-    const totalPartsCost = (allParts || []).reduce(
-      (sum: number, p: any) => sum + (Number(p.cost) || 0) * (Number(p.qty) || 1), 0
-    );
-
-    // Update repair's outsourced_cost with total parts cost
-    await supabase
-      .from("repairs")
-      .update({ outsourced_cost: totalPartsCost })
-      .eq("id", repairId);
-
-    // Update local state
+    // Update local state immediately
     lastLocalUpdateRef.current = Date.now();
     setRepairs((prev) =>
       prev.map((repair) => {
@@ -604,7 +590,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
           updatedParts.push({ itemId: 0, itemName, qty, cost: costPerUnit });
         }
 
-        // Remove from additionalItems if cost is now tracked in partsUsed
+        // Remove from additionalItems since cost is now tracked in partsUsed
         const updatedAdditional = (repair.additionalItems || []).filter(
           a => !(a.itemName === itemName && a.source === 'outsourced')
         );
@@ -613,7 +599,6 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
           ...repair,
           partsUsed: updatedParts,
           additionalItems: updatedAdditional,
-          outsourcedCost: totalPartsCost,
         };
       })
     );

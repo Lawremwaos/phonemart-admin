@@ -175,7 +175,9 @@ export default function DailyReport() {
     r.status === 'REPAIR_COMPLETED' || r.status === 'FULLY_PAID' || r.status === 'COLLECTED'
   ).length;
   const repairRevenue = selectedDateRepairs.reduce((sum, r) => sum + r.amountPaid, 0);
-  const outsourcedCosts = selectedDateRepairs.reduce((sum, r) => sum + r.outsourcedCost, 0);
+  const outsourcedCosts = selectedDateRepairs.reduce((sum, r) => {
+    return sum + r.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
+  }, 0);
 
   const generateReportText = () => {
     const reportDate = formatDate(selectedDate);
@@ -462,13 +464,11 @@ export default function DailyReport() {
             // Calculate totals per shop
             const shopTotals = Array.from(ticketsByShop.entries()).map(([shopId, repairs]) => {
               const revenue = repairs.reduce((sum, r) => sum + (r.totalAgreedAmount || r.totalCost), 0);
-              const outsourcedCost = repairs.reduce((sum, r) => sum + r.outsourcedCost, 0);
               const partsCost = repairs.reduce((sum, r) => 
                 sum + r.partsUsed.reduce((pSum, p) => pSum + (p.cost * p.qty), 0), 0
               );
-              const grossProfit = revenue - outsourcedCost - partsCost;
-              const laborCost = repairs.reduce((sum, r) => sum + r.laborCost, 0);
-              const netProfit = grossProfit - laborCost;
+              const grossProfit = revenue - partsCost;
+              const netProfit = grossProfit;
               
               return {
                 shopId,
@@ -555,10 +555,9 @@ export default function DailyReport() {
                         <tbody>
                           {shop.repairs.map((repair) => {
                             const revenue = repair.totalAgreedAmount || repair.totalCost;
-                            const outsourcedCost = repair.outsourcedCost;
                             const partsCost = repair.partsUsed.reduce((sum, p) => sum + (p.cost * p.qty), 0);
-                            const grossProfit = revenue - outsourcedCost - partsCost;
-                            const netProfit = grossProfit - repair.laborCost;
+                            const grossProfit = revenue - partsCost;
+                            const netProfit = grossProfit;
                             
                             return (
                               <tr key={repair.id} className="border-t">
