@@ -1,16 +1,4 @@
 import { useState, useMemo } from "react";
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  Legend,
-} from "recharts";
 import { useSales } from "../context/SalesContext";
 import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
@@ -19,630 +7,474 @@ import { usePayment } from "../context/PaymentContext";
 import ShopSelector from "../components/ShopSelector";
 import AutomatedDailyReport from "../components/AutomatedDailyReport";
 
+type Period = 'today' | 'week' | 'month';
+
 export default function Dashboard() {
-  const {
-    sales,
-    getDailyRevenue,
-  } = useSales();
-  const { items } = useInventory();
+  const { sales } = useSales();
+  const { items, purchases } = useInventory();
   const { currentShop, currentUser } = useShop();
   const { repairs } = useRepair();
   const { getPendingCashDeposits } = usePayment();
+  const [period, setPeriod] = useState<Period>('today');
 
-  // Filter sales by current shop (or all shops for admin)
+  const isAdmin = currentUser?.roles.includes('admin');
+
+  // --- HELPERS ---
+  const now = new Date();
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+  const weekStart = new Date(now); weekStart.setDate(weekStart.getDate() - 7); weekStart.setHours(0, 0, 0, 0);
+  const monthStart = new Date(now); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+
+  const inPeriod = (date: Date, p: Period) => {
+    const d = new Date(date);
+    if (p === 'today') { d.setHours(0, 0, 0, 0); return d.getTime() === todayStart.getTime(); }
+    if (p === 'week') return d >= weekStart;
+    return d >= monthStart;
+  };
+
+  // --- FILTERED DATA ---
   const shopSales = useMemo(() => {
-    // Admin sees all sales aggregated
-    if (currentUser?.roles.includes('admin')) {
-      return sales;
-    }
-    // Technicians/managers see only their shop's sales
+    if (isAdmin) return sales;
     if (!currentShop) return sales;
-    return sales.filter(sale => sale.shopId === currentShop.id);
-  }, [sales, currentShop, currentUser]);
+    return sales.filter(s => s.shopId === currentShop.id);
+  }, [sales, currentShop, isAdmin]);
 
-  const [revenuePeriod, setRevenuePeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
-
-  // Recalculate metrics based on shop sales
-  const shopDailyRevenue = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return shopSales
-      .filter((sale) => {
-        const saleDate = new Date(sale.date);
-        saleDate.setHours(0, 0, 0, 0);
-        return saleDate.getTime() === today.getTime();
-      })
-      .reduce((sum, sale) => sum + sale.total, 0);
-  }, [shopSales]);
-
-
-  // Filter inventory by shop (or all for admin)
-  const shopItems = useMemo(() => {
-    if (currentUser?.roles.includes('admin')) {
-      return items;
-    }
-    if (!currentShop) return items;
-    return items.filter(item => item.shopId === currentShop.id);
-  }, [items, currentShop, currentUser]);
-
-  // Filter repairs by shop
   const shopRepairs = useMemo(() => {
-    if (currentUser?.roles.includes('admin')) {
-      return repairs;
-    }
+    if (isAdmin) return repairs;
     if (!currentShop) return repairs;
-    return repairs.filter(repair => repair.shopId === currentShop.id);
-  }, [repairs, currentShop, currentUser]);
+    return repairs.filter(r => r.shopId === currentShop.id);
+  }, [repairs, currentShop, isAdmin]);
 
-  // Calculate today's repair revenue
-  const todayRepairRevenue = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return shopRepairs
-      .filter(repair => {
-        const repairDate = new Date(repair.date);
-        repairDate.setHours(0, 0, 0, 0);
-        return repairDate.getTime() === today.getTime();
-      })
-      .reduce((sum, repair) => sum + repair.amountPaid, 0);
+  const shopItems = useMemo(() => {
+    if (isAdmin) return items;
+    if (!currentShop) return items;
+    return items.filter(i => i.shopId === currentShop.id);
+  }, [items, currentShop, isAdmin]);
+
+  // --- 1. SALES OVERVIEW (Day / Week / Month) ---
+  const salesData = useMemo(() => {
+    const calc = (p: Period) => {
+      const periodSales = shopSales.filter(s => inPeriod(s.date, p));
+      const periodRepairs = shopRepairs.filter(r => inPeriod(r.date, p));
+
+      const accessoryRevenue = periodSales.reduce((sum, s) => sum + s.total, 0);
+      const accessoryCount = periodSales.length;
+      const repairRevenue = periodRepairs.reduce((sum, r) => sum + (r.totalAgreedAmount || r.totalCost), 0);
+      const repairCount = periodRepairs.length;
+      const totalRevenue = accessoryRevenue + repairRevenue;
+      const totalCount = accessoryCount + repairCount;
+
+      return { accessoryRevenue, accessoryCount, repairRevenue, repairCount, totalRevenue, totalCount };
+    };
+    return { today: calc('today'), week: calc('week'), month: calc('month') };
+  }, [shopSales, shopRepairs]);
+
+  // --- 2. PHONE REPAIR vs ACCESSORIES breakdown ---
+  const categoryData = useMemo(() => {
+    const calc = (p: Period) => {
+      const periodSales = shopSales.filter(s => inPeriod(s.date, p));
+      const periodRepairs = shopRepairs.filter(r => inPeriod(r.date, p));
+      return {
+        repairSales: periodRepairs.length,
+        repairRevenue: periodRepairs.reduce((sum, r) => sum + (r.totalAgreedAmount || r.totalCost), 0),
+        accessorySales: periodSales.length,
+        accessoryRevenue: periodSales.reduce((sum, s) => sum + s.total, 0),
+      };
+    };
+    return { today: calc('today'), week: calc('week'), month: calc('month') };
+  }, [shopSales, shopRepairs]);
+
+  // --- 3. COST OF PARTS (Day / Week / Month) ---
+  const costData = useMemo(() => {
+    const calc = (p: Period) => {
+      const periodRepairs = shopRepairs.filter(r => inPeriod(r.date, p));
+      const partsCost = periodRepairs.reduce((sum, r) =>
+        sum + r.partsUsed.reduce((s, part) => s + (part.cost * part.qty), 0), 0
+      );
+      const partsCount = periodRepairs.reduce((sum, r) =>
+        sum + r.partsUsed.filter(p => p.cost > 0).length, 0
+      );
+      return { partsCost, partsCount };
+    };
+    return { today: calc('today'), week: calc('week'), month: calc('month') };
   }, [shopRepairs]);
 
-  // Calculate today's actual parts costs from repair_parts data
-  const todayOutsourcedCosts = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return shopRepairs
-      .filter(repair => {
-        const repairDate = new Date(repair.date);
-        repairDate.setHours(0, 0, 0, 0);
-        return repairDate.getTime() === today.getTime();
-      })
-      .reduce((sum, repair) => {
-        const partsCost = repair.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
-        return sum + partsCost;
-      }, 0);
-  }, [shopRepairs]);
+  // --- 4. SUPPLIER PAYMENTS (Day / Week / Month) ---
+  const supplierData = useMemo(() => {
+    const calc = (p: Period) => {
+      const periodPurchases = purchases.filter(pu => inPeriod(pu.date, p));
+      const totalPaid = periodPurchases.reduce((sum, pu) => sum + pu.total, 0);
+      const orderCount = periodPurchases.length;
 
-  // Admin sees aggregated data, others see shop-specific data
-  const dailyRevenue = currentUser?.roles.includes('admin') ? getDailyRevenue() : shopDailyRevenue;
-  
-  // Total revenue (sales + repairs)
-  const totalRevenue = dailyRevenue + todayRepairRevenue;
-  
-  // Gross profit (revenue - outsourced costs)
-  const grossProfit = totalRevenue - todayOutsourcedCosts;
-  
-  // Low stock items - filter by shop
+      // Per-supplier breakdown
+      const supplierMap: Record<string, { name: string; amount: number; orders: number }> = {};
+      periodPurchases.forEach(pu => {
+        if (!supplierMap[pu.supplier]) supplierMap[pu.supplier] = { name: pu.supplier, amount: 0, orders: 0 };
+        supplierMap[pu.supplier].amount += pu.total;
+        supplierMap[pu.supplier].orders++;
+      });
+      const suppliers = Object.values(supplierMap).sort((a, b) => b.amount - a.amount);
+
+      return { totalPaid, orderCount, suppliers };
+    };
+    return { today: calc('today'), week: calc('week'), month: calc('month') };
+  }, [purchases]);
+
+  // --- 5. REVENUE OVERVIEW (Day / Week / Month) ---
+  const revenueOverview = useMemo(() => {
+    const calc = (p: Period) => {
+      const sd = salesData[p];
+      const cd = costData[p];
+      const sp = supplierData[p];
+      const totalCosts = cd.partsCost + sp.totalPaid;
+      const profit = sd.totalRevenue - cd.partsCost;
+      return { ...sd, partsCost: cd.partsCost, supplierPaid: sp.totalPaid, totalCosts, profit };
+    };
+    return { today: calc('today'), week: calc('week'), month: calc('month') };
+  }, [salesData, costData, supplierData]);
+
+  // Current period data
+  const currentSales = salesData[period];
+  const currentCategory = categoryData[period];
+  const currentCost = costData[period];
+  const currentSupplier = supplierData[period];
+  // --- EXISTING DATA (kept) ---
   const lowStockItems = shopItems.filter(item => item.stock <= item.reorderLevel);
   const lowStockCount = lowStockItems.length;
-  
-  // Pending cash deposits
   const pendingDeposits = getPendingCashDeposits();
   const pendingDepositsAmount = pendingDeposits.reduce((sum, p) => sum + p.amount, 0);
 
-  // Pending phones to collect (repairs that are completed/fully paid but customer is coming back, or have deposit but not fully paid)
-  const pendingPhonesToCollect = useMemo(() => {
-    return shopRepairs.filter(repair => {
-      // Customer coming back after repair completion
-      if ((repair.status === 'FULLY_PAID' || repair.status === 'REPAIR_COMPLETED') &&
-          repair.customerStatus === 'coming_back') {
-        return true;
-      }
-      // Customer left deposit and needs to collect (payment timing is after, or has deposit amount)
-      if (repair.depositAmount && repair.depositAmount > 0 && 
-          (repair.paymentStatus === 'partial' || repair.paymentStatus === 'pending')) {
-        return true;
-      }
-      return false;
-    });
-  }, [shopRepairs]);
+  const pendingPhonesToCollect = useMemo(() => shopRepairs.filter(repair =>
+    ((repair.status === 'FULLY_PAID' || repair.status === 'REPAIR_COMPLETED') && repair.customerStatus === 'coming_back') ||
+    (repair.depositAmount && repair.depositAmount > 0 && (repair.paymentStatus === 'partial' || repair.paymentStatus === 'pending'))
+  ), [shopRepairs]);
 
-  // Pending payments (repairs with partial or pending payment, or waiting for deposit)
-  const pendingPayments = useMemo(() => {
-    return shopRepairs.filter(repair => {
-      // Partial or pending payment
-      if (repair.paymentStatus === 'partial' || repair.paymentStatus === 'pending') {
-        return true;
-      }
-      // Payment timing is after repair but not yet paid
-      if (repair.paymentTiming === 'after' && repair.paymentStatus !== 'fully_paid') {
-        return true;
-      }
-      return false;
-    });
-  }, [shopRepairs]);
+  const pendingPayments = useMemo(() => shopRepairs.filter(repair =>
+    repair.paymentStatus === 'partial' || repair.paymentStatus === 'pending' ||
+    (repair.paymentTiming === 'after' && repair.paymentStatus !== 'fully_paid')
+  ), [shopRepairs]);
+  const pendingPaymentsAmount = pendingPayments.reduce((sum, r) => sum + r.balance, 0);
 
-  const pendingPaymentsAmount = pendingPayments.reduce((sum, repair) => sum + repair.balance, 0);
-
-  // Calculate revenue by period from shop sales
-  const revenueData = useMemo(() => {
-    const now = new Date();
-    const data: Array<{ period: string; revenue: number }> = [];
-
-    if (revenuePeriod === 'daily') {
-      // Last 7 days
-      for (let i = 6; i >= 0; i--) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - i);
-        date.setHours(0, 0, 0, 0);
-        
-        const dayRevenue = shopSales
-          .filter((sale) => {
-            const saleDate = new Date(sale.date);
-            saleDate.setHours(0, 0, 0, 0);
-            return saleDate.getTime() === date.getTime();
-          })
-          .reduce((sum, sale) => sum + sale.total, 0);
-
-        data.push({
-          period: date.toLocaleDateString('en-US', { weekday: 'short' }),
-          revenue: dayRevenue,
-        });
-      }
-    } else if (revenuePeriod === 'weekly') {
-      // Last 4 weeks
-      for (let i = 3; i >= 0; i--) {
-        const weekStart = new Date(now);
-        weekStart.setDate(weekStart.getDate() - (i * 7));
-        weekStart.setHours(0, 0, 0, 0);
-        
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekEnd.getDate() + 6);
-
-        const weekRevenue = shopSales
-          .filter((sale) => {
-            const saleDate = new Date(sale.date);
-            return saleDate >= weekStart && saleDate <= weekEnd;
-          })
-          .reduce((sum, sale) => sum + sale.total, 0);
-
-        data.push({
-          period: `Week ${4 - i}`,
-          revenue: weekRevenue,
-        });
-      }
-    } else if (revenuePeriod === 'monthly') {
-      // Last 6 months
-      for (let i = 5; i >= 0; i--) {
-        const month = new Date(now);
-        month.setMonth(month.getMonth() - i);
-        month.setDate(1);
-        month.setHours(0, 0, 0, 0);
-
-        const nextMonth = new Date(month);
-        nextMonth.setMonth(nextMonth.getMonth() + 1);
-
-        const monthRevenue = shopSales
-          .filter((sale) => {
-            const saleDate = new Date(sale.date);
-            return saleDate >= month && saleDate < nextMonth;
-          })
-          .reduce((sum, sale) => sum + sale.total, 0);
-
-        data.push({
-          period: month.toLocaleDateString('en-US', { month: 'short' }),
-          revenue: monthRevenue,
-        });
-      }
-    }
-
-    return data;
-  }, [shopSales, revenuePeriod]);
-
-  // Calculate items sold from shop sales (filtered by shop)
   const shopItemsSoldData = useMemo(() => {
-    const itemMap = new Map<string, number>();
-    shopSales.forEach(sale => {
-      sale.items.forEach(item => {
-        const existing = itemMap.get(item.name);
-        if (existing) {
-          itemMap.set(item.name, existing + item.qty);
-        } else {
-          itemMap.set(item.name, item.qty);
-        }
-      });
-    });
-    return Array.from(itemMap.entries()).map(([name, qty]) => ({ name, qty }));
+    const m = new Map<string, number>();
+    shopSales.forEach(s => s.items.forEach(i => m.set(i.name, (m.get(i.name) || 0) + i.qty)));
+    return Array.from(m.entries()).map(([name, qty]) => ({ name, qty }));
   }, [shopSales]);
-  
-  // Inventory movement data - items sold vs available (filtered by shop)
+
   const inventoryMovement = shopItems.map(item => {
-    // Find sold quantity from shop sales data, or use stock difference as fallback
-    const soldData = shopItemsSoldData.find(s => s.name === item.name);
-    const itemsSold = soldData ? soldData.qty : Math.max(0, item.initialStock - item.stock);
-    
-    return {
-      name: item.name,
-      available: item.stock,
-      sold: itemsSold,
-      category: item.category,
-      reorderLevel: item.reorderLevel,
-    };
+    const sold = shopItemsSoldData.find(s => s.name === item.name)?.qty || Math.max(0, item.initialStock - item.stock);
+    return { name: item.name, available: item.stock, sold, category: item.category, reorderLevel: item.reorderLevel };
   });
 
-  // Top selling items (all time)
-  const topSellingItems = [...inventoryMovement]
-    .sort((a, b) => b.sold - a.sold)
-    .slice(0, 10);
+  const mostSoldItems = [...inventoryMovement].filter(i => i.sold > 0).sort((a, b) => b.sold - a.sold).slice(0, 10);
+  const topAccessories = [...inventoryMovement].filter(i => i.category === 'Accessory').sort((a, b) => b.sold - a.sold).slice(0, 5);
+  const topSpares = [...inventoryMovement].filter(i => i.category === 'Spare').sort((a, b) => b.sold - a.sold).slice(0, 5);
 
-  // Most sold items for table
-  const mostSoldItems = [...inventoryMovement]
-    .filter(item => item.sold > 0)
-    .sort((a, b) => b.sold - a.sold)
-    .slice(0, 10);
-
-  // Top-selling accessories
-  const topAccessories = [...inventoryMovement]
-    .filter(item => item.category === 'Accessory')
-    .sort((a, b) => b.sold - a.sold)
-    .slice(0, 5);
-
-  // Top-selling spares
-  const topSpares = [...inventoryMovement]
-    .filter(item => item.category === 'Spare')
-    .sort((a, b) => b.sold - a.sold)
-    .slice(0, 5);
-
-  // Outsourced items trend (last 7 days) - derived from actual repair data
-  const outsourcedItemsTrend = useMemo(() => {
-    const data: Array<{ date: string; items: number; cost: number }> = [];
-    const now = new Date();
-    
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      date.setHours(0, 0, 0, 0);
-      
-      const dayRepairs = repairs.filter(r => {
-        const repairDate = new Date(r.date);
-        repairDate.setHours(0, 0, 0, 0);
-        return repairDate.getTime() === date.getTime();
-      });
-      
-      let uniqueItems = 0;
-      let totalCost = 0;
-      const itemNames = new Set<string>();
-      dayRepairs.forEach(r => {
-        r.partsUsed.filter(p => p.cost > 0).forEach(p => {
-          itemNames.add(p.itemName);
-          totalCost += p.cost * p.qty;
-        });
-        
-      });
-      uniqueItems = itemNames.size;
-      
-      data.push({
-        date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-        items: uniqueItems,
-        cost: totalCost,
-      });
-    }
-    
-    return data;
-  }, [repairs]);
-
-  // Top outsourced items (all time) - derived from actual repair data
   const topOutsourcedItems = useMemo(() => {
-    const itemMap = new Map<string, { name: string; qty: number; cost: number }>();
-    repairs.forEach(repair => {
-      repair.partsUsed.filter(p => p.cost > 0).forEach(part => {
-        const existing = itemMap.get(part.itemName);
-        if (existing) {
-          itemMap.set(part.itemName, {
-            name: part.itemName,
-            qty: existing.qty + part.qty,
-            cost: existing.cost + (part.cost * part.qty),
-          });
-        } else {
-          itemMap.set(part.itemName, {
-            name: part.itemName,
-            qty: part.qty,
-            cost: part.cost * part.qty,
-          });
-        }
-      });
-    });
-    return Array.from(itemMap.values())
-      .sort((a, b) => b.cost - a.cost)
-      .slice(0, 10);
+    const m = new Map<string, { name: string; qty: number; cost: number }>();
+    repairs.forEach(r => r.partsUsed.filter(p => p.cost > 0).forEach(part => {
+      const e = m.get(part.itemName);
+      m.set(part.itemName, e
+        ? { name: part.itemName, qty: e.qty + part.qty, cost: e.cost + (part.cost * part.qty) }
+        : { name: part.itemName, qty: part.qty, cost: part.cost * part.qty });
+    }));
+    return Array.from(m.values()).sort((a, b) => b.cost - a.cost).slice(0, 10);
   }, [repairs]);
+
+  const periodLabel = (p: Period) => p === 'today' ? 'Today' : p === 'week' ? 'This Week' : 'This Month';
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Dashboard</h2>
-        {currentUser?.roles.includes('admin') ? (
+        {isAdmin ? (
           <p className="text-gray-600 font-semibold">All Shops (Aggregated View)</p>
         ) : currentShop ? (
           <p className="text-gray-600">Shop: {currentShop.name}</p>
         ) : null}
       </div>
 
-      {/* Shop Selector */}
       <ShopSelector />
 
-      {/* Alerts Section */}
+      {/* Period Selector */}
+      <div className="flex gap-2">
+        {(['today', 'week', 'month'] as Period[]).map(p => (
+          <button key={p} onClick={() => setPeriod(p)}
+            className={`px-5 py-2 rounded-lg text-sm font-semibold transition ${period === p ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-700 border hover:bg-gray-50'}`}>
+            {periodLabel(p)}
+          </button>
+        ))}
+      </div>
+
+      {/* Alerts */}
       {(pendingPhonesToCollect.length > 0 || pendingPayments.length > 0 || lowStockCount > 0 || pendingDepositsAmount > 0) && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
-          <h3 className="text-lg font-semibold text-yellow-800 mb-3">Alerts & Notifications</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <h3 className="text-lg font-semibold text-yellow-800 mb-3">Alerts</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {pendingPhonesToCollect.length > 0 && (
-              <div className="bg-white p-4 rounded shadow">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Pending Phones to Collect</p>
-                    <p className="text-2xl font-bold text-orange-600">{pendingPhonesToCollect.length}</p>
-                    <a href="/pending-collections" className="text-xs text-blue-600 hover:underline mt-1">View Details →</a>
-                  </div>
-                  <div className="bg-orange-100 p-2 rounded-full">
-                    <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                </div>
+              <div className="bg-white p-3 rounded shadow text-center">
+                <p className="text-xs text-gray-600">Phones to Collect</p>
+                <p className="text-xl font-bold text-orange-600">{pendingPhonesToCollect.length}</p>
               </div>
             )}
             {pendingPayments.length > 0 && (
-              <div className="bg-white p-4 rounded shadow">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Pending Payments</p>
-                    <p className="text-2xl font-bold text-red-600">{pendingPayments.length}</p>
-                    <p className="text-xs text-gray-500">KES {pendingPaymentsAmount.toLocaleString()}</p>
-                    <a href="/pending-collections" className="text-xs text-blue-600 hover:underline mt-1">View Details →</a>
-                  </div>
-                  <div className="bg-red-100 p-2 rounded-full">
-                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                </div>
+              <div className="bg-white p-3 rounded shadow text-center">
+                <p className="text-xs text-gray-600">Pending Payments</p>
+                <p className="text-xl font-bold text-red-600">{pendingPayments.length}</p>
+                <p className="text-xs text-gray-500">KES {pendingPaymentsAmount.toLocaleString()}</p>
               </div>
             )}
             {lowStockCount > 0 && (
-              <div className="bg-white p-4 rounded shadow">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Low Stock Items</p>
-                    <p className="text-2xl font-bold text-yellow-600">{lowStockCount}</p>
-                  </div>
-                  <div className="bg-yellow-100 p-2 rounded-full">
-                    <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </div>
-                </div>
+              <div className="bg-white p-3 rounded shadow text-center">
+                <p className="text-xs text-gray-600">Low Stock</p>
+                <p className="text-xl font-bold text-yellow-600">{lowStockCount}</p>
               </div>
             )}
             {pendingDepositsAmount > 0 && (
-              <div className="bg-white p-4 rounded shadow">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Pending Deposits</p>
-                    <p className="text-2xl font-bold text-blue-600">KES {pendingDepositsAmount.toLocaleString()}</p>
-                  </div>
-                  <div className="bg-blue-100 p-2 rounded-full">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v2m7 4h-4" />
-                    </svg>
-                  </div>
-                </div>
+              <div className="bg-white p-3 rounded shadow text-center">
+                <p className="text-xs text-gray-600">Pending Deposits</p>
+                <p className="text-xl font-bold text-blue-600">KES {pendingDepositsAmount.toLocaleString()}</p>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Total Revenue</p>
-              <p className="text-2xl font-bold text-green-600">KES {totalRevenue.toLocaleString()}</p>
-              <p className="text-xs text-gray-500 mt-1">
-                Sales: {dailyRevenue.toLocaleString()} | Repairs: {todayRepairRevenue.toLocaleString()}
-              </p>
+      {/* 1. SALES OVERVIEW */}
+      <div className="bg-white p-5 rounded-lg shadow">
+        <h3 className="text-lg font-semibold mb-4">Sales Overview - {periodLabel(period)}</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+            <p className="text-xs text-green-700 font-medium">Total Sales</p>
+            <p className="text-2xl font-bold text-green-800">{currentSales.totalCount}</p>
+            <p className="text-sm font-semibold text-green-700">KES {currentSales.totalRevenue.toLocaleString()}</p>
+          </div>
+          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+            <p className="text-xs text-blue-700 font-medium">Accessory Sales</p>
+            <p className="text-2xl font-bold text-blue-800">{currentSales.accessoryCount}</p>
+            <p className="text-sm font-semibold text-blue-700">KES {currentSales.accessoryRevenue.toLocaleString()}</p>
+          </div>
+          <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+            <p className="text-xs text-orange-700 font-medium">Repair Sales</p>
+            <p className="text-2xl font-bold text-orange-800">{currentSales.repairCount}</p>
+            <p className="text-sm font-semibold text-orange-700">KES {currentSales.repairRevenue.toLocaleString()}</p>
+          </div>
+        </div>
+
+        {/* Day / Week / Month comparison */}
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="p-2 text-left">Period</th>
+                <th className="p-2 text-right">Total Sales</th>
+                <th className="p-2 text-right">Accessories</th>
+                <th className="p-2 text-right">Repairs</th>
+                <th className="p-2 text-right">Total Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(['today', 'week', 'month'] as Period[]).map(p => (
+                <tr key={p} className={`border-t ${p === period ? 'bg-blue-50 font-semibold' : ''}`}>
+                  <td className="p-2">{periodLabel(p)}</td>
+                  <td className="p-2 text-right">{salesData[p].totalCount}</td>
+                  <td className="p-2 text-right">{salesData[p].accessoryCount} (KES {salesData[p].accessoryRevenue.toLocaleString()})</td>
+                  <td className="p-2 text-right">{salesData[p].repairCount} (KES {salesData[p].repairRevenue.toLocaleString()})</td>
+                  <td className="p-2 text-right font-bold text-green-700">KES {salesData[p].totalRevenue.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 2. PHONE REPAIR vs ACCESSORIES */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white p-5 rounded-lg shadow">
+          <h3 className="text-lg font-semibold mb-3">Phone Repairs - {periodLabel(period)}</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center p-3 bg-orange-50 rounded">
+              <span className="text-sm text-gray-700">Repairs Completed</span>
+              <span className="text-xl font-bold text-orange-700">{currentCategory.repairSales}</span>
             </div>
-            <div className="bg-green-100 p-3 rounded-full">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+            <div className="flex justify-between items-center p-3 bg-orange-50 rounded">
+              <span className="text-sm text-gray-700">Repair Revenue</span>
+              <span className="text-lg font-bold text-orange-700">KES {currentCategory.repairRevenue.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-red-50 rounded">
+              <span className="text-sm text-gray-700">Parts Cost</span>
+              <span className="text-lg font-bold text-red-600">KES {currentCost.partsCost.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-green-50 rounded border-t-2 border-green-400">
+              <span className="text-sm font-semibold text-gray-700">Repair Profit</span>
+              <span className={`text-lg font-bold ${currentCategory.repairRevenue - currentCost.partsCost >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                KES {(currentCategory.repairRevenue - currentCost.partsCost).toLocaleString()}
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Outsourced Costs</p>
-              <p className="text-2xl font-bold text-orange-600">KES {todayOutsourcedCosts.toLocaleString()}</p>
+        <div className="bg-white p-5 rounded-lg shadow">
+          <h3 className="text-lg font-semibold mb-3">Accessories - {periodLabel(period)}</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
+              <span className="text-sm text-gray-700">Sales Made</span>
+              <span className="text-xl font-bold text-blue-700">{currentCategory.accessorySales}</span>
             </div>
-            <div className="bg-orange-100 p-3 rounded-full">
-              <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v2m7 4h-4" />
-              </svg>
+            <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
+              <span className="text-sm text-gray-700">Revenue</span>
+              <span className="text-lg font-bold text-blue-700">KES {currentCategory.accessoryRevenue.toLocaleString()}</span>
             </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Gross Profit</p>
-              <p className={`text-2xl font-bold ${grossProfit >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                KES {grossProfit.toLocaleString()}
-              </p>
-            </div>
-            <div className={`p-3 rounded-full ${grossProfit >= 0 ? 'bg-blue-100' : 'bg-red-100'}`}>
-              <svg className={`w-6 h-6 ${grossProfit >= 0 ? 'text-blue-600' : 'text-red-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Low Stock Items</p>
-              <p className="text-2xl font-bold text-red-600">{lowStockCount}</p>
-              {pendingDepositsAmount > 0 && (
-                <p className="text-xs text-orange-600 mt-1">
-                  Pending Deposits: {pendingDepositsAmount.toLocaleString()}
-                </p>
-              )}
-            </div>
-            <div className="bg-red-100 p-3 rounded-full">
-              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
+            {/* Comparison table */}
+            <div className="mt-2 text-xs">
+              <table className="w-full">
+                <thead className="bg-gray-50"><tr><th className="p-1 text-left">Period</th><th className="p-1 text-right">Sales</th><th className="p-1 text-right">Revenue</th></tr></thead>
+                <tbody>
+                  {(['today', 'week', 'month'] as Period[]).map(p => (
+                    <tr key={p} className={`border-t ${p === period ? 'bg-blue-50 font-semibold' : ''}`}>
+                      <td className="p-1">{periodLabel(p)}</td>
+                      <td className="p-1 text-right">{categoryData[p].accessorySales}</td>
+                      <td className="p-1 text-right">KES {categoryData[p].accessoryRevenue.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Revenue vs Costs Chart */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-semibold mb-4">Revenue vs Costs</h3>
-        <ResponsiveContainer width="100%" height={250} className="min-h-[250px]">
-          <BarChart data={[
-            { name: 'Revenue', value: totalRevenue, color: '#10b981' },
-            { name: 'Outsourced Costs', value: todayOutsourcedCosts, color: '#f59e0b' },
-            { name: 'Gross Profit', value: grossProfit, color: '#3b82f6' },
-          ]}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip formatter={(value: number | undefined) => value !== undefined ? `KES ${value.toLocaleString()}` : ''} />
-            <Legend />
-            <Bar dataKey="value" fill="#3b82f6" name="Amount (KES)" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Repairs vs Sales Chart */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-semibold mb-4">Repairs vs Sales Today</h3>
-        <ResponsiveContainer width="100%" height={250} className="min-h-[250px]">
-          <BarChart data={[
-            { name: 'Sales Revenue', value: dailyRevenue },
-            { name: 'Repair Revenue', value: todayRepairRevenue },
-          ]}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip formatter={(value: number | undefined) => value !== undefined ? `KES ${value.toLocaleString()}` : ''} />
-            <Legend />
-            <Bar dataKey="value" fill="#8b5cf6" name="Revenue (KES)" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Revenue Charts */}
-      <div className="bg-white p-4 md:p-6 rounded-lg shadow">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
-          <h3 className="text-lg font-semibold">Revenue Overview</h3>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => setRevenuePeriod('daily')}
-              className={`px-4 py-2 rounded ${revenuePeriod === 'daily' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-            >
-              Daily
-            </button>
-            <button
-              onClick={() => setRevenuePeriod('weekly')}
-              className={`px-4 py-2 rounded ${revenuePeriod === 'weekly' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-            >
-              Weekly
-            </button>
-            <button
-              onClick={() => setRevenuePeriod('monthly')}
-              className={`px-4 py-2 rounded ${revenuePeriod === 'monthly' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-            >
-              Monthly
-            </button>
-          </div>
+      {/* 3. COST OF PARTS */}
+      <div className="bg-white p-5 rounded-lg shadow">
+        <h3 className="text-lg font-semibold mb-4">Cost of Parts</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {(['today', 'week', 'month'] as Period[]).map(p => (
+            <div key={p} className={`rounded-lg p-4 border ${p === period ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200'}`}>
+              <p className="text-xs text-gray-600 font-medium">{periodLabel(p)}</p>
+              <p className="text-2xl font-bold text-red-700">KES {costData[p].partsCost.toLocaleString()}</p>
+              <p className="text-xs text-gray-500">{costData[p].partsCount} parts costed</p>
+            </div>
+          ))}
         </div>
-        <ResponsiveContainer width="100%" height={250} className="min-h-[250px]">
-          <LineChart data={revenueData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="period" />
-            <YAxis />
-            <Tooltip formatter={(value: number | undefined) => value !== undefined ? `KES ${value.toLocaleString()}` : ''} />
-            <Legend />
-            <Line
-              type="monotone"
-              dataKey="revenue"
-              stroke="#2563eb"
-              strokeWidth={3}
-              name="Revenue"
-            />
-          </LineChart>
-        </ResponsiveContainer>
       </div>
 
-      {/* Inventory Movement Chart */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-semibold mb-4">Inventory Movement - Top Selling Items</h3>
-        <ResponsiveContainer width="100%" height={250} className="min-h-[250px]">
-          <BarChart data={topSellingItems}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="available" fill="#10b981" name="Available Stock" />
-            <Bar dataKey="sold" fill="#3b82f6" name="Items Sold" />
-          </BarChart>
-        </ResponsiveContainer>
+      {/* 4. TOTAL PAID TO SUPPLIERS */}
+      <div className="bg-white p-5 rounded-lg shadow">
+        <h3 className="text-lg font-semibold mb-4">Supplier Payments</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          {(['today', 'week', 'month'] as Period[]).map(p => (
+            <div key={p} className={`rounded-lg p-4 border ${p === period ? 'bg-purple-50 border-purple-300' : 'bg-gray-50 border-gray-200'}`}>
+              <p className="text-xs text-gray-600 font-medium">{periodLabel(p)}</p>
+              <p className="text-2xl font-bold text-purple-700">KES {supplierData[p].totalPaid.toLocaleString()}</p>
+              <p className="text-xs text-gray-500">{supplierData[p].orderCount} purchase orders</p>
+            </div>
+          ))}
+        </div>
+        {currentSupplier.suppliers.length > 0 && (
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-2">Breakdown - {periodLabel(period)}:</p>
+            <div className="space-y-2">
+              {currentSupplier.suppliers.map(s => (
+                <div key={s.name} className="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
+                  <span className="font-medium">{s.name}</span>
+                  <div className="text-right">
+                    <span className="font-bold text-purple-700">KES {s.amount.toLocaleString()}</span>
+                    <span className="text-xs text-gray-500 ml-2">({s.orders} orders)</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Category Breakdown */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-semibold mb-4">Sales by Category</h3>
-        <ResponsiveContainer width="100%" height={250} className="min-h-[250px]">
-          <BarChart data={inventoryMovement}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="category" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="sold" fill="#8b5cf6" name="Items Sold" />
-          </BarChart>
-        </ResponsiveContainer>
+      {/* 5. REVENUE OVERVIEW */}
+      <div className="bg-white p-5 rounded-lg shadow">
+        <h3 className="text-lg font-semibold mb-4">Revenue Overview</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="p-3 text-left">Metric</th>
+                <th className="p-3 text-right">Today</th>
+                <th className="p-3 text-right">This Week</th>
+                <th className="p-3 text-right">This Month</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t">
+                <td className="p-3 font-medium">Total Revenue</td>
+                <td className="p-3 text-right font-bold text-green-700">KES {revenueOverview.today.totalRevenue.toLocaleString()}</td>
+                <td className="p-3 text-right font-bold text-green-700">KES {revenueOverview.week.totalRevenue.toLocaleString()}</td>
+                <td className="p-3 text-right font-bold text-green-700">KES {revenueOverview.month.totalRevenue.toLocaleString()}</td>
+              </tr>
+              <tr className="border-t bg-blue-50/50">
+                <td className="p-3 text-gray-600">Accessory Revenue</td>
+                <td className="p-3 text-right">KES {revenueOverview.today.accessoryRevenue.toLocaleString()}</td>
+                <td className="p-3 text-right">KES {revenueOverview.week.accessoryRevenue.toLocaleString()}</td>
+                <td className="p-3 text-right">KES {revenueOverview.month.accessoryRevenue.toLocaleString()}</td>
+              </tr>
+              <tr className="border-t bg-orange-50/50">
+                <td className="p-3 text-gray-600">Repair Revenue</td>
+                <td className="p-3 text-right">KES {revenueOverview.today.repairRevenue.toLocaleString()}</td>
+                <td className="p-3 text-right">KES {revenueOverview.week.repairRevenue.toLocaleString()}</td>
+                <td className="p-3 text-right">KES {revenueOverview.month.repairRevenue.toLocaleString()}</td>
+              </tr>
+              <tr className="border-t bg-red-50/50">
+                <td className="p-3 text-gray-600">Parts Cost</td>
+                <td className="p-3 text-right text-red-600">KES {revenueOverview.today.partsCost.toLocaleString()}</td>
+                <td className="p-3 text-right text-red-600">KES {revenueOverview.week.partsCost.toLocaleString()}</td>
+                <td className="p-3 text-right text-red-600">KES {revenueOverview.month.partsCost.toLocaleString()}</td>
+              </tr>
+              <tr className="border-t bg-purple-50/50">
+                <td className="p-3 text-gray-600">Supplier Payments</td>
+                <td className="p-3 text-right text-purple-600">KES {revenueOverview.today.supplierPaid.toLocaleString()}</td>
+                <td className="p-3 text-right text-purple-600">KES {revenueOverview.week.supplierPaid.toLocaleString()}</td>
+                <td className="p-3 text-right text-purple-600">KES {revenueOverview.month.supplierPaid.toLocaleString()}</td>
+              </tr>
+              <tr className="border-t-2 border-gray-300 bg-green-50">
+                <td className="p-3 font-bold">Profit (Revenue - Parts Cost)</td>
+                <td className={`p-3 text-right font-bold ${revenueOverview.today.profit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                  KES {revenueOverview.today.profit.toLocaleString()}
+                </td>
+                <td className={`p-3 text-right font-bold ${revenueOverview.week.profit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                  KES {revenueOverview.week.profit.toLocaleString()}
+                </td>
+                <td className={`p-3 text-right font-bold ${revenueOverview.month.profit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                  KES {revenueOverview.month.profit.toLocaleString()}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Low Stock Items Table */}
+      {/* LOW STOCK ITEMS */}
       <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="text-lg font-semibold mb-4">Low Stock Items</h3>
         {lowStockItems.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">No low stock items. All items are well stocked!</p>
+          <p className="text-gray-500 text-center py-4">All items are well stocked!</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-sm">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="p-3 text-left text-sm font-semibold text-gray-700">Item Name</th>
-                  <th className="p-3 text-left text-sm font-semibold text-gray-700">Category</th>
-                  <th className="p-3 text-right text-sm font-semibold text-gray-700">Current Stock</th>
-                  <th className="p-3 text-right text-sm font-semibold text-gray-700">Reorder Level</th>
-                  <th className="p-3 text-center text-sm font-semibold text-gray-700">Status</th>
+                  <th className="p-3 text-left">Item Name</th>
+                  <th className="p-3 text-left">Category</th>
+                  <th className="p-3 text-right">Current Stock</th>
+                  <th className="p-3 text-right">Reorder Level</th>
+                  <th className="p-3 text-center">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {lowStockItems.map((item) => (
+                {lowStockItems.map(item => (
                   <tr key={item.id} className="border-t hover:bg-gray-50">
-                    <td className="p-3 text-sm font-medium">{item.name}</td>
-                    <td className="p-3 text-sm text-gray-600">{item.category}</td>
-                    <td className="p-3 text-sm text-right">{item.stock}</td>
-                    <td className="p-3 text-sm text-right text-gray-600">{item.reorderLevel}</td>
+                    <td className="p-3 font-medium">{item.name}</td>
+                    <td className="p-3 text-gray-600">{item.category}</td>
+                    <td className="p-3 text-right">{item.stock}</td>
+                    <td className="p-3 text-right text-gray-600">{item.reorderLevel}</td>
                     <td className="p-3 text-center">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                        item.stock === 0 
-                          ? 'bg-red-100 text-red-800' 
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${item.stock === 0 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
                         {item.stock === 0 ? 'Out of Stock' : 'Low Stock'}
                       </span>
                     </td>
@@ -654,31 +486,31 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Most Sold Items Table */}
+      {/* MOST SOLD ITEMS */}
       <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="text-lg font-semibold mb-4">Most Sold Items</h3>
         {mostSoldItems.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">No sales data available yet.</p>
+          <p className="text-gray-500 text-center py-4">No sales data yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-sm">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="p-3 text-left text-sm font-semibold text-gray-700">Rank</th>
-                  <th className="p-3 text-left text-sm font-semibold text-gray-700">Item Name</th>
-                  <th className="p-3 text-left text-sm font-semibold text-gray-700">Category</th>
-                  <th className="p-3 text-right text-sm font-semibold text-gray-700">Quantity Sold</th>
-                  <th className="p-3 text-right text-sm font-semibold text-gray-700">Available Stock</th>
+                  <th className="p-3 text-left">Rank</th>
+                  <th className="p-3 text-left">Item</th>
+                  <th className="p-3 text-left">Category</th>
+                  <th className="p-3 text-right">Qty Sold</th>
+                  <th className="p-3 text-right">Stock Left</th>
                 </tr>
               </thead>
               <tbody>
-                {mostSoldItems.map((item, index) => (
+                {mostSoldItems.map((item, i) => (
                   <tr key={item.name} className="border-t hover:bg-gray-50">
-                    <td className="p-3 text-sm font-medium text-gray-600">#{index + 1}</td>
-                    <td className="p-3 text-sm font-medium">{item.name}</td>
-                    <td className="p-3 text-sm text-gray-600">{item.category}</td>
-                    <td className="p-3 text-sm text-right font-semibold text-blue-600">{item.sold}</td>
-                    <td className="p-3 text-sm text-right">{item.available}</td>
+                    <td className="p-3 font-medium text-gray-600">#{i + 1}</td>
+                    <td className="p-3 font-medium">{item.name}</td>
+                    <td className="p-3 text-gray-600">{item.category}</td>
+                    <td className="p-3 text-right font-semibold text-blue-600">{item.sold}</td>
+                    <td className="p-3 text-right">{item.available}</td>
                   </tr>
                 ))}
               </tbody>
@@ -687,52 +519,35 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Top-Selling Accessories and Spares */}
+      {/* TOP SELLING ACCESSORIES & SPARES */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Top-Selling Accessories */}
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-semibold mb-4">Top-Selling Accessories</h3>
-          {topAccessories.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No accessories sold yet.</p>
-          ) : (
+          {topAccessories.length === 0 ? <p className="text-gray-500 text-center py-4">No accessories sold yet.</p> : (
             <div className="space-y-3">
-              {topAccessories.map((item, index) => (
+              {topAccessories.map((item, i) => (
                 <div key={item.name} className="flex items-center justify-between p-3 bg-gray-50 rounded">
                   <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-gray-400">#{index + 1}</span>
-                    <div>
-                      <p className="font-medium text-sm">{item.name}</p>
-                      <p className="text-xs text-gray-500">Stock: {item.available}</p>
-                    </div>
+                    <span className="text-lg font-bold text-gray-400">#{i + 1}</span>
+                    <div><p className="font-medium text-sm">{item.name}</p><p className="text-xs text-gray-500">Stock: {item.available}</p></div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-blue-600">{item.sold} sold</p>
-                  </div>
+                  <p className="font-semibold text-blue-600">{item.sold} sold</p>
                 </div>
               ))}
             </div>
           )}
         </div>
-
-        {/* Top-Selling Spares */}
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-semibold mb-4">Top-Selling Spares</h3>
-          {topSpares.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No spares sold yet.</p>
-          ) : (
+          {topSpares.length === 0 ? <p className="text-gray-500 text-center py-4">No spares sold yet.</p> : (
             <div className="space-y-3">
-              {topSpares.map((item, index) => (
+              {topSpares.map((item, i) => (
                 <div key={item.name} className="flex items-center justify-between p-3 bg-gray-50 rounded">
                   <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-gray-400">#{index + 1}</span>
-                    <div>
-                      <p className="font-medium text-sm">{item.name}</p>
-                      <p className="text-xs text-gray-500">Stock: {item.available}</p>
-                    </div>
+                    <span className="text-lg font-bold text-gray-400">#{i + 1}</span>
+                    <div><p className="font-medium text-sm">{item.name}</p><p className="text-xs text-gray-500">Stock: {item.available}</p></div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-blue-600">{item.sold} sold</p>
-                  </div>
+                  <p className="font-semibold text-blue-600">{item.sold} sold</p>
                 </div>
               ))}
             </div>
@@ -740,46 +555,25 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Outsourced Items Trend */}
-      {outsourcedItemsTrend.length > 0 && (
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-4">Outsourced Items Trend (Last 7 Days)</h3>
-          <ResponsiveContainer width="100%" height={300} className="min-h-[300px]">
-            <BarChart data={outsourcedItemsTrend}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" angle={-45} textAnchor="end" height={80} />
-              <YAxis yAxisId="left" />
-              <YAxis yAxisId="right" orientation="right" />
-              <Tooltip />
-              <Legend />
-              <Bar yAxisId="left" dataKey="items" fill="#8b5cf6" name="Items Bought" />
-              <Bar yAxisId="right" dataKey="cost" fill="#f59e0b" name="Total Cost (KES)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Top Outsourced Items */}
+      {/* TOP OUTSOURCED ITEMS */}
       {topOutsourcedItems.length > 0 && (
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-semibold mb-4">Top Outsourced Items (All Time)</h3>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-sm">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="p-3 text-left text-sm font-semibold text-gray-700">Item Name</th>
-                  <th className="p-3 text-right text-sm font-semibold text-gray-700">Quantity</th>
-                  <th className="p-3 text-right text-sm font-semibold text-gray-700">Total Cost</th>
+                  <th className="p-3 text-left">Item</th>
+                  <th className="p-3 text-right">Quantity</th>
+                  <th className="p-3 text-right">Total Cost</th>
                 </tr>
               </thead>
               <tbody>
-                {topOutsourcedItems.map((item, index) => (
-                  <tr key={index} className="border-t hover:bg-gray-50">
-                    <td className="p-3 text-sm font-medium">{item.name}</td>
-                    <td className="p-3 text-sm text-right">{item.qty}</td>
-                    <td className="p-3 text-sm text-right font-semibold text-orange-600">
-                      KES {item.cost.toLocaleString()}
-                    </td>
+                {topOutsourcedItems.map((item, i) => (
+                  <tr key={i} className="border-t hover:bg-gray-50">
+                    <td className="p-3 font-medium">{item.name}</td>
+                    <td className="p-3 text-right">{item.qty}</td>
+                    <td className="p-3 text-right font-semibold text-orange-600">KES {item.cost.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -788,7 +582,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Automated Daily Report */}
       <AutomatedDailyReport />
     </div>
   );
