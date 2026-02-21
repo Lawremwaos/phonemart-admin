@@ -4,10 +4,12 @@ import { useInventory } from "../context/InventoryContext";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
 
+type Purchase = ReturnType<typeof useInventory>['purchases'][number];
+
 export default function SupplierManagement() {
   const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useSupplier();
-  const { purchases } = useInventory();
-  const { repairs } = useRepair();
+  const { purchases, deletePurchase } = useInventory();
+  const { repairs, deleteRepair } = useRepair();
   const { currentUser } = useShop();
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -362,10 +364,11 @@ export default function SupplierManagement() {
                                     <th className="p-2 text-right">Total Qty</th>
                                     <th className="p-2 text-right">Total Cost</th>
                                     <th className="p-2 text-center">Status</th>
+                                    {currentUser?.roles.includes('admin') && <th className="p-2 text-center">Actions</th>}
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {data.supplierPurchases.map(purchase => (
+                                  {data.supplierPurchases.map((purchase: Purchase) => (
                                     <tr key={purchase.id} className="border-t hover:bg-blue-50/50">
                                       <td className="p-2">{formatDate(purchase.date)}</td>
                                       <td className="p-2">
@@ -387,6 +390,21 @@ export default function SupplierManagement() {
                                           {purchase.confirmed ? 'Confirmed' : 'Pending'}
                                         </span>
                                       </td>
+                                      {currentUser?.roles.includes('admin') && (
+                                        <td className="p-2 text-center">
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              if (window.confirm(`Delete this purchase of KES ${purchase.total.toLocaleString()} from ${data.supplier.name}?`)) {
+                                                deletePurchase(purchase.id);
+                                              }
+                                            }}
+                                            className="text-red-600 hover:text-red-800 text-xs font-semibold hover:bg-red-50 px-2 py-1 rounded"
+                                          >
+                                            Delete
+                                          </button>
+                                        </td>
+                                      )}
                                     </tr>
                                   ))}
                                 </tbody>
@@ -395,6 +413,7 @@ export default function SupplierManagement() {
                                     <td className="p-2" colSpan={3}>Total Purchases</td>
                                     <td className="p-2 text-right text-blue-800">KES {data.totalPurchaseCost.toLocaleString()}</td>
                                     <td></td>
+                                    {currentUser?.roles.includes('admin') && <td></td>}
                                   </tr>
                                 </tfoot>
                               </table>
@@ -434,6 +453,7 @@ export default function SupplierManagement() {
                                     <th className="p-2 text-left">Outsourced Parts</th>
                                     <th className="p-2 text-right">Repair Revenue</th>
                                     <th className="p-2 text-center">Status</th>
+                                    {currentUser?.roles.includes('admin') && <th className="p-2 text-center">Actions</th>}
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -466,6 +486,21 @@ export default function SupplierManagement() {
                                           {record.status === 'COLLECTED' ? 'Collected' : record.status === 'FULLY_PAID' ? 'Fully Paid' : 'Pending'}
                                         </span>
                                       </td>
+                                      {currentUser?.roles.includes('admin') && (
+                                        <td className="p-2 text-center">
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              if (window.confirm(`Delete repair record for ${record.customerName} (${record.phoneModel})? This will permanently remove the repair sale.`)) {
+                                                deleteRepair(record.repairId);
+                                              }
+                                            }}
+                                            className="text-red-600 hover:text-red-800 text-xs font-semibold hover:bg-red-50 px-2 py-1 rounded"
+                                          >
+                                            Delete
+                                          </button>
+                                        </td>
+                                      )}
                                     </tr>
                                   ))}
                                 </tbody>
@@ -474,6 +509,7 @@ export default function SupplierManagement() {
                                     <td className="p-2" colSpan={4}>Total Repair Revenue</td>
                                     <td className="p-2 text-right text-green-800">KES {data.totalRepairRevenue.toLocaleString()}</td>
                                     <td></td>
+                                    {currentUser?.roles.includes('admin') && <td></td>}
                                   </tr>
                                 </tfoot>
                               </table>
