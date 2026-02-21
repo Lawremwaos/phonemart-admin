@@ -79,8 +79,23 @@ export const downloadReceiptAsImage = downloadReceiptAsPrint;
 
 export const shareViaWhatsApp = (text: string, phoneNumber?: string) => {
   const encodedText = encodeURIComponent(text);
-  // Remove + sign and any spaces from phone number for wa.me URL
-  const cleanPhone = phoneNumber ? phoneNumber.replace(/[\s+]/g, '') : undefined;
+  // Clean phone number for wa.me URL: remove +, spaces, dashes, and parentheses
+  // wa.me requires format: country code + number (e.g., 254715592682 for +254715592682)
+  let cleanPhone: string | undefined;
+  if (phoneNumber && phoneNumber.trim()) {
+    // Remove all non-digit characters
+    cleanPhone = phoneNumber.replace(/[^\d]/g, '');
+    // If number starts with 0, replace with country code 254 (Kenya)
+    if (cleanPhone.startsWith('0')) {
+      cleanPhone = '254' + cleanPhone.substring(1);
+    }
+    // If 9 digits (Kenyan local format), add 254
+    if (cleanPhone.length === 9) {
+      cleanPhone = '254' + cleanPhone;
+    }
+    // If 10 digits and starts with 254, it's valid
+    // If 12 digits (254 + 9), it's valid - use as is
+  }
   const whatsappUrl = cleanPhone 
     ? `https://wa.me/${cleanPhone}?text=${encodedText}`
     : `https://wa.me/?text=${encodedText}`;

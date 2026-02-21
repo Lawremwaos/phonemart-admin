@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useSales } from "../context/SalesContext";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
@@ -8,6 +9,7 @@ export default function TodaysSalesReport() {
   const { getTodaysSalesReport, getDailySales } = useSales();
   const { repairs } = useRepair();
   const { currentShop, currentUser } = useShop();
+  const [whatsAppNumber, setWhatsAppNumber] = useState("");
   const { getAllUnpaidDebts } = useSupplierDebt();
   const report = getTodaysSalesReport();
   const todaysSales = getDailySales();
@@ -102,7 +104,9 @@ export default function TodaysSalesReport() {
       });
     }
     
-    shareViaWhatsApp(text, "+254715592682");
+    // Use custom number if entered, else shop phone, else default
+    const targetPhone = whatsAppNumber.trim() || currentShop?.phone || "+254715592682";
+    shareViaWhatsApp(text, targetPhone);
   };
 
   const handleShareEmail = () => {
@@ -173,9 +177,19 @@ export default function TodaysSalesReport() {
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
         <h1 className="text-3xl font-bold">Today's Sales Report</h1>
-        <div className="flex gap-4">
+        <div className="flex gap-4 items-center flex-wrap">
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Send to (optional)</label>
+            <input
+              type="tel"
+              placeholder="+254712345678"
+              value={whatsAppNumber}
+              onChange={(e) => setWhatsAppNumber(e.target.value)}
+              className="border border-gray-300 rounded px-3 py-2 text-sm w-40"
+            />
+          </div>
           <button
             onClick={handleShareWhatsApp}
             className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"

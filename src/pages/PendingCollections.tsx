@@ -62,9 +62,9 @@ export default function PendingCollections() {
         filtered = filtered.filter(repair => repair.paymentStatus === 'fully_paid');
         break;
       default:
-        // Show all repairs where customer has left phone
-        // For staff: only show repairs ready for collection (payment approved)
-        // For admin: show all pending repairs (including those awaiting approval)
+        // "All" - show all relevant repairs (pending + collected)
+        // For staff: only show repairs ready for collection (payment approved, not yet collected)
+        // For admin: show all (pending collection, pending payment, awaiting approval, and collected)
         if (!currentUser?.roles.includes('admin')) {
           filtered = filtered.filter(repair =>
             (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0)) &&
@@ -73,8 +73,9 @@ export default function PendingCollections() {
             repair.status !== 'COLLECTED'
           );
         } else {
-          // Admin sees all repairs where customer left phone (including pending approval)
+          // Admin sees all: pending (coming back/deposit) OR already collected
           filtered = filtered.filter(repair =>
+            repair.status === 'COLLECTED' ||
             (repair.customerStatus === 'coming_back' || (repair.depositAmount && repair.depositAmount > 0))
           );
         }

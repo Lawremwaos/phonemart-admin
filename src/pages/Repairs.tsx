@@ -78,13 +78,13 @@ export default function Repairs() {
     setSelectedParts(prev => prev.filter((_, i) => i !== index));
   }
 
-  function handleAddRepair() {
+  async function handleAddRepair() {
     if (!form.customerName || !form.phoneNumber || !form.issue || !form.technician) {
       alert("Please fill in all required fields");
       return;
     }
 
-    addRepair({
+    const result = await addRepair({
       customerName: form.customerName,
       phoneNumber: form.phoneNumber,
       imei: form.imei,
@@ -100,6 +100,11 @@ export default function Repairs() {
       amountPaid: 0,
       balance: 0,
     });
+
+    if (!result) {
+      alert("Failed to add repair. Please try again.");
+      return;
+    }
 
     // Reset form
     setForm({

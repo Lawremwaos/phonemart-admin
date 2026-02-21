@@ -54,7 +54,7 @@ export type Repair = {
 
 type RepairContextType = {
   repairs: Repair[];
-  addRepair: (repair: Omit<Repair, 'id' | 'date' | 'totalCost'> & { amountPaid?: number; balance?: number }) => void;
+  addRepair: (repair: Omit<Repair, 'id' | 'date' | 'totalCost'> & { amountPaid?: number; balance?: number }) => Promise<string | null>;
   updateRepairStatus: (repairId: string, status: RepairStatus) => void;
   updateRepairPayment: (repairId: string, amountPaid: number) => void;
   confirmPayment: (repairId: string, transactionCodes: any, paymentMethod: string, splitPayments?: any[]) => void;
@@ -183,8 +183,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [loadRepairWithDetails]);
 
-  const addRepair = useCallback((repairData: Omit<Repair, 'id' | 'date' | 'totalCost'> & { amountPaid?: number; balance?: number }) => {
-    (async () => {
+  const addRepair = useCallback(async (repairData: Omit<Repair, 'id' | 'date' | 'totalCost'> & { amountPaid?: number; balance?: number }): Promise<string | null> => {
       const partsTotal = repairData.partsUsed.reduce((sum, part) => sum + (part.cost * part.qty), 0);
       const totalCost = partsTotal + repairData.outsourcedCost + repairData.laborCost;
       // Use agreed amount as the final total if available, otherwise use calculated total
@@ -226,7 +225,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         .single();
       if (repairError) {
         console.error("Error adding repair:", repairError);
-        return;
+        return null;
       }
 
       // Insert repair parts
@@ -243,7 +242,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
           .insert(partsPayload);
         if (partsError) {
           console.error("Error adding repair parts:", partsError);
-          return;
+          return null;
         }
       }
 
@@ -261,7 +260,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
           .insert(additionalPayload);
         if (additionalError) {
           console.error("Error adding additional repair items:", additionalError);
-          return;
+          return null;
         }
       }
 
@@ -273,7 +272,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         .single();
       if (fetchError) {
         console.error("Error fetching new repair:", fetchError);
-        return;
+        return null;
       }
 
       const { data: partsData } = await supabase
@@ -326,7 +325,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
             };
       
       setRepairs((prev) => [newRepair, ...prev]);
-    })();
+      return repairRecord.id;
   }, []);
 
   const updateRepairStatus = useCallback((repairId: string, status: RepairStatus) => {

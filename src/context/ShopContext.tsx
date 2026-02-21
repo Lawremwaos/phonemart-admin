@@ -127,10 +127,10 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
-  // Load shops and users from Supabase on mount
+  // Load shops and users from Supabase on mount, with real-time subscriptions
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const loadData = async () => {
       try {
         // Load shops
         const { data: shopsData, error: shopsError } = await supabase
@@ -244,13 +244,32 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         console.log("Loaded users from Supabase:", loadedUsers.length, loadedUsers.map(u => u.email));
       } catch (e) {
         console.error("Error loading shops/users from Supabase:", e);
-        // Fallback to empty arrays
         setShops([]);
         setUsers([]);
       }
-    })();
+    };
+
+    loadData();
+
+    // Real-time subscriptions for live updates
+    const shopsChannel = supabase
+      .channel('shops-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shops' }, () => {
+        if (!cancelled) loadData();
+      })
+      .subscribe();
+
+    const usersChannel = supabase
+      .channel('users-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+        if (!cancelled) loadData();
+      })
+      .subscribe();
+
     return () => {
       cancelled = true;
+      supabase.removeChannel(shopsChannel);
+      supabase.removeChannel(usersChannel);
     };
   }, []);
 

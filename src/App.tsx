@@ -153,7 +153,7 @@ function AppContent() {
           <Route
             path="/purchases"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+              <ProtectedRoute allowedRoles={['admin']}>
                 <Purchases />
               </ProtectedRoute>
             }

@@ -334,7 +334,7 @@ export default function RepairSales() {
     return true;
   }
 
-  function handleCompleteRepairSale() {
+  async function handleCompleteRepairSale() {
     if (!form.customerName || !form.customerPhone || !form.phoneModel || !form.issue || !form.totalAgreedAmount) {
       alert("Please fill in all required fields (Customer Name, Phone, Model, Issue, Total Agreed Amount)");
       return;
@@ -417,8 +417,11 @@ export default function RepairSales() {
       collected: false,
     };
 
-    const repairId = Date.now().toString();
-    addRepair(repair);
+    const repairId = await addRepair(repair);
+    if (!repairId) {
+      alert("Failed to save repair. Please try again.");
+      return;
+    }
 
     // Track supplier debts for outsourced parts (cost will be filled later on supplier page)
     selectedParts
@@ -521,10 +524,10 @@ export default function RepairSales() {
     // Only navigate to receipt if deposit is made
     // Otherwise, just show success message and navigate to pending collections
     if (depositAmount > 0) {
-      // Deposit made - generate receipt
+      // Update receipt data with actual repair ID
+      receiptData.id = repairId;
       navigate('/receipt', { state: { sale: receiptData } });
     } else {
-      // No deposit - just assign ticket and go to pending collections
       alert(`Repair sale completed! Ticket Number: ${ticketNumber}\n\nRepair will be sent to admin for payment approval.`);
       navigate('/pending-collections');
     }
