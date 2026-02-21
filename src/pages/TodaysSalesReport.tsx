@@ -29,7 +29,7 @@ export default function TodaysSalesReport() {
     ? todayRepairs
     : todayRepairs.filter(r => r.shopId === currentShop?.id);
 
-  // Helper: find supplier for an item
+  // Helper: find supplier for an item (returns supplier name or "Own Inventory")
   const getSupplierForItem = (itemName: string): string => {
     const inv = inventoryItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
     if (inv?.supplier) return inv.supplier;
@@ -38,7 +38,7 @@ export default function TodaysSalesReport() {
         return p.supplier;
       }
     }
-    return 'Unknown';
+    return 'Own Inventory';
   };
 
   // Helper: find cost price for an inventory item
@@ -183,36 +183,12 @@ export default function TodaysSalesReport() {
     // Summary
     text += `${b('SUMMARY')}\n`;
     text += `Accessory Sales: ${todaysSales.length}\n`;
-    text += `Repair Sales: ${filteredRepairs.length}\n\n`;
-    text += `Revenue (Accessories): KES ${totals.accessoryRevenue.toLocaleString()}\n`;
-    text += `Revenue (Repairs): KES ${totals.repairRevenue.toLocaleString()}\n`;
-    text += `${b('Total Revenue: KES ' + totals.totalRevenue.toLocaleString())}\n\n`;
-    text += `Cost (Accessories): KES ${totals.accessoryCosts.toLocaleString()}\n`;
-    text += `Cost (Repairs/Parts): KES ${totals.repairCosts.toLocaleString()}\n`;
-    text += `${b('Total Costs: KES ' + totals.totalCosts.toLocaleString())}\n\n`;
-    text += `${b('TOTAL PROFIT: KES ' + totals.totalProfit.toLocaleString())}\n`;
+    text += `Repair Sales: ${filteredRepairs.length}\n`;
+    text += `Total Revenue: KES ${totals.totalRevenue.toLocaleString()}\n`;
+    text += `Total Costs: KES ${totals.totalCosts.toLocaleString()}\n`;
+    text += `${b('Total Profit: KES ' + totals.totalProfit.toLocaleString())}\n`;
+    text += `Deposited: KES ${report.totalDeposited.toLocaleString()}\n`;
     text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-    // Supplier Costs
-    if (supplierSummary.length > 0) {
-      text += `${b('SUPPLIER COSTS')}\n`;
-      supplierSummary.forEach(s => {
-        text += `${s.name}: KES ${s.partsCost.toLocaleString()}\n`;
-        text += `  Items: ${s.items.join(', ')}\n`;
-      });
-      text += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-    }
-
-    // Transaction References
-    if (report.transactionReferences.length > 0) {
-      text += `${b('TRANSACTION REFERENCES')}\n`;
-      report.transactionReferences.forEach((ref, idx) => {
-        text += `${idx + 1}. ${ref.method.toUpperCase()}: ${ref.reference}\n`;
-        text += `   Amount: KES ${ref.amount.toLocaleString()}\n`;
-        if (ref.bank) text += `   Bank: ${ref.bank}\n`;
-      });
-      text += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-    }
 
     // Detailed Repair Sales
     if (repairAnalysis.length > 0) {
@@ -220,20 +196,19 @@ export default function TodaysSalesReport() {
       text += `━━━━━━━━━━━━━━━━━━━━\n`;
       repairAnalysis.forEach((ra, idx) => {
         const r = ra.repair;
-        text += `\n${idx + 1}. ${r.customerName} - ${r.phoneModel}\n`;
-        if (r.ticketNumber) text += `   Ticket: ${r.ticketNumber}\n`;
-        text += `   Issue: ${r.issue}\n`;
-        text += `   Revenue: KES ${ra.revenue.toLocaleString()}\n`;
+        text += `\n${idx + 1}.${r.customerName}-${r.phoneModel}\n`;
+        if (r.ticketNumber) text += `Ticket:${r.ticketNumber}\n`;
+        text += `Issue: ${r.issue}\n`;
+        text += `Revenue:KES ${ra.revenue.toLocaleString()}\n`;
         if (ra.allParts.length > 0) {
-          text += `   Parts Used:\n`;
+          text += `Parts used:\n`;
           ra.allParts.forEach(p => {
-            text += `   - ${p.itemName} x${p.qty}`;
-            if (p.totalCost > 0) text += ` (Cost: KES ${p.totalCost.toLocaleString()})`;
-            text += ` [${p.supplier}]\n`;
+            const costStr = p.totalCost > 0 ? `Cost KES ${p.totalCost.toLocaleString()}` : 'Cost pending';
+            text += `-${p.itemName} x${p.qty} (${costStr})(${p.supplier})\n`;
           });
         }
-        text += `   Total Cost: KES ${ra.totalCost.toLocaleString()}\n`;
-        text += `   ${b('Profit: KES ' + ra.profit.toLocaleString())}\n`;
+        text += `Total cost: KES ${ra.totalCost.toLocaleString()}\n`;
+        text += `${b('Profit:KES ' + ra.profit.toLocaleString())}\n`;
       });
       text += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
     }
@@ -243,21 +218,40 @@ export default function TodaysSalesReport() {
       text += `${b('ACCESSORY SALES')}\n`;
       text += `━━━━━━━━━━━━━━━━━━━━\n`;
       accessoryAnalysis.forEach((aa, idx) => {
-        text += `\n${idx + 1}. ${aa.sale.saleType === 'wholesale' ? 'Wholesale' : 'Retail'} Sale\n`;
+        text += `\n${idx + 1}.${aa.sale.saleType === 'wholesale' ? 'Wholesale' : 'Retail'} Sale\n`;
         aa.itemsBreakdown.forEach(item => {
-          text += `   - ${item.itemName} x${item.qty}\n`;
-          text += `     Sold: KES ${item.sellingPrice.toLocaleString()} | Cost: KES ${item.costPrice.toLocaleString()} [${item.supplier}]\n`;
+          text += `-${item.itemName} x${item.qty} (Cost KES ${item.costPrice.toLocaleString()})(${item.supplier})\n`;
         });
-        text += `   Revenue: KES ${aa.revenue.toLocaleString()} | Cost: KES ${aa.totalCost.toLocaleString()}\n`;
-        text += `   ${b('Profit: KES ' + aa.profit.toLocaleString())}\n`;
-        if (aa.sale.paymentType) text += `   Payment: ${aa.sale.paymentType}\n`;
-        if (aa.sale.depositReference) text += `   Ref: ${aa.sale.depositReference}\n`;
+        text += `Revenue:KES ${aa.revenue.toLocaleString()}\n`;
+        text += `Total cost:KES ${aa.totalCost.toLocaleString()}\n`;
+        text += `${b('Profit:KES ' + aa.profit.toLocaleString())}\n`;
+        if (aa.sale.paymentType) text += `Payment: ${aa.sale.paymentType}\n`;
+        if (aa.sale.depositReference) text += `Ref: ${aa.sale.depositReference}\n`;
       });
-      text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
+      text += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
     }
 
-    text += `\nDeposited: KES ${report.totalDeposited.toLocaleString()}\n`;
-    text += `\n${b('End of Report')}`;
+    // Supplier Costs Summary
+    if (supplierSummary.length > 0) {
+      text += `${b('SUPPLIER COSTS')}\n`;
+      supplierSummary.forEach(s => {
+        text += `${s.name}: KES ${s.partsCost.toLocaleString()}\n`;
+      });
+      text += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+    }
+
+    // Transaction References
+    if (report.transactionReferences.length > 0) {
+      text += `${b('TRANSACTIONS')}\n`;
+      report.transactionReferences.forEach((ref, idx) => {
+        text += `${idx + 1}. ${ref.method.toUpperCase()}: ${ref.reference} - KES ${ref.amount.toLocaleString()}`;
+        if (ref.bank) text += ` (${ref.bank})`;
+        text += `\n`;
+      });
+      text += `\n`;
+    }
+
+    text += `${b('End of Report')}`;
     return text;
   };
 

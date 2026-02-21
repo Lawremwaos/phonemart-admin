@@ -26,9 +26,6 @@ export default function AutomatedDailyReport() {
 
   const todayRepairs = useMemo(() => repairs.filter(r => isToday(r.date)), [repairs]);
 
-  const repairsCompleted = todayRepairs.filter(r =>
-    r.status === 'REPAIR_COMPLETED' || r.status === 'FULLY_PAID' || r.status === 'COLLECTED'
-  ).length;
   const todayRepairRevenue = todayRepairs.reduce((sum, r) => sum + (r.totalAgreedAmount || r.totalCost), 0);
 
   // Calculate actual parts cost from persisted repair data
@@ -54,30 +51,7 @@ export default function AutomatedDailyReport() {
 
   const totalCosts = todayPartsCost + todayAccessoryCost;
 
-  // Supplier costs breakdown from today's repairs
-  const supplierCostsBreakdown = useMemo(() => {
-    const map: Record<string, { name: string; items: Array<{ item: string; qty: number; cost: number }>; total: number }> = {};
-
-    const getSupplier = (itemName: string): string => {
-      const inv = inventoryItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
-      if (inv?.supplier) return inv.supplier;
-      for (const p of purchases) {
-        if (p.items.some(pi => pi.itemName.toLowerCase() === itemName.toLowerCase())) return p.supplier;
-      }
-      return 'Unknown';
-    };
-
-    todayRepairs.forEach(r => {
-      r.partsUsed.filter(p => p.cost > 0).forEach(part => {
-        const supplier = getSupplier(part.itemName);
-        if (!map[supplier]) map[supplier] = { name: supplier, items: [], total: 0 };
-        map[supplier].items.push({ item: part.itemName, qty: part.qty, cost: part.cost * part.qty });
-        map[supplier].total += part.cost * part.qty;
-      });
-    });
-
-    return map;
-  }, [todayRepairs, inventoryItems, purchases]);
+  
 
   const cashCollected = getTotalCashCollected();
   const mpesaCollected = getTotalMpesaCollected();
@@ -85,56 +59,74 @@ export default function AutomatedDailyReport() {
   const pendingDeposits = getPendingCashDeposits();
   const pendingDepositsAmount = pendingDeposits.reduce((sum, p) => sum + p.amount, 0);
 
+  const getSupplierForItem = (itemName: string): string => {
+    const inv = inventoryItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
+    if (inv?.supplier) return inv.supplier;
+    for (const p of purchases) {
+      if (p.items.some(pi => pi.itemName.toLowerCase() === itemName.toLowerCase())) return p.supplier;
+    }
+    return 'Own Inventory';
+  };
+
   const generateDailyReport = () => {
     const todayStr = new Date().toLocaleDateString('en-US', {
       year: 'numeric', month: 'long', day: 'numeric',
     });
+
+    const totalRevenue = dailyRevenue + todayRepairRevenue;
+    const grossProfit = totalRevenue - totalCosts;
 
     let report = `*PHONEMART DAILY REPORT*\n`;
     report += `*${currentShop?.name || 'PHONEMART'}*\n`;
     report += `Date: ${todayStr}\n`;
     report += `━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-    report += `*SALES TODAY*\n`;
-    report += `Accessory Revenue: KES ${dailyRevenue.toLocaleString()}\n`;
-    report += `Accessory Cost: KES ${todayAccessoryCost.toLocaleString()}\n`;
-    report += `Transactions: ${dailySales.length}\n\n`;
+    report += `*SUMMARY*\n`;
+    report += `Accessory Sales: ${dailySales.length}\n`;
+    report += `Repair Sales: ${todayRepairs.length}\n`;
+    report += `Total Revenue: KES ${totalRevenue.toLocaleString()}\n`;
+    report += `Total Costs: KES ${totalCosts.toLocaleString()}\n`;
+    report += `*Total Profit: KES ${grossProfit.toLocaleString()}*\n`;
+    report += `━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-    report += `*PAYMENT BREAKDOWN*\n`;
+    // Detailed Repairs
+    if (todayRepairs.length > 0) {
+      report += `*REPAIR SALES*\n`;
+      report += `━━━━━━━━━━━━━━━━━━━━\n`;
+      todayRepairs.forEach((r, idx) => {
+        const revenue = r.totalAgreedAmount || r.totalCost;
+        const partsCost = r.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
+        const profit = revenue - partsCost;
+
+        report += `\n${idx + 1}.${r.customerName}-${r.phoneModel}\n`;
+        if (r.ticketNumber) report += `Ticket:${r.ticketNumber}\n`;
+        report += `Issue: ${r.issue}\n`;
+        report += `Revenue:KES ${revenue.toLocaleString()}\n`;
+        if (r.partsUsed.length > 0) {
+          report += `Parts used:\n`;
+          r.partsUsed.forEach(p => {
+            const costStr = p.cost > 0 ? `Cost KES ${(p.cost * p.qty).toLocaleString()}` : 'Cost pending';
+            const supplier = getSupplierForItem(p.itemName);
+            report += `-${p.itemName} x${p.qty} (${costStr})(${supplier})\n`;
+          });
+        }
+        report += `Total cost: KES ${partsCost.toLocaleString()}\n`;
+        report += `*Profit:KES ${profit.toLocaleString()}*\n`;
+      });
+      report += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+    }
+
+    // Payment breakdown
+    report += `*PAYMENTS*\n`;
     report += `Cash: KES ${cashCollected.toLocaleString()}\n`;
     report += `MPESA: KES ${mpesaCollected.toLocaleString()}\n`;
     report += `Bank: KES ${bankDeposits.toLocaleString()}\n`;
     if (pendingDepositsAmount > 0) {
-      report += `Pending Deposits: KES ${pendingDepositsAmount.toLocaleString()}\n`;
+      report += `Pending: KES ${pendingDepositsAmount.toLocaleString()}\n`;
     }
     report += `\n`;
 
-    report += `*REPAIRS TODAY*\n`;
-    report += `Repairs Completed: ${repairsCompleted}\n`;
-    report += `Repair Revenue: KES ${todayRepairRevenue.toLocaleString()}\n`;
-    report += `Parts/Outsourcing Cost: KES ${todayPartsCost.toLocaleString()}\n\n`;
-
-    if (Object.keys(supplierCostsBreakdown).length > 0) {
-      report += `*SUPPLIER COSTS*\n`;
-      Object.values(supplierCostsBreakdown).forEach(supplier => {
-        report += `${supplier.name}:\n`;
-        supplier.items.forEach(item => {
-          report += `  - ${item.item} (x${item.qty}): KES ${item.cost.toLocaleString()}\n`;
-        });
-        report += `  Total: KES ${supplier.total.toLocaleString()}\n`;
-      });
-      report += `\n`;
-    }
-
-    const totalRevenue = dailyRevenue + todayRepairRevenue;
-    const grossProfit = totalRevenue - totalCosts;
-    report += `*SUMMARY*\n`;
-    report += `Total Revenue: KES ${totalRevenue.toLocaleString()}\n`;
-    report += `Total Costs: KES ${totalCosts.toLocaleString()}\n`;
-    report += `*Gross Profit: KES ${grossProfit.toLocaleString()}*\n\n`;
-
-    report += `━━━━━━━━━━━━━━━━━━━━\n`;
-    report += `Generated: ${new Date().toLocaleString()}`;
+    report += `*End of Report*`;
 
     return report;
   };
