@@ -332,21 +332,24 @@ export default function StockAllocation() {
       <h2 className="text-2xl font-bold">My Stock & Requests</h2>
 
       {/* Record Allocation from Purchase */}
-      <div className="bg-white p-6 rounded shadow">
-        <h3 className="text-lg font-semibold mb-4">Record My Allocation</h3>
+      <div className="bg-white p-6 rounded shadow border-2 border-green-200">
+        <h3 className="text-lg font-semibold mb-2 text-green-800">Record My Allocation</h3>
         <p className="text-sm text-gray-600 mb-4">
           When admin purchases stock, record what was allocated to you.
         </p>
 
         {purchasesNeedingAllocation.length === 0 ? (
           <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
-            <p className="text-yellow-800">No confirmed purchases available for allocation.</p>
+            <p className="text-yellow-800 font-semibold">No confirmed purchases available for allocation.</p>
+            <p className="text-sm text-yellow-700 mt-2">
+              Admin needs to confirm purchases first. Once confirmed, you'll be able to record your allocations here.
+            </p>
           </div>
         ) : (
-          <>
-            <div className="mb-4">
+          <div className="space-y-4">
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Purchase *
+                Step 1: Select Purchase *
               </label>
               <select
                 value={selectedPurchaseId}
@@ -355,9 +358,9 @@ export default function StockAllocation() {
                   setSelectedItemId("");
                   setAllocationQty(0);
                 }}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-green-500 focus:ring-2 focus:ring-green-200"
               >
-                <option value="">Select a purchase</option>
+                <option value="">-- Select a purchase --</option>
                 {purchasesNeedingAllocation.map((purchase) => (
                   <option key={purchase.id} value={purchase.id}>
                     {new Date(purchase.date).toLocaleDateString()} - {purchase.supplier} - {purchase.items.length} items
@@ -368,9 +371,9 @@ export default function StockAllocation() {
 
             {selectedPurchaseId && (
               <>
-                <div className="mb-4">
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Item *
+                    Step 2: Select Item *
                   </label>
                   <select
                     value={selectedItemId}
@@ -378,9 +381,9 @@ export default function StockAllocation() {
                       setSelectedItemId(Number(e.target.value));
                       setAllocationQty(0);
                     }}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                    className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-green-500 focus:ring-2 focus:ring-green-200"
                   >
-                    <option value="">Select item</option>
+                    <option value="">-- Select item --</option>
                     {availableItemsFromPurchase.map((item) => (
                       <option key={item.itemId} value={item.itemId}>
                         {item.itemName} (Available: {item.available})
@@ -390,37 +393,48 @@ export default function StockAllocation() {
                 </div>
 
                 {selectedItemId && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Quantity Allocated to Me *
-                    </label>
-                    <input
-                      type="number"
-                      value={allocationQty || ""}
-                      onChange={(e) => setAllocationQty(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2"
-                      min="1"
-                      max={
-                        availableItemsFromPurchase.find(i => i.itemId === selectedItemId)?.available || 0
-                      }
-                      placeholder="Enter quantity"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Available: {availableItemsFromPurchase.find(i => i.itemId === selectedItemId)?.available || 0}
-                    </p>
-                  </div>
-                )}
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Step 3: Enter Quantity Allocated to Me *
+                      </label>
+                      <input
+                        type="number"
+                        value={allocationQty || ""}
+                        onChange={(e) => setAllocationQty(Number(e.target.value))}
+                        className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-green-500 focus:ring-2 focus:ring-green-200"
+                        min="1"
+                        max={
+                          availableItemsFromPurchase.find(i => i.itemId === selectedItemId)?.available || 0
+                        }
+                        placeholder="Enter quantity"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Available: <span className="font-semibold">{availableItemsFromPurchase.find(i => i.itemId === selectedItemId)?.available || 0}</span>
+                      </p>
+                    </div>
 
-                <button
-                  onClick={handleRecordAllocation}
-                  className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
-                  disabled={!selectedPurchaseId || !selectedItemId || allocationQty <= 0}
-                >
-                  Record My Allocation
-                </button>
+                    <button
+                      onClick={handleRecordAllocation}
+                      className={`w-full px-4 py-3 rounded font-semibold text-lg transition-colors ${
+                        !selectedPurchaseId || !selectedItemId || allocationQty <= 0
+                          ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                          : 'bg-green-600 text-white hover:bg-green-700 shadow-lg'
+                      }`}
+                      disabled={!selectedPurchaseId || !selectedItemId || allocationQty <= 0}
+                    >
+                      ✓ Record My Allocation
+                    </button>
+                    {(!selectedPurchaseId || !selectedItemId || allocationQty <= 0) && (
+                      <p className="text-xs text-gray-500 text-center">
+                        Please complete all steps above to enable the button
+                      </p>
+                    )}
+                  </>
+                )}
               </>
             )}
-          </>
+          </div>
         )}
       </div>
 
