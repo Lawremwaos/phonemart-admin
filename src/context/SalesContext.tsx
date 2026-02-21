@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 export type Sale = {
@@ -53,6 +53,8 @@ const SalesContext = createContext<SalesContextType | null>(null);
 export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
   const [sales, setSales] = useState<Sale[]>([]);
   const [openWholesaleSale, setOpenWholesaleSale] = useState<Sale | null>(null);
+  const lastLocalUpdateRef = useRef<number>(0);
+  const DEBOUNCE_MS = 3000;
 
   // Helper function to load sale with items
   const loadSaleWithItems = useCallback(async (saleData: any): Promise<Sale> => {
@@ -77,85 +79,82 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
-  // Load sales from Supabase on mount and set up real-time subscription
+  const loadAllSales = useCallback(async () => {
+    const { data: salesData, error: salesError } = await supabase
+      .from("sales")
+      .select("*")
+      .order("date", { ascending: false });
+    if (salesError) throw salesError;
+    return Promise.all((salesData || []).map(s => loadSaleWithItems(s)));
+  }, [loadSaleWithItems]);
+
+  const processSalesData = useCallback((salesWithItems: Sale[]) => {
+    setSales(salesWithItems.filter((s) => s.status === 'closed'));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const openSale = salesWithItems.find((s) => {
+      if (s.status !== 'open' || s.saleType !== 'wholesale') return false;
+      const saleDate = new Date(s.date);
+      saleDate.setHours(0, 0, 0, 0);
+      return saleDate.getTime() === today.getTime();
+    });
+    setOpenWholesaleSale(openSale || null);
+  }, []);
+
+  // Load sales from Supabase on mount and set up real-time subscription + polling
   useEffect(() => {
     let cancelled = false;
     
-    // Initial load
     (async () => {
       try {
-        const { data: salesData, error: salesError } = await supabase
-          .from("sales")
-          .select("*")
-          .order("date", { ascending: false });
-        if (salesError) throw salesError;
-        if (cancelled) return;
-
-        const salesWithItems: Sale[] = await Promise.all(
-          (salesData || []).map(s => loadSaleWithItems(s))
-        );
-        setSales(salesWithItems.filter((s) => s.status === 'closed'));
-
-        // Find open wholesale sale from today
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const openSale = salesWithItems.find((s) => {
-          if (s.status !== 'open' || s.saleType !== 'wholesale') return false;
-          const saleDate = new Date(s.date);
-          saleDate.setHours(0, 0, 0, 0);
-          return saleDate.getTime() === today.getTime();
-        });
-        setOpenWholesaleSale(openSale || null);
+        const loaded = await loadAllSales();
+        if (!cancelled) processSalesData(loaded);
       } catch (e) {
         console.error("Error loading sales from Supabase:", e);
-        setSales([]);
-        setOpenWholesaleSale(null);
+        if (!cancelled) { setSales([]); setOpenWholesaleSale(null); }
       }
     })();
 
-    // Set up real-time subscription
     const channel = supabase
       .channel('sales-changes')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'sales' },
         async () => {
           if (cancelled) return;
+          const timeSinceLocalUpdate = Date.now() - lastLocalUpdateRef.current;
+          if (timeSinceLocalUpdate < DEBOUNCE_MS) return;
           
           try {
-            const { data: salesData } = await supabase
-              .from("sales")
-              .select("*")
-              .order("date", { ascending: false });
-            
-            if (salesData) {
-              const salesWithItems: Sale[] = await Promise.all(
-                salesData.map(s => loadSaleWithItems(s))
-              );
-              setSales(salesWithItems.filter((s) => s.status === 'closed'));
-
-              // Update open wholesale sale
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
-              const openSale = salesWithItems.find((s) => {
-                if (s.status !== 'open' || s.saleType !== 'wholesale') return false;
-                const saleDate = new Date(s.date);
-                saleDate.setHours(0, 0, 0, 0);
-                return saleDate.getTime() === today.getTime();
-              });
-              setOpenWholesaleSale(openSale || null);
-            }
+            const loaded = await loadAllSales();
+            if (!cancelled) processSalesData(loaded);
           } catch (e) {
             console.error("Error reloading sales:", e);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Sales real-time subscription status:", status);
+      });
+
+    const pollInterval = setInterval(async () => {
+      if (cancelled) return;
+      const timeSinceLocalUpdate = Date.now() - lastLocalUpdateRef.current;
+      if (timeSinceLocalUpdate < DEBOUNCE_MS) return;
+      
+      try {
+        const loaded = await loadAllSales();
+        if (!cancelled) processSalesData(loaded);
+      } catch (e) {
+        console.error("Error polling sales:", e);
+      }
+    }, 15000);
 
     return () => {
       cancelled = true;
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
-  }, [loadSaleWithItems]);
+  }, [loadAllSales, processSalesData]);
 
   const addSale = useCallback((items: Array<{ name: string; qty: number; price: number }>, total: number, shopId?: string, saleType: 'in-shop' | 'wholesale' | 'retail' = 'in-shop') => {
     (async () => {
@@ -204,6 +203,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         closedAt: saleRecord.closed_at ? new Date(saleRecord.closed_at) : undefined,
       };
       
+      lastLocalUpdateRef.current = Date.now();
       if (saleType === 'wholesale') {
         setOpenWholesaleSale(newSale);
       } else {
@@ -246,6 +246,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
           return;
         }
 
+        lastLocalUpdateRef.current = Date.now();
         setOpenWholesaleSale({
           ...openWholesaleSale,
           items: updatedItems,
@@ -283,6 +284,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         bank,
       };
       
+      lastLocalUpdateRef.current = Date.now();
       setSales((prev) => [closedSale, ...prev]);
       setOpenWholesaleSale(null);
     })();
@@ -495,6 +497,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
       
+      lastLocalUpdateRef.current = Date.now();
       setSales((prev) => prev.filter((sale) => sale.id !== saleId));
     })();
   }, []);

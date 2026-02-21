@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useShop } from "./ShopContext";
 
@@ -96,84 +96,88 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [stockAllocations, setStockAllocations] = useState<StockAllocation[]>([]);
   const { currentUser } = useShop();
+  const lastLocalUpdateRef = useRef<number>(0);
+  const DEBOUNCE_MS = 3000;
 
-  // Load items from Supabase on mount and set up real-time subscription
+  const mapInventoryItems = useCallback((data: any[]): InventoryItem[] => {
+    return data.map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      category: item.category as 'Phone' | 'Spare' | 'Accessory',
+      itemType: item.item_type || undefined,
+      stock: item.stock || 0,
+      price: Number(item.price) || 0,
+      reorderLevel: item.reorder_level || 0,
+      initialStock: item.initial_stock || item.stock || 0,
+      shopId: item.shop_id || undefined,
+      supplier: item.supplier || undefined,
+      costPrice: item.cost_price ? Number(item.cost_price) : undefined,
+      adminCostPrice: item.admin_cost_price ? Number(item.admin_cost_price) : undefined,
+      pendingAllocation: item.pending_allocation || false,
+    }));
+  }, []);
+
+  const loadAllItems = useCallback(async (): Promise<InventoryItem[]> => {
+    const { data, error } = await supabase
+      .from("inventory_items")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return mapInventoryItems(data || []);
+  }, [mapInventoryItems]);
+
+  // Load items from Supabase on mount and set up real-time subscription + polling
   useEffect(() => {
     let cancelled = false;
     
-    // Initial load
     (async () => {
       try {
-        const { data, error } = await supabase
-          .from("inventory_items")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-        if (cancelled) return;
-        const mapped: InventoryItem[] = (data || []).map((item: any) => ({
-          id: item.id,
-          name: item.name,
-          category: item.category as 'Phone' | 'Spare' | 'Accessory',
-          itemType: item.item_type || undefined,
-          stock: item.stock || 0,
-          price: Number(item.price) || 0,
-          reorderLevel: item.reorder_level || 0,
-          initialStock: item.initial_stock || item.stock || 0,
-          shopId: item.shop_id || undefined,
-          supplier: item.supplier || undefined,
-          costPrice: item.cost_price ? Number(item.cost_price) : undefined,
-          adminCostPrice: item.admin_cost_price ? Number(item.admin_cost_price) : undefined,
-          pendingAllocation: item.pending_allocation || false,
-        }));
-        setItems(mapped);
+        const loaded = await loadAllItems();
+        if (!cancelled) setItems(loaded);
       } catch (e) {
         console.error("Error loading inventory from Supabase:", e);
-        setItems([]);
+        if (!cancelled) setItems([]);
       }
     })();
 
-    // Set up real-time subscription
     const channel = supabase
       .channel('inventory-changes')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'inventory_items' },
         async () => {
           if (cancelled) return;
+          const timeSinceLocalUpdate = Date.now() - lastLocalUpdateRef.current;
+          if (timeSinceLocalUpdate < DEBOUNCE_MS) return;
           try {
-            const { data, error } = await supabase
-              .from("inventory_items")
-              .select("*")
-              .order("created_at", { ascending: false });
-            if (!error && data) {
-              const mapped: InventoryItem[] = data.map((item: any) => ({
-                id: item.id,
-                name: item.name,
-                category: item.category as 'Phone' | 'Spare' | 'Accessory',
-                itemType: item.item_type || undefined,
-                stock: item.stock || 0,
-                price: Number(item.price) || 0,
-                reorderLevel: item.reorder_level || 0,
-                initialStock: item.initial_stock || item.stock || 0,
-                shopId: item.shop_id || undefined,
-                supplier: item.supplier || undefined,
-                costPrice: item.cost_price ? Number(item.cost_price) : undefined,
-                adminCostPrice: item.admin_cost_price ? Number(item.admin_cost_price) : undefined,
-                pendingAllocation: item.pending_allocation || false,
-              }));
-              setItems(mapped);
-            }
+            const loaded = await loadAllItems();
+            if (!cancelled) setItems(loaded);
           } catch (e) {
             console.error("Error reloading inventory:", e);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Inventory real-time subscription status:", status);
+      });
+
+    const pollInterval = setInterval(async () => {
+      if (cancelled) return;
+      const timeSinceLocalUpdate = Date.now() - lastLocalUpdateRef.current;
+      if (timeSinceLocalUpdate < DEBOUNCE_MS) return;
+      try {
+        const loaded = await loadAllItems();
+        if (!cancelled) setItems(loaded);
+      } catch (e) {
+        console.error("Error polling inventory:", e);
+      }
+    }, 15000);
 
     return () => {
       cancelled = true;
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
-  }, []);
+  }, [loadAllItems]);
 
   // Helper to load purchase with items
   const loadPurchaseWithItems = useCallback(async (purchaseData: any): Promise<Purchase> => {
@@ -200,60 +204,67 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     };
   }, []);
 
-  // Load purchases from Supabase and set up real-time subscription
+  const loadAllPurchases = useCallback(async (): Promise<Purchase[]> => {
+    const { data: purchasesData, error: purchasesError } = await supabase
+      .from("purchases")
+      .select("*")
+      .order("date", { ascending: false });
+    if (purchasesError) throw purchasesError;
+    return Promise.all((purchasesData || []).map(p => loadPurchaseWithItems(p)));
+  }, [loadPurchaseWithItems]);
+
+  // Load purchases from Supabase and set up real-time subscription + polling
   useEffect(() => {
     let cancelled = false;
     
-    // Initial load
     (async () => {
       try {
-        const { data: purchasesData, error: purchasesError } = await supabase
-          .from("purchases")
-          .select("*")
-          .order("date", { ascending: false });
-        if (purchasesError) throw purchasesError;
-        if (cancelled) return;
-
-        const purchasesWithItems: Purchase[] = await Promise.all(
-          (purchasesData || []).map(p => loadPurchaseWithItems(p))
-        );
-        setPurchases(purchasesWithItems);
+        const loaded = await loadAllPurchases();
+        if (!cancelled) setPurchases(loaded);
       } catch (e) {
         console.error("Error loading purchases from Supabase:", e);
-        setPurchases([]);
+        if (!cancelled) setPurchases([]);
       }
     })();
 
-    // Set up real-time subscription
     const channel = supabase
       .channel('purchases-changes')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'purchases' },
         async () => {
           if (cancelled) return;
+          const timeSinceLocalUpdate = Date.now() - lastLocalUpdateRef.current;
+          if (timeSinceLocalUpdate < DEBOUNCE_MS) return;
           try {
-            const { data: purchasesData } = await supabase
-              .from("purchases")
-              .select("*")
-              .order("date", { ascending: false });
-            if (purchasesData) {
-              const purchasesWithItems: Purchase[] = await Promise.all(
-                purchasesData.map(p => loadPurchaseWithItems(p))
-              );
-              setPurchases(purchasesWithItems);
-            }
+            const loaded = await loadAllPurchases();
+            if (!cancelled) setPurchases(loaded);
           } catch (e) {
             console.error("Error reloading purchases:", e);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Purchases real-time subscription status:", status);
+      });
+
+    const pollInterval = setInterval(async () => {
+      if (cancelled) return;
+      const timeSinceLocalUpdate = Date.now() - lastLocalUpdateRef.current;
+      if (timeSinceLocalUpdate < DEBOUNCE_MS) return;
+      try {
+        const loaded = await loadAllPurchases();
+        if (!cancelled) setPurchases(loaded);
+      } catch (e) {
+        console.error("Error polling purchases:", e);
+      }
+    }, 15000);
 
     return () => {
       cancelled = true;
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
-  }, [loadPurchaseWithItems]);
+  }, [loadAllPurchases]);
 
   // Helper to load allocation with lines
   const loadAllocationWithLines = useCallback(async (allocationData: any): Promise<StockAllocation> => {
@@ -371,6 +382,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         adminCostPrice: data.admin_cost_price ? Number(data.admin_cost_price) : undefined,
         pendingAllocation: data.pending_allocation || false,
       };
+      lastLocalUpdateRef.current = Date.now();
       setItems((prev) => [newItem, ...prev]);
     })();
   }, []);
@@ -396,6 +408,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         console.error("Error updating inventory item:", error);
         return;
       }
+      lastLocalUpdateRef.current = Date.now();
       setItems((prev) =>
         prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
       );
@@ -409,6 +422,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         console.error("Error deleting inventory item:", error);
         return;
       }
+      lastLocalUpdateRef.current = Date.now();
       setItems((prev) => prev.filter((item) => item.id !== id));
     })();
   }, []);
@@ -518,6 +532,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
           costPrice: Number(pi.cost_price) || 0,
         })),
       };
+      lastLocalUpdateRef.current = Date.now();
       setPurchases((prev) => [newPurchase, ...prev]);
     })();
   }, [items, addItem, updateItem]);
@@ -541,6 +556,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         return;
       }
 
+      lastLocalUpdateRef.current = Date.now();
       setPurchases((prev) =>
         prev.map((p) =>
           p.id === purchaseId
@@ -558,16 +574,15 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
 
   const deletePurchase = useCallback((purchaseId: string) => {
     (async () => {
-      // Delete purchase items first (cascade should handle this, but being explicit)
       await supabase.from("purchase_items").delete().eq("purchase_id", purchaseId);
       
-      // Delete the purchase
       const { error } = await supabase.from("purchases").delete().eq("id", purchaseId);
       if (error) {
         console.error("Error deleting purchase:", error);
         return;
       }
       
+      lastLocalUpdateRef.current = Date.now();
       setPurchases((prev) => prev.filter((p) => p.id !== purchaseId));
     })();
   }, []);

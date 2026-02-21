@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 export type RepairStatus = 
@@ -72,6 +72,8 @@ const RepairContext = createContext<RepairContextType | null>(null);
 
 export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
   const [repairs, setRepairs] = useState<Repair[]>([]);
+  const lastLocalUpdateRef = useRef<number>(0);
+  const DEBOUNCE_MS = 3000;
 
   // Helper function to load repair with details
   const loadRepairWithDetails = useCallback(async (repairData: any): Promise<Repair> => {
@@ -125,63 +127,72 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
-  // Load repairs from Supabase on mount and set up real-time subscription
+  const loadAllRepairs = useCallback(async (): Promise<Repair[]> => {
+    const { data: repairsData, error: repairsError } = await supabase
+      .from("repairs")
+      .select("*")
+      .order("date", { ascending: false });
+    if (repairsError) throw repairsError;
+    return Promise.all((repairsData || []).map(r => loadRepairWithDetails(r)));
+  }, [loadRepairWithDetails]);
+
+  // Load repairs from Supabase on mount, set up real-time subscription + polling
   useEffect(() => {
     let cancelled = false;
     
     // Initial load
     (async () => {
       try {
-        const { data: repairsData, error: repairsError } = await supabase
-          .from("repairs")
-          .select("*")
-          .order("date", { ascending: false });
-        if (repairsError) throw repairsError;
-        if (cancelled) return;
-
-        const repairsWithDetails: Repair[] = await Promise.all(
-          (repairsData || []).map(r => loadRepairWithDetails(r))
-        );
-        setRepairs(repairsWithDetails);
+        const loaded = await loadAllRepairs();
+        if (!cancelled) setRepairs(loaded);
       } catch (e) {
         console.error("Error loading repairs from Supabase:", e);
-        setRepairs([]);
+        if (!cancelled) setRepairs([]);
       }
     })();
 
-    // Set up real-time subscription
+    // Real-time subscription - skip reload if we just made a local update (prevents race condition)
     const channel = supabase
       .channel('repairs-changes')
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'repairs' },
         async () => {
           if (cancelled) return;
+          const timeSinceLocalUpdate = Date.now() - lastLocalUpdateRef.current;
+          if (timeSinceLocalUpdate < DEBOUNCE_MS) return;
           
-          // Reload all repairs when any change occurs
           try {
-            const { data: repairsData } = await supabase
-              .from("repairs")
-              .select("*")
-              .order("date", { ascending: false });
-            
-            if (repairsData) {
-              const repairsWithDetails: Repair[] = await Promise.all(
-                repairsData.map(r => loadRepairWithDetails(r))
-              );
-              setRepairs(repairsWithDetails);
-            }
+            const loaded = await loadAllRepairs();
+            if (!cancelled) setRepairs(loaded);
           } catch (e) {
             console.error("Error reloading repairs:", e);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Repairs real-time subscription status:", status);
+      });
+
+    // Periodic polling every 15 seconds as fallback for when Realtime isn't enabled
+    const pollInterval = setInterval(async () => {
+      if (cancelled) return;
+      const timeSinceLocalUpdate = Date.now() - lastLocalUpdateRef.current;
+      if (timeSinceLocalUpdate < DEBOUNCE_MS) return;
+      
+      try {
+        const loaded = await loadAllRepairs();
+        if (!cancelled) setRepairs(loaded);
+      } catch (e) {
+        console.error("Error polling repairs:", e);
+      }
+    }, 15000);
 
     return () => {
       cancelled = true;
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
-  }, [loadRepairWithDetails]);
+  }, [loadAllRepairs]);
 
   const addRepair = useCallback(async (repairData: Omit<Repair, 'id' | 'date' | 'totalCost'> & { amountPaid?: number; balance?: number }): Promise<string | null> => {
       const partsTotal = repairData.partsUsed.reduce((sum, part) => sum + (part.cost * part.qty), 0);
@@ -324,6 +335,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
               collected: newRepairData.collected || false,
             };
       
+      lastLocalUpdateRef.current = Date.now();
       setRepairs((prev) => [newRepair, ...prev]);
       return repairRecord.id;
   }, []);
@@ -338,6 +350,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         console.error("Error updating repair status:", error);
         return;
       }
+      lastLocalUpdateRef.current = Date.now();
       setRepairs((prev) =>
         prev.map((repair) =>
           repair.id === repairId ? { ...repair, status } : repair
@@ -370,6 +383,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
+      lastLocalUpdateRef.current = Date.now();
       setRepairs((prev) =>
         prev.map((r) => {
           if (r.id === repairId) {
@@ -393,7 +407,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
       if (!repair) return;
 
       const totalAmount = repair.totalAgreedAmount || repair.totalCost;
-      const newAmountPaid = totalAmount; // Full payment
+      const newAmountPaid = totalAmount;
       const balance = 0;
       const paymentStatus = 'fully_paid';
       const status = 'FULLY_PAID';
@@ -414,6 +428,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
+      lastLocalUpdateRef.current = Date.now();
       setRepairs((prev) =>
         prev.map((r) => {
           if (r.id === repairId) {
@@ -457,6 +472,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
+      lastLocalUpdateRef.current = Date.now();
       setRepairs((prev) =>
         prev.map((r) => {
           if (r.id === repairId) {
@@ -484,6 +500,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         console.error("Error confirming collection:", error);
         return;
       }
+      lastLocalUpdateRef.current = Date.now();
       setRepairs((prev) =>
         prev.map((repair) => {
           if (repair.id === repairId) {
@@ -532,6 +549,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
       
+      lastLocalUpdateRef.current = Date.now();
       setRepairs((prev) => prev.filter((repair) => repair.id !== repairId));
     })();
   }, []);
