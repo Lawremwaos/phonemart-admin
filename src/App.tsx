@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useLocation } from "react-router-dom";
+import { useState } from "react";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import InventoryManagement from "./pages/InventoryManagement";
@@ -25,6 +26,9 @@ import { useShop } from "./context/ShopContext";
 function AppContent() {
   const { isAuthenticated, currentUser, logout } = useShop();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [repairMenuOpen, setRepairMenuOpen] = useState(true);
+  const [accessoriesMenuOpen, setAccessoriesMenuOpen] = useState(true);
 
   const handleLogout = () => {
     logout();
@@ -50,79 +54,228 @@ function AppContent() {
           <p className="text-sm font-semibold">{currentUser?.name}</p>
           <p className="text-xs text-gray-400 capitalize">{currentUser?.roles.join(', ')}</p>
         </div>
-        <ul className="space-y-4 mb-6">
+        <ul className="space-y-2 mb-6">
+          {/* Dashboard */}
           <li>
-            <Link to="/" className="block hover:text-gray-300 transition-colors">Dashboard</Link>
+            <Link 
+              to="/" 
+              className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
+                location.pathname === '/' ? 'bg-gray-800' : ''
+              }`}
+            >
+              Dashboard
+            </Link>
+          </li>
+
+          {/* Repair Section */}
+          <li>
+            <button
+              onClick={() => setRepairMenuOpen(!repairMenuOpen)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-800 transition-colors"
+            >
+              <span className="font-semibold">Repair</span>
+              <span>{repairMenuOpen ? '▼' : '▶'}</span>
+            </button>
+            {repairMenuOpen && (
+              <ul className="ml-4 mt-1 space-y-1">
+                <li>
+                  <Link 
+                    to="/repair-sales" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/repair-sales' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Repair Sale
+                  </Link>
+                </li>
+                <li>
+                  <Link 
+                    to="/pending-collections/pending-payment" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname.includes('/pending-collections/pending-payment') ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Pending Payment
+                  </Link>
+                </li>
+                <li>
+                  <Link 
+                    to="/pending-collections/fully-paid" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname.includes('/pending-collections/fully-paid') ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Fully Paid
+                  </Link>
+                </li>
+                <li>
+                  <Link 
+                    to="/cost-of-parts" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/cost-of-parts' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Cost of Parts
+                  </Link>
+                </li>
+                <li>
+                  <Link 
+                    to="/returns" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/returns' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Returns & Warranty
+                  </Link>
+                </li>
+              </ul>
+            )}
+          </li>
+
+          {/* Accessories Section */}
+          <li>
+            <button
+              onClick={() => setAccessoriesMenuOpen(!accessoriesMenuOpen)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-800 transition-colors"
+            >
+              <span className="font-semibold">Accessories</span>
+              <span>{accessoriesMenuOpen ? '▼' : '▶'}</span>
+            </button>
+            {accessoriesMenuOpen && (
+              <ul className="ml-4 mt-1 space-y-1">
+                <li>
+                  <Link 
+                    to="/sales" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/sales' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Accessories Sale
+                  </Link>
+                </li>
+                {currentUser?.roles.includes('admin') && (
+                  <li>
+                    <Link 
+                      to="/purchases" 
+                      className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                        location.pathname === '/purchases' ? 'bg-gray-800' : ''
+                      }`}
+                    >
+                      Purchase
+                    </Link>
+                  </li>
+                )}
+                <li>
+                  <Link 
+                    to="/stock-allocation" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/stock-allocation' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    {currentUser?.roles.includes('admin') ? 'Stock Allocation' : 'My Stock & Requests'}
+                  </Link>
+                </li>
+                <li>
+                  <Link 
+                    to="/exchange" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/exchange' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Exchange
+                  </Link>
+                </li>
+              </ul>
+            )}
+          </li>
+
+          {/* Other Menu Items */}
+          <li>
+            <Link 
+              to="/suppliers" 
+              className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
+                location.pathname === '/suppliers' ? 'bg-gray-800' : ''
+              }`}
+            >
+              Suppliers
+            </Link>
           </li>
           <li>
-            <Link to="/repair-sales" className="block hover:text-gray-300 transition-colors">Repair Sales</Link>
+            <Link 
+              to="/inventory" 
+              className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
+                location.pathname === '/inventory' ? 'bg-gray-800' : ''
+              }`}
+            >
+              Inventory
+            </Link>
           </li>
+          {currentUser?.roles.includes('admin') && (
+            <li>
+              <Link 
+                to="/daily-report" 
+                className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
+                  location.pathname === '/daily-report' ? 'bg-gray-800' : ''
+                }`}
+              >
+                Daily Reports
+              </Link>
+            </li>
+          )}
           <li>
-            <Link to="/sales" className="block hover:text-gray-300 transition-colors">Accessories Sales</Link>
-          </li>
-          <li>
-            <Link to="/pending-collections/pending-payment" className="block hover:text-gray-300 transition-colors">Pending Payment</Link>
-          </li>
-          <li>
-            <Link to="/cost-of-parts" className="block hover:text-gray-300 transition-colors">Cost of Parts</Link>
-          </li>
-          <li>
-            <Link to="/pending-collections/fully-paid" className="block hover:text-gray-300 transition-colors">Fully Paid</Link>
+            <Link 
+              to="/todays-sales-report" 
+              className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
+                location.pathname === '/todays-sales-report' ? 'bg-gray-800' : ''
+              }`}
+            >
+              Today's Sales Report
+            </Link>
           </li>
           {currentUser?.roles.includes('admin') && (
             <>
               <li>
-                <Link to="/purchases" className="block hover:text-gray-300 transition-colors">Purchases</Link>
+                <Link 
+                  to="/admin-settings" 
+                  className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
+                    location.pathname === '/admin-settings' ? 'bg-gray-800' : ''
+                  }`}
+                >
+                  Admin Settings
+                </Link>
               </li>
               <li>
-                <Link to="/stock-allocation" className="block hover:text-gray-300 transition-colors">Stock Allocation</Link>
+                <Link 
+                  to="/admin-customer-management" 
+                  className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
+                    location.pathname === '/admin-customer-management' ? 'bg-gray-800' : ''
+                  }`}
+                >
+                  Customer Management
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  to="/stock-exchange-report" 
+                  className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
+                    location.pathname === '/stock-exchange-report' ? 'bg-gray-800' : ''
+                  }`}
+                >
+                  Stock Exchange Report
+                </Link>
               </li>
             </>
           )}
           {!currentUser?.roles.includes('admin') && (
             <li>
-              <Link to="/stock-allocation" className="block hover:text-gray-300 transition-colors">My Stock & Requests</Link>
-            </li>
-          )}
-          <li>
-            <Link to="/suppliers" className="block hover:text-gray-300 transition-colors">Suppliers</Link>
-          </li>
-          <li>
-            <Link to="/returns" className="block hover:text-gray-300 transition-colors">Returns & Warranty</Link>
-          </li>
-          <li>
-            <Link to="/inventory" className="block hover:text-gray-300 transition-colors">Inventory</Link>
-          </li>
-          {currentUser?.roles.includes('admin') && (
-            <li>
-              <Link to="/daily-report" className="block hover:text-gray-300 transition-colors">Daily Reports</Link>
-            </li>
-          )}
-          <li>
-            <Link to="/todays-sales-report" className="block hover:text-gray-300 transition-colors">Today's Sales Report</Link>
-          </li>
-          <li>
-            <Link to="/pending-collections/fully-paid" className="block hover:text-gray-300 transition-colors">Fully Paid</Link>
-          </li>
-          <li>
-            <Link to="/exchange" className="block hover:text-gray-300 transition-colors">Exchange</Link>
-          </li>
-          {currentUser?.roles.includes('admin') && (
-            <>
-              <li>
-                <Link to="/admin-settings" className="block hover:text-gray-300 transition-colors">Admin Settings</Link>
-              </li>
-              <li>
-                <Link to="/admin-customer-management" className="block hover:text-gray-300 transition-colors">Customer Management</Link>
-              </li>
-              <li>
-                <Link to="/stock-exchange-report" className="block hover:text-gray-300 transition-colors">Stock Exchange Report</Link>
-              </li>
-            </>
-          )}
-          {!currentUser?.roles.includes('admin') && (
-            <li>
-              <Link to="/stock-exchange-report" className="block hover:text-gray-300 transition-colors">Stock Exchange Report</Link>
+              <Link 
+                to="/stock-exchange-report" 
+                className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
+                  location.pathname === '/stock-exchange-report' ? 'bg-gray-800' : ''
+                }`}
+              >
+                Stock Exchange Report
+              </Link>
             </li>
           )}
         </ul>

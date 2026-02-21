@@ -8,6 +8,7 @@ export default function CostOfParts() {
   const { currentUser } = useShop();
   const { debts, updateDebtCost } = useSupplierDebt();
   const [searchTerm, setSearchTerm] = useState("");
+  const [costInputs, setCostInputs] = useState<Record<string, string>>({});
 
   // Get repairs with outsourced parts that need cost input
   const repairsNeedingCosts = useMemo(() => {
@@ -50,13 +51,26 @@ export default function CostOfParts() {
     return debts.filter(d => d.repairId === repairId && d.costPerUnit === 0);
   };
 
-  const handleUpdateCost = (debtId: string, costPerUnit: number) => {
-    if (costPerUnit <= 0) {
+  const handleUpdateCost = (debtId: string, costValue: string) => {
+    const costPerUnit = Number(costValue);
+    if (!costValue || costPerUnit <= 0) {
       alert("Please enter a valid cost");
       return;
     }
     updateDebtCost(debtId, costPerUnit);
+    setCostInputs(prev => {
+      const updated = { ...prev };
+      delete updated[debtId];
+      return updated;
+    });
     alert("Cost updated successfully!");
+  };
+
+  const handleCostInputChange = (debtId: string, value: string) => {
+    setCostInputs(prev => ({
+      ...prev,
+      [debtId]: value,
+    }));
   };
 
   const formatDate = (date: Date) => {
@@ -158,21 +172,19 @@ export default function CostOfParts() {
                               <input
                                 type="number"
                                 placeholder="Cost per unit"
+                                value={costInputs[debt.id] || ''}
+                                onChange={(e) => handleCostInputChange(debt.id, e.target.value)}
                                 className="border border-gray-300 rounded-md px-2 py-1 w-32 text-sm"
                                 min="0"
                                 step="0.01"
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
-                                    const input = e.target as HTMLInputElement;
-                                    handleUpdateCost(debt.id, Number(input.value));
+                                    handleUpdateCost(debt.id, costInputs[debt.id] || '');
                                   }
                                 }}
                               />
                               <button
-                                onClick={(e) => {
-                                  const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                                  handleUpdateCost(debt.id, Number(input.value));
-                                }}
+                                onClick={() => handleUpdateCost(debt.id, costInputs[debt.id] || '')}
                                 className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
                               >
                                 Save
