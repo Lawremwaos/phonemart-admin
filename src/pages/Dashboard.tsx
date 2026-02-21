@@ -4,6 +4,7 @@ import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
 import { useRepair } from "../context/RepairContext";
 import { usePayment } from "../context/PaymentContext";
+import { supabase } from "../lib/supabaseClient";
 import ShopSelector from "../components/ShopSelector";
 import AutomatedDailyReport from "../components/AutomatedDailyReport";
 
@@ -18,6 +19,34 @@ export default function Dashboard() {
   const [period, setPeriod] = useState<Period>('today');
 
   const isAdmin = currentUser?.roles.includes('admin');
+  const [resetting, setResetting] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
+
+  const handleResetAllData = async () => {
+    if (!window.confirm('⚠️ Are you sure you want to DELETE ALL DATA?\n\nThis will remove:\n- All repairs\n- All sales\n- All inventory items\n- All purchases\n- All suppliers\n- All stock allocations\n\nShops and user accounts will be kept.\n\nThis action CANNOT be undone!')) return;
+    if (!window.confirm('⚠️ FINAL WARNING: This will permanently erase ALL business data. Type OK to confirm.')) return;
+
+    setResetting(true);
+    try {
+      const tables = [
+        'repair_parts', 'additional_repair_items', 'sale_items',
+        'purchase_items', 'stock_allocation_lines',
+        'repairs', 'sales', 'purchases',
+        'stock_allocations', 'inventory_items', 'suppliers'
+      ];
+      for (const table of tables) {
+        const { error } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        if (error) console.error(`Error clearing ${table}:`, error.message);
+      }
+      setResetDone(true);
+      alert('All data has been cleared! Refresh the page to see the clean system.');
+    } catch (err) {
+      console.error('Reset error:', err);
+      alert('Something went wrong. Check the console for details.');
+    } finally {
+      setResetting(false);
+    }
+  };
 
   // --- HELPERS ---
   const now = new Date();
@@ -195,6 +224,28 @@ export default function Dashboard() {
       </div>
 
       <ShopSelector />
+
+      {/* Admin: Reset All Data */}
+      {isAdmin && !resetDone && (
+        <div className="bg-red-50 border border-red-300 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <p className="font-semibold text-red-800">Reset System Data</p>
+            <p className="text-sm text-red-600">Permanently delete all repairs, sales, inventory, purchases, suppliers. Keeps shops & users.</p>
+          </div>
+          <button
+            onClick={handleResetAllData}
+            disabled={resetting}
+            className="bg-red-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-red-700 disabled:opacity-50"
+          >
+            {resetting ? 'Clearing...' : 'Clear All Data'}
+          </button>
+        </div>
+      )}
+      {resetDone && (
+        <div className="bg-green-50 border border-green-300 rounded-lg p-4 text-center">
+          <p className="font-semibold text-green-800">All data has been cleared! Refresh the page to start fresh.</p>
+        </div>
+      )}
 
       {/* Period Selector */}
       <div className="flex gap-2">
