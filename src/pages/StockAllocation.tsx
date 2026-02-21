@@ -65,15 +65,18 @@ export default function StockAllocation() {
     if (!purchase) return [];
     
     return purchase.items.map(purchaseItem => {
-      const inventoryItem = items.find(i => i.id === purchaseItem.itemId);
+      let inventoryItem = items.find(i => i.id === purchaseItem.itemId);
+      if (!inventoryItem) {
+        inventoryItem = items.find(i => i.name === purchaseItem.itemName && !i.shopId);
+      }
       const alreadyAllocated = staffAllocations
-        .filter(a => a.purchaseId === selectedPurchaseId && a.itemId === purchaseItem.itemId)
+        .filter(a => a.purchaseId === selectedPurchaseId && a.itemName === purchaseItem.itemName)
         .reduce((sum, a) => sum + a.qty, 0);
-      const available = (inventoryItem?.stock || 0) - alreadyAllocated;
+      const available = (inventoryItem?.stock || purchaseItem.qty) - alreadyAllocated;
       
       return {
         ...purchaseItem,
-        available,
+        available: Math.max(0, available),
         inventoryItem,
       };
     }).filter(item => item.available > 0);
@@ -274,19 +277,24 @@ export default function StockAllocation() {
 
     const purchase = purchases.find(p => p.id === adminSelectedPurchaseId);
     const purchaseItem = purchase?.items.find(i => i.itemId === adminSelectedItemId);
-    const inventoryItem = items.find(i => i.id === adminSelectedItemId);
+    // Match by ID first, fallback to name
+    let inventoryItem = items.find(i => i.id === adminSelectedItemId);
+    if (!inventoryItem && purchaseItem) {
+      inventoryItem = items.find(i => i.name === purchaseItem.itemName && !i.shopId);
+    }
     const targetShop = shops.find(s => s.id === adminSelectedShopId);
 
-    if (!purchase || !purchaseItem || !inventoryItem || !targetShop) {
+    if (!purchase || !purchaseItem || !targetShop) {
       alert("Invalid selection");
       return;
     }
 
     // Check available quantity (unallocated stock)
     const alreadyAllocated = staffAllocations
-      .filter(a => a.purchaseId === adminSelectedPurchaseId && a.itemId === adminSelectedItemId)
+      .filter(a => a.purchaseId === adminSelectedPurchaseId && a.itemName === purchaseItem.itemName)
       .reduce((sum, a) => sum + a.qty, 0);
-    const available = inventoryItem.stock - alreadyAllocated;
+    const currentStock = inventoryItem?.stock || 0;
+    const available = currentStock - alreadyAllocated;
 
     if (adminAllocationQty > available) {
       alert(`Only ${available} items available for allocation`);
@@ -308,8 +316,9 @@ export default function StockAllocation() {
     setStaffAllocations(prev => [...prev, newAllocation]);
 
     // Update inventory: allocate to target shop
+    const itemName = inventoryItem?.name || purchaseItem.itemName;
     const existingShopItem = items.find(i => 
-      i.name === inventoryItem.name && 
+      i.name === itemName && 
       i.shopId === adminSelectedShopId
     );
 
@@ -317,20 +326,22 @@ export default function StockAllocation() {
       updateItem(existingShopItem.id, { stock: existingShopItem.stock + adminAllocationQty });
     } else {
       addItem({
-        name: inventoryItem.name,
-        category: inventoryItem.category,
-        itemType: inventoryItem.itemType,
+        name: itemName,
+        category: inventoryItem?.category || 'Spare',
+        itemType: inventoryItem?.itemType,
         stock: adminAllocationQty,
-        price: inventoryItem.price,
-        reorderLevel: inventoryItem.reorderLevel,
+        price: inventoryItem?.price || 0,
+        reorderLevel: inventoryItem?.reorderLevel || 0,
         initialStock: adminAllocationQty,
         shopId: adminSelectedShopId,
-        supplier: inventoryItem.supplier,
+        supplier: inventoryItem?.supplier || purchase.supplier,
       });
     }
 
     // Deduct from unallocated stock
-    updateItem(inventoryItem.id, { stock: inventoryItem.stock - adminAllocationQty });
+    if (inventoryItem) {
+      updateItem(inventoryItem.id, { stock: inventoryItem.stock - adminAllocationQty });
+    }
 
     alert(`Allocation successful: ${adminAllocationQty} ${purchaseItem.itemName} allocated to ${targetShop.name}`);
     setAdminSelectedPurchaseId("");
@@ -346,15 +357,19 @@ export default function StockAllocation() {
     if (!purchase) return [];
     
     return purchase.items.map(purchaseItem => {
-      const inventoryItem = items.find(i => i.id === purchaseItem.itemId);
+      // Match by ID first, then fallback to name match for items created during purchase
+      let inventoryItem = items.find(i => i.id === purchaseItem.itemId);
+      if (!inventoryItem) {
+        inventoryItem = items.find(i => i.name === purchaseItem.itemName && !i.shopId);
+      }
       const alreadyAllocated = staffAllocations
-        .filter(a => a.purchaseId === adminSelectedPurchaseId && a.itemId === purchaseItem.itemId)
+        .filter(a => a.purchaseId === adminSelectedPurchaseId && a.itemName === purchaseItem.itemName)
         .reduce((sum, a) => sum + a.qty, 0);
-      const available = (inventoryItem?.stock || 0) - alreadyAllocated;
+      const available = (inventoryItem?.stock || purchaseItem.qty) - alreadyAllocated;
       
       return {
         ...purchaseItem,
-        available,
+        available: Math.max(0, available),
         inventoryItem,
       };
     }).filter(item => item.available > 0);
@@ -393,7 +408,7 @@ export default function StockAllocation() {
                     setAdminSelectedItemId("");
                     setAdminAllocationQty(0);
                   }}
-                  className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                  className="w-full border-2 border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 >
                   <option value="">-- Select a purchase --</option>
                   {purchases
@@ -418,7 +433,7 @@ export default function StockAllocation() {
                         setAdminSelectedItemId(Number(e.target.value));
                         setAdminAllocationQty(0);
                       }}
-                      className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                      className="w-full border-2 border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                     >
                       <option value="">-- Select item --</option>
                       {adminAvailableItemsFromPurchase.map((item) => (
@@ -441,7 +456,7 @@ export default function StockAllocation() {
                             setAdminSelectedShopId(e.target.value);
                             setAdminAllocationQty(0);
                           }}
-                          className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                          className="w-full border-2 border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                         >
                           <option value="">-- Select shop --</option>
                           {shops.map((shop) => (
