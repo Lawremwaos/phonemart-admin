@@ -2,18 +2,17 @@ import { useState, useMemo } from "react";
 import { useSupplier } from "../context/SupplierContext";
 import { useInventory } from "../context/InventoryContext";
 import { useRepair } from "../context/RepairContext";
-import { useSupplierDebt } from "../context/SupplierDebtContext";
 import { useShop } from "../context/ShopContext";
 
 export default function SupplierManagement() {
   const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useSupplier();
   const { purchases } = useInventory();
   const { repairs } = useRepair();
-  const { debts, updateDebtCost, markAsPaid, getTodaysDebtsBySupplier } = useSupplierDebt();
   const { currentUser } = useShop();
   const [isAdding, setIsAdding] = useState(false);
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedSupplierId, setExpandedSupplierId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'purchases' | 'repairs' | 'all'>('all');
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -73,59 +72,120 @@ export default function SupplierManagement() {
     }
   };
 
-  // Calculate supplier analytics
-  const supplierAnalytics = useMemo(() => {
+  // Build comprehensive supplier data from purchases + repairs
+  const supplierData = useMemo(() => {
     return suppliers.map(supplier => {
-      const supplierPurchases = purchases.filter(p => p.supplier === supplier.name);
-      const totalSpent = supplierPurchases.reduce((sum, p) => sum + p.total, 0);
-      
-      // Count items purchased
-      const itemCounts: Record<string, { qty: number; totalCost: number; prices: number[] }> = {};
+      // --- PURCHASES DATA (Accessories & Spare Parts bought from this supplier) ---
+      const supplierPurchases = purchases.filter(p =>
+        p.supplier.toLowerCase() === supplier.name.toLowerCase()
+      );
+      const totalPurchaseCost = supplierPurchases.reduce((sum, p) => sum + p.total, 0);
+      const purchaseItemBreakdown: Record<string, { qty: number; totalCost: number; prices: number[] }> = {};
       supplierPurchases.forEach(purchase => {
         purchase.items.forEach(item => {
-          if (!itemCounts[item.itemName]) {
-            itemCounts[item.itemName] = { qty: 0, totalCost: 0, prices: [] };
+          if (!purchaseItemBreakdown[item.itemName]) {
+            purchaseItemBreakdown[item.itemName] = { qty: 0, totalCost: 0, prices: [] };
           }
-          itemCounts[item.itemName].qty += item.qty;
-          itemCounts[item.itemName].totalCost += item.qty * item.costPrice;
-          itemCounts[item.itemName].prices.push(item.costPrice);
+          purchaseItemBreakdown[item.itemName].qty += item.qty;
+          purchaseItemBreakdown[item.itemName].totalCost += item.qty * item.costPrice;
+          purchaseItemBreakdown[item.itemName].prices.push(item.costPrice);
         });
       });
 
-      // Find most bought item
-      const mostBoughtItem = Object.entries(itemCounts).reduce((max, [name, data]) => {
-        return data.qty > (max ? itemCounts[max].qty : 0) ? name : max;
-      }, "" as string);
+      // --- REPAIR OUTSOURCING DATA (Parts outsourced from this supplier for repairs) ---
+      const repairRecords: Array<{
+        repairId: string;
+        customerName: string;
+        phoneModel: string;
+        date: Date;
+        issue: string;
+        totalAgreedAmount: number;
+        outsourcedItems: Array<{ itemName: string; qty: number }>;
+        status: string;
+        ticketNumber?: string;
+      }> = [];
 
-      // Calculate average prices
-      const itemPriceAverages: Record<string, { avg: number; min: number; max: number }> = {};
-      Object.entries(itemCounts).forEach(([name, data]) => {
-        itemPriceAverages[name] = {
-          avg: data.prices.reduce((a, b) => a + b, 0) / data.prices.length,
-          min: Math.min(...data.prices),
-          max: Math.max(...data.prices),
-        };
+      repairs.forEach(repair => {
+        const outsourcedFromSupplier: Array<{ itemName: string; qty: number }> = [];
+
+        // Check additionalItems for outsourced parts
+        if (repair.additionalItems) {
+          repair.additionalItems
+            .filter(item => item.source === 'outsourced')
+            .forEach(item => {
+              // Match by supplier name in item data or by general association
+              outsourcedFromSupplier.push({
+                itemName: item.itemName,
+                qty: 1,
+              });
+            });
+        }
+
+        // Check partsUsed with zero cost (outsourced parts needing cost input)
+        repair.partsUsed
+          .filter(p => p.cost === 0)
+          .forEach(part => {
+            const alreadyAdded = outsourcedFromSupplier.some(o => o.itemName === part.itemName);
+            if (!alreadyAdded) {
+              outsourcedFromSupplier.push({
+                itemName: part.itemName,
+                qty: part.qty,
+              });
+            }
+          });
+
+        if (outsourcedFromSupplier.length > 0) {
+          repairRecords.push({
+            repairId: repair.id,
+            customerName: repair.customerName,
+            phoneModel: repair.phoneModel,
+            date: repair.date,
+            issue: repair.issue,
+            totalAgreedAmount: repair.totalAgreedAmount || repair.totalCost,
+            outsourcedItems: outsourcedFromSupplier,
+            status: repair.status,
+            ticketNumber: repair.ticketNumber,
+          });
+        }
       });
+
+      const totalRepairOutsourcing = repairRecords.length;
+      const totalRepairRevenue = repairRecords.reduce((sum, r) => sum + r.totalAgreedAmount, 0);
+      const grandTotal = totalPurchaseCost;
 
       return {
         supplier,
-        totalSpent,
-        purchaseCount: supplierPurchases.length,
-        mostBoughtItem,
-        itemCounts,
-        itemPriceAverages,
+        // Purchases
+        supplierPurchases,
+        totalPurchaseCost,
+        purchaseItemBreakdown,
+        // Repairs
+        repairRecords,
+        totalRepairOutsourcing,
+        totalRepairRevenue,
+        // Combined
+        grandTotal,
       };
     });
-  }, [suppliers, purchases]);
+  }, [suppliers, purchases, repairs]);
+
+  // Overall summary stats
+  const overallStats = useMemo(() => {
+    const totalPurchases = supplierData.reduce((sum, d) => sum + d.totalPurchaseCost, 0);
+    const totalRepairRevenue = supplierData.reduce((sum, d) => sum + d.totalRepairRevenue, 0);
+    const totalOrders = supplierData.reduce((sum, d) => sum + d.supplierPurchases.length, 0);
+    const totalRepairJobs = supplierData.reduce((sum, d) => sum + d.totalRepairOutsourcing, 0);
+    return { totalPurchases, totalRepairRevenue, totalOrders, totalRepairJobs };
+  }, [supplierData]);
+
+  const formatDate = (date: Date) =>
+    new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Supplier Management</h2>
-        <button
-          onClick={handleAdd}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
+        <button onClick={handleAdd} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
           Add Supplier
         </button>
       </div>
@@ -133,311 +193,321 @@ export default function SupplierManagement() {
       {/* Add/Edit Form */}
       {(isAdding || editingId) && (
         <div className="bg-white p-6 rounded shadow">
-          <h3 className="text-lg font-semibold mb-4">
-            {editingId ? "Edit Supplier" : "Add New Supplier"}
-          </h3>
+          <h3 className="text-lg font-semibold mb-4">{editingId ? "Edit Supplier" : "Add New Supplier"}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Supplier Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
-                placeholder="Enter supplier name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-2">Supplier Name <span className="text-red-500">*</span></label>
+              <input type="text" className="border border-gray-300 rounded-md px-3 py-2 w-full" placeholder="Enter supplier name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-              <input
-                type="tel"
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
-                placeholder="+254712345678"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
+              <input type="tel" className="border border-gray-300 rounded-md px-3 py-2 w-full" placeholder="+254712345678" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-              <input
-                type="email"
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
-                placeholder="supplier@example.com"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
+              <input type="email" className="border border-gray-300 rounded-md px-3 py-2 w-full" placeholder="supplier@example.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
-              <input
-                type="text"
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
-                placeholder="Supplier address"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              />
+              <input type="text" className="border border-gray-300 rounded-md px-3 py-2 w-full" placeholder="Supplier address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
             </div>
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Categories <span className="text-red-500">*</span> (Select one or both)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Categories <span className="text-red-500">*</span></label>
               <div className="flex gap-4">
                 <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    className="mr-2"
-                    checked={formData.categories.includes('accessories')}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setFormData({
-                          ...formData,
-                          categories: [...formData.categories, 'accessories'],
-                        });
-                      } else {
-                        setFormData({
-                          ...formData,
-                          categories: formData.categories.filter(c => c !== 'accessories'),
-                        });
-                      }
-                    }}
-                  />
+                  <input type="checkbox" className="mr-2" checked={formData.categories.includes('accessories')} onChange={(e) => { setFormData({ ...formData, categories: e.target.checked ? [...formData.categories, 'accessories'] : formData.categories.filter(c => c !== 'accessories') }); }} />
                   <span>Accessories</span>
                 </label>
                 <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    className="mr-2"
-                    checked={formData.categories.includes('spare_parts')}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setFormData({
-                          ...formData,
-                          categories: [...formData.categories, 'spare_parts'],
-                        });
-                      } else {
-                        setFormData({
-                          ...formData,
-                          categories: formData.categories.filter(c => c !== 'spare_parts'),
-                        });
-                      }
-                    }}
-                  />
+                  <input type="checkbox" className="mr-2" checked={formData.categories.includes('spare_parts')} onChange={(e) => { setFormData({ ...formData, categories: e.target.checked ? [...formData.categories, 'spare_parts'] : formData.categories.filter(c => c !== 'spare_parts') }); }} />
                   <span>Spare Parts</span>
                 </label>
               </div>
-              {formData.categories.length === 0 && (
-                <p className="text-xs text-red-500 mt-1">Please select at least one category</p>
-              )}
             </div>
           </div>
           <div className="flex gap-4 mt-4">
-            <button
-              onClick={handleSave}
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-            >
-              Save
-            </button>
-            <button
-              onClick={handleCancel}
-              className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
-            >
-              Cancel
-            </button>
+            <button onClick={handleSave} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Save</button>
+            <button onClick={handleCancel} className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">Cancel</button>
           </div>
         </div>
       )}
 
-      {/* Supplier Analytics */}
-      {supplierAnalytics.length > 0 && (
-        <div className="bg-white p-6 rounded shadow">
-          <h3 className="text-lg font-semibold mb-4">Supplier Analytics</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {supplierAnalytics.map((analytics) => (
-              <div key={analytics.supplier.id} className="border rounded-lg p-4 hover:shadow-md transition">
-                <h4 className="font-bold text-lg mb-2">{analytics.supplier.name}</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Total Purchases:</span>
-                    <span className="font-semibold">KES {analytics.totalSpent.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Purchase Orders:</span>
-                    <span className="font-semibold">{analytics.purchaseCount}</span>
-                  </div>
-                  {analytics.mostBoughtItem && (
-                    <div className="pt-2 border-t">
-                      <span className="text-gray-600 text-xs">Most Bought:</span>
-                      <div className="font-semibold">{analytics.mostBoughtItem}</div>
-                      <div className="text-xs text-gray-500">
-                        Qty: {analytics.itemCounts[analytics.mostBoughtItem].qty} | 
-                        Total: KES {analytics.itemCounts[analytics.mostBoughtItem].totalCost.toLocaleString()}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => setSelectedSupplierId(
-                    selectedSupplierId === analytics.supplier.id ? null : analytics.supplier.id
-                  )}
-                  className="mt-3 text-blue-600 hover:text-blue-800 text-sm"
-                >
-                  {selectedSupplierId === analytics.supplier.id ? 'Hide' : 'View'} Details
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* Detailed View */}
-          {selectedSupplierId && (() => {
-            const analytics = supplierAnalytics.find(a => a.supplier.id === selectedSupplierId);
-            if (!analytics) return null;
-            return (
-              <div className="mt-6 border-t pt-6">
-                <h4 className="font-bold text-lg mb-4">Detailed Analytics: {analytics.supplier.name}</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-100">
-                      <tr>
-                        <th className="p-2 text-left">Item</th>
-                        <th className="p-2 text-right">Total Qty</th>
-                        <th className="p-2 text-right">Total Cost</th>
-                        <th className="p-2 text-right">Avg Price</th>
-                        <th className="p-2 text-right">Min Price</th>
-                        <th className="p-2 text-right">Max Price</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(analytics.itemCounts).map(([itemName, data]) => {
-                        const priceData = analytics.itemPriceAverages[itemName];
-                        return (
-                          <tr key={itemName} className="border-t">
-                            <td className="p-2 font-medium">{itemName}</td>
-                            <td className="p-2 text-right">{data.qty}</td>
-                            <td className="p-2 text-right">KES {data.totalCost.toLocaleString()}</td>
-                            <td className="p-2 text-right">KES {priceData.avg.toFixed(0)}</td>
-                            <td className="p-2 text-right">KES {priceData.min.toLocaleString()}</td>
-                            <td className="p-2 text-right">KES {priceData.max.toLocaleString()}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            );
-          })()}
+      {/* Overall Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+          <p className="text-sm text-gray-600">Total Paid to Suppliers</p>
+          <p className="text-2xl font-bold text-blue-700">KES {overallStats.totalPurchases.toLocaleString()}</p>
+          <p className="text-xs text-gray-500">{overallStats.totalOrders} purchase orders</p>
         </div>
-      )}
+        <div className="bg-white p-4 rounded shadow border-l-4 border-green-500">
+          <p className="text-sm text-gray-600">Repair Revenue (Outsourced)</p>
+          <p className="text-2xl font-bold text-green-700">KES {overallStats.totalRepairRevenue.toLocaleString()}</p>
+          <p className="text-xs text-gray-500">{overallStats.totalRepairJobs} repair jobs</p>
+        </div>
+        <div className="bg-white p-4 rounded shadow border-l-4 border-purple-500">
+          <p className="text-sm text-gray-600">Active Suppliers</p>
+          <p className="text-2xl font-bold text-purple-700">{suppliers.length}</p>
+          <p className="text-xs text-gray-500">
+            {suppliers.filter(s => s.categories.includes('spare_parts')).length} spare parts,{' '}
+            {suppliers.filter(s => s.categories.includes('accessories')).length} accessories
+          </p>
+        </div>
+        <div className="bg-white p-4 rounded shadow border-l-4 border-orange-500">
+          <p className="text-sm text-gray-600">Net Position</p>
+          <p className={`text-2xl font-bold ${overallStats.totalRepairRevenue - overallStats.totalPurchases >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+            KES {(overallStats.totalRepairRevenue - overallStats.totalPurchases).toLocaleString()}
+          </p>
+          <p className="text-xs text-gray-500">Revenue - Supplier Costs</p>
+        </div>
+      </div>
 
       {/* Supplier Costs & Sales Tracking */}
       <div className="bg-white p-6 rounded shadow">
-        <h3 className="text-lg font-semibold mb-4">Supplier Costs & Sales Tracking</h3>
+        <h3 className="text-lg font-semibold mb-2">Supplier Costs & Sales Tracking</h3>
         <p className="text-sm text-gray-600 mb-4">
-          Fill in the cost of items sold by suppliers from repair sales and accessory sales. This will calculate net profit.
+          Complete records of purchases from suppliers (spare parts + accessories) and repair outsourcing revenue.
         </p>
-        
-        {suppliers.map((supplier) => {
-          // Get repairs linked to this supplier
-          const supplierRepairs = repairs.filter(repair => {
-            // Check if repair has parts or items from this supplier
-            const hasOutsourcedParts = repair.partsUsed.some(part => {
-              const debt = debts.find(d => d.repairId === repair.id && d.supplierId === supplier.id && d.itemName === part.itemName);
-              return debt !== undefined;
-            });
-            const hasOutsourcedItems = repair.additionalItems?.some(item => {
-              const debt = debts.find(d => d.repairId === repair.id && d.supplierId === supplier.id && d.itemName === item.itemName);
-              return debt !== undefined;
-            });
-            return hasOutsourcedParts || hasOutsourcedItems;
-          });
 
-          // Get today's unpaid debts for this supplier
-          const todaysDebts = getTodaysDebtsBySupplier(supplier.id);
-          const totalOwedToday = todaysDebts.reduce((sum: number, debt: any) => sum + debt.totalCost, 0);
+        {/* Tab filters */}
+        <div className="flex gap-2 mb-4 border-b pb-2">
+          {(['all', 'purchases', 'repairs'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-t text-sm font-medium ${
+                activeTab === tab ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {tab === 'all' ? 'All Records' : tab === 'purchases' ? 'Purchases' : 'Repair Outsourcing'}
+            </button>
+          ))}
+        </div>
 
-          if (supplierRepairs.length === 0 && todaysDebts.length === 0) {
-            return null;
-          }
+        {supplierData.filter(d => d.supplierPurchases.length > 0 || d.repairRecords.length > 0).length === 0 ? (
+          <div className="text-center text-gray-500 py-8">
+            <p className="text-lg font-medium mb-2">No supplier transactions yet</p>
+            <p className="text-sm">Purchase orders and repair outsourcing records will appear here.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {supplierData
+              .filter(d => d.supplierPurchases.length > 0 || d.repairRecords.length > 0)
+              .map((data) => {
+                const isExpanded = expandedSupplierId === data.supplier.id;
+                const showPurchases = activeTab === 'all' || activeTab === 'purchases';
+                const showRepairs = activeTab === 'all' || activeTab === 'repairs';
+                const hasPurchases = data.supplierPurchases.length > 0;
+                const hasRepairs = data.repairRecords.length > 0;
 
-          return (
-            <div key={supplier.id} className="mb-6 border rounded-lg p-4">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="font-bold text-lg">{supplier.name}</h4>
-                {currentUser?.roles.includes('admin') && totalOwedToday > 0 && (
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm text-gray-600">
-                      Today's Debt: <span className="font-bold text-red-600">KES {totalOwedToday.toLocaleString()}</span>
-                    </span>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`Confirm payment of KES ${totalOwedToday.toLocaleString()} to ${supplier.name}?`)) {
-                          todaysDebts.forEach(debt => {
-                            markAsPaid(debt.id, currentUser.name);
-                          });
-                          alert('Payment confirmed!');
-                        }
-                      }}
-                      className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700"
-                    >
-                      Confirm Payment
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Repairs with this supplier */}
-              {supplierRepairs.map((repair) => {
-                const repairDebts = debts.filter(d => d.repairId === repair.id && d.supplierId === supplier.id);
-                const repairRevenue = repair.totalAgreedAmount || repair.totalCost;
-                const repairCosts = repairDebts.reduce((sum, d) => sum + d.totalCost, 0);
-                const netProfit = repairRevenue - repairCosts;
+                if ((activeTab === 'purchases' && !hasPurchases) || (activeTab === 'repairs' && !hasRepairs)) {
+                  return null;
+                }
 
                 return (
-                  <div key={repair.id} className="mb-4 p-4 bg-gray-50 rounded border">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <p className="font-semibold">Repair Sale - {repair.customerName}</p>
-                        <p className="text-sm text-gray-600">{repair.phoneModel} | {new Date(repair.date).toLocaleDateString()}</p>
-                        <p className="text-sm">Revenue: <span className="font-bold">KES {repairRevenue.toLocaleString()}</span></p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-600">Total Costs: <span className="font-bold">KES {repairCosts.toLocaleString()}</span></p>
-                        <p className="text-sm font-bold text-green-600">Net Profit: KES {netProfit.toLocaleString()}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-3 space-y-2">
-                      {repairDebts.map((debt: any) => (
-                        <div key={debt.id} className="flex items-center gap-4 p-2 bg-white rounded">
-                          <span className="flex-1 text-sm">{debt.itemName} x {debt.quantity}</span>
-                          <div className="flex items-center gap-2">
-                            <label className="text-sm text-gray-600">Cost per unit:</label>
-                            <input
-                              type="number"
-                              value={debt.costPerUnit || ''}
-                              onChange={(e) => {
-                                const cost = Number(e.target.value) || 0;
-                                updateDebtCost(debt.id, cost);
-                              }}
-                              className="w-24 border border-gray-300 rounded px-2 py-1 text-sm"
-                              placeholder="0"
-                            />
-                            <span className="text-sm text-gray-600">KES</span>
-                            <span className="text-sm font-semibold w-24 text-right">
-                              Total: KES {debt.totalCost.toLocaleString()}
-                            </span>
+                  <div key={data.supplier.id} className="border rounded-lg overflow-hidden">
+                    {/* Supplier Header */}
+                    <div
+                      className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition"
+                      onClick={() => setExpandedSupplierId(isExpanded ? null : data.supplier.id)}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-lg">{isExpanded ? '▼' : '▶'}</span>
+                          <div>
+                            <h4 className="font-bold text-lg">{data.supplier.name}</h4>
+                            <div className="flex gap-1 mt-1">
+                              {data.supplier.categories.map(cat => (
+                                <span key={cat} className={`px-2 py-0.5 text-xs rounded ${cat === 'spare_parts' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}`}>
+                                  {cat === 'spare_parts' ? 'Spare Parts' : 'Accessories'}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      ))}
+                        <div className="flex gap-6 text-sm">
+                          {hasPurchases && (
+                            <div className="text-right">
+                              <p className="text-gray-600">Total Purchased</p>
+                              <p className="font-bold text-blue-700">KES {data.totalPurchaseCost.toLocaleString()}</p>
+                              <p className="text-xs text-gray-500">{data.supplierPurchases.length} orders</p>
+                            </div>
+                          )}
+                          {hasRepairs && (
+                            <div className="text-right">
+                              <p className="text-gray-600">Repair Revenue</p>
+                              <p className="font-bold text-green-700">KES {data.totalRepairRevenue.toLocaleString()}</p>
+                              <p className="text-xs text-gray-500">{data.totalRepairOutsourcing} repairs</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Expanded Details */}
+                    {isExpanded && (
+                      <div className="p-4 space-y-4">
+                        {/* Purchase Orders */}
+                        {showPurchases && hasPurchases && (
+                          <div>
+                            <h5 className="font-semibold text-blue-800 mb-3 flex items-center gap-2">
+                              <span className="w-3 h-3 bg-blue-500 rounded-full inline-block"></span>
+                              Purchase Orders ({data.supplierPurchases.length})
+                            </h5>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead className="bg-blue-50">
+                                  <tr>
+                                    <th className="p-2 text-left">Date</th>
+                                    <th className="p-2 text-left">Items</th>
+                                    <th className="p-2 text-right">Total Qty</th>
+                                    <th className="p-2 text-right">Total Cost</th>
+                                    <th className="p-2 text-center">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {data.supplierPurchases.map(purchase => (
+                                    <tr key={purchase.id} className="border-t hover:bg-blue-50/50">
+                                      <td className="p-2">{formatDate(purchase.date)}</td>
+                                      <td className="p-2">
+                                        <div className="space-y-1">
+                                          {purchase.items.map((item, idx) => (
+                                            <div key={idx} className="text-xs">
+                                              <span className="font-medium">{item.itemName}</span>
+                                              <span className="text-gray-500"> x{item.qty} @ KES {item.costPrice.toLocaleString()}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </td>
+                                      <td className="p-2 text-right font-medium">
+                                        {purchase.items.reduce((s, i) => s + i.qty, 0)}
+                                      </td>
+                                      <td className="p-2 text-right font-bold">KES {purchase.total.toLocaleString()}</td>
+                                      <td className="p-2 text-center">
+                                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${purchase.confirmed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                          {purchase.confirmed ? 'Confirmed' : 'Pending'}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot className="bg-blue-50 font-semibold">
+                                  <tr>
+                                    <td className="p-2" colSpan={3}>Total Purchases</td>
+                                    <td className="p-2 text-right text-blue-800">KES {data.totalPurchaseCost.toLocaleString()}</td>
+                                    <td></td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+
+                            {/* Item Breakdown */}
+                            {Object.keys(data.purchaseItemBreakdown).length > 0 && (
+                              <div className="mt-3 bg-blue-50/50 rounded p-3">
+                                <p className="text-xs font-semibold text-blue-800 mb-2">Item Summary:</p>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                  {Object.entries(data.purchaseItemBreakdown).map(([name, info]) => (
+                                    <div key={name} className="bg-white rounded p-2 text-xs border">
+                                      <p className="font-semibold truncate" title={name}>{name}</p>
+                                      <p className="text-gray-600">Qty: {info.qty} | KES {info.totalCost.toLocaleString()}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Repair Outsourcing Records */}
+                        {showRepairs && hasRepairs && (
+                          <div>
+                            <h5 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
+                              <span className="w-3 h-3 bg-green-500 rounded-full inline-block"></span>
+                              Repair Outsourcing ({data.repairRecords.length})
+                            </h5>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead className="bg-green-50">
+                                  <tr>
+                                    <th className="p-2 text-left">Date</th>
+                                    <th className="p-2 text-left">Customer</th>
+                                    <th className="p-2 text-left">Phone Model</th>
+                                    <th className="p-2 text-left">Outsourced Parts</th>
+                                    <th className="p-2 text-right">Repair Revenue</th>
+                                    <th className="p-2 text-center">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {data.repairRecords.map(record => (
+                                    <tr key={record.repairId} className="border-t hover:bg-green-50/50">
+                                      <td className="p-2">{formatDate(record.date)}</td>
+                                      <td className="p-2">
+                                        <div className="font-medium">{record.customerName}</div>
+                                        {record.ticketNumber && (
+                                          <div className="text-xs text-gray-500 font-mono">{record.ticketNumber}</div>
+                                        )}
+                                      </td>
+                                      <td className="p-2">{record.phoneModel}</td>
+                                      <td className="p-2">
+                                        <div className="space-y-1">
+                                          {record.outsourcedItems.map((item, idx) => (
+                                            <span key={idx} className="inline-block bg-orange-100 text-orange-800 text-xs px-2 py-0.5 rounded mr-1">
+                                              {item.itemName} x{item.qty}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </td>
+                                      <td className="p-2 text-right font-bold">KES {record.totalAgreedAmount.toLocaleString()}</td>
+                                      <td className="p-2 text-center">
+                                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                                          record.status === 'COLLECTED' ? 'bg-gray-100 text-gray-800' :
+                                          record.status === 'FULLY_PAID' ? 'bg-green-100 text-green-800' :
+                                          'bg-yellow-100 text-yellow-800'
+                                        }`}>
+                                          {record.status === 'COLLECTED' ? 'Collected' : record.status === 'FULLY_PAID' ? 'Fully Paid' : 'Pending'}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot className="bg-green-50 font-semibold">
+                                  <tr>
+                                    <td className="p-2" colSpan={4}>Total Repair Revenue</td>
+                                    <td className="p-2 text-right text-green-800">KES {data.totalRepairRevenue.toLocaleString()}</td>
+                                    <td></td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Summary for this supplier */}
+                        <div className="bg-gray-50 rounded p-4 border">
+                          <h5 className="font-semibold mb-2">Summary: {data.supplier.name}</h5>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <p className="text-gray-600">Total Paid (Purchases)</p>
+                              <p className="text-lg font-bold text-blue-700">KES {data.totalPurchaseCost.toLocaleString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600">Revenue from Repairs</p>
+                              <p className="text-lg font-bold text-green-700">KES {data.totalRepairRevenue.toLocaleString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600">Net (Revenue - Costs)</p>
+                              <p className={`text-lg font-bold ${data.totalRepairRevenue - data.totalPurchaseCost >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                KES {(data.totalRepairRevenue - data.totalPurchaseCost).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
-            </div>
-          );
-        })}
+          </div>
+        )}
       </div>
 
       {/* Suppliers List */}
@@ -455,48 +525,46 @@ export default function SupplierManagement() {
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Email</th>
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Address</th>
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Categories</th>
+                  <th className="p-3 text-right text-sm font-semibold text-gray-700">Total Spent</th>
                   <th className="p-3 text-center text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {suppliers.map((supplier) => (
-                  <tr key={supplier.id} className="border-t hover:bg-gray-50">
-                    <td className="p-3 text-sm font-medium">{supplier.name}</td>
-                    <td className="p-3 text-sm text-gray-600">{supplier.phone || "-"}</td>
-                    <td className="p-3 text-sm text-gray-600">{supplier.email || "-"}</td>
-                    <td className="p-3 text-sm text-gray-600">{supplier.address || "-"}</td>
-                    <td className="p-3 text-sm text-gray-600">
-                      <div className="flex flex-wrap gap-1">
-                        {supplier.categories.map((cat) => (
-                          <span
-                            key={cat}
-                            className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded"
-                          >
-                            {cat === 'accessories' ? 'Accessories' : 'Spare Parts'}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-3 text-center">
-                      <div className="flex gap-2 justify-center">
-                        <button
-                          onClick={() => handleEdit(supplier)}
-                          className="text-blue-600 hover:text-blue-800 text-sm"
-                        >
-                          Edit
-                        </button>
-                        {currentUser?.roles.includes('admin') && (
-                          <button
-                            onClick={() => handleDelete(supplier.id)}
-                            className="text-red-600 hover:text-red-800 text-sm"
-                          >
-                            Delete
+                {suppliers.map((supplier) => {
+                  const data = supplierData.find(d => d.supplier.id === supplier.id);
+                  return (
+                    <tr key={supplier.id} className="border-t hover:bg-gray-50">
+                      <td className="p-3 text-sm font-medium">{supplier.name}</td>
+                      <td className="p-3 text-sm text-gray-600">{supplier.phone || "-"}</td>
+                      <td className="p-3 text-sm text-gray-600">{supplier.email || "-"}</td>
+                      <td className="p-3 text-sm text-gray-600">{supplier.address || "-"}</td>
+                      <td className="p-3 text-sm text-gray-600">
+                        <div className="flex flex-wrap gap-1">
+                          {supplier.categories.map((cat) => (
+                            <span key={cat} className={`px-2 py-1 text-xs rounded ${cat === 'spare_parts' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}`}>
+                              {cat === 'accessories' ? 'Accessories' : 'Spare Parts'}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-3 text-sm text-right font-bold text-blue-700">
+                        KES {(data?.totalPurchaseCost || 0).toLocaleString()}
+                      </td>
+                      <td className="p-3 text-center">
+                        <div className="flex gap-2 justify-center">
+                          <button onClick={() => handleEdit(supplier)} className="text-blue-600 hover:text-blue-800 text-sm">
+                            Edit
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {currentUser?.roles.includes('admin') && (
+                            <button onClick={() => handleDelete(supplier.id)} className="text-red-600 hover:text-red-800 text-sm">
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
