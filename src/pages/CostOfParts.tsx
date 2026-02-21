@@ -5,8 +5,8 @@ import { useSupplierDebt } from "../context/SupplierDebtContext";
 
 export default function CostOfParts() {
   const { repairs } = useRepair();
-  const { currentUser, currentShop } = useShop();
-  const { debts, updateDebtCost, getDebtsBySupplier } = useSupplierDebt();
+  const { currentUser } = useShop();
+  const { debts, updateDebtCost } = useSupplierDebt();
   const [searchTerm, setSearchTerm] = useState("");
 
   // Get repairs with outsourced parts that need cost input
