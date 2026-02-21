@@ -60,7 +60,16 @@ function AppContent() {
             <Link to="/sales" className="block hover:text-gray-300 transition-colors">Accessories Sales</Link>
           </li>
           <li>
-            <Link to="/pending-collections" className="block hover:text-gray-300 transition-colors">Pending Collections</Link>
+            <Link to="/pending-collections/all" className="block hover:text-gray-300 transition-colors">All</Link>
+          </li>
+          <li>
+            <Link to="/pending-collections/pending-payment" className="block hover:text-gray-300 transition-colors">Pending Payment</Link>
+          </li>
+          <li>
+            <Link to="/pending-collections/ready-for-collection" className="block hover:text-gray-300 transition-colors">Ready for Collection</Link>
+          </li>
+          <li>
+            <Link to="/pending-collections/fully-paid" className="block hover:text-gray-300 transition-colors">Fully Paid</Link>
           </li>
           {currentUser?.roles.includes('admin') && (
             <li>
@@ -86,6 +95,9 @@ function AppContent() {
           )}
           <li>
             <Link to="/todays-sales-report" className="block hover:text-gray-300 transition-colors">Today's Sales Report</Link>
+          </li>
+          <li>
+            <Link to="/pending-collections/fully-paid" className="block hover:text-gray-300 transition-colors">Fully Paid</Link>
           </li>
           <li>
             <Link to="/exchange" className="block hover:text-gray-300 transition-colors">Exchange</Link>
@@ -242,7 +254,7 @@ function AppContent() {
             }
           />
           <Route
-            path="/pending-collections"
+            path="/pending-collections/:filterType?"
             element={
               <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
                 <PendingCollections />

@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useMemo, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
 import { usePayment } from "../context/PaymentContext";
@@ -8,10 +8,32 @@ type FilterType = 'all' | 'pending_collection' | 'pending_payment' | 'fully_paid
 
 export default function PendingCollections() {
   const navigate = useNavigate();
+  const { filterType } = useParams<{ filterType?: string }>();
   const { repairs, confirmPayment, confirmCollection } = useRepair();
   const { shops, currentUser } = useShop();
   const { addPayment } = usePayment();
-  const [filter, setFilter] = useState<FilterType>('all');
+  
+  // Map URL param to filter type
+  const getFilterFromUrl = (): FilterType => {
+    switch (filterType) {
+      case 'pending-payment':
+        return 'pending_payment';
+      case 'ready-for-collection':
+        return 'pending_collection';
+      case 'fully-paid':
+        return 'fully_paid';
+      case 'all':
+      default:
+        return 'all';
+    }
+  };
+  
+  const [filter, setFilter] = useState<FilterType>(getFilterFromUrl());
+  
+  // Update filter when URL changes
+  useEffect(() => {
+    setFilter(getFilterFromUrl());
+  }, [filterType]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedRepair, setSelectedRepair] = useState<typeof repairs[0] | null>(null);
@@ -184,21 +206,6 @@ export default function PendingCollections() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Filter by Status
-            </label>
-            <select
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as FilterType)}
-            >
-              <option value="all">All Pending</option>
-              <option value="pending_collection">Ready for Collection</option>
-              <option value="pending_payment">Pending Payment</option>
-              <option value="fully_paid">Fully Paid</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
               Search
             </label>
             <input
@@ -210,6 +217,13 @@ export default function PendingCollections() {
             />
           </div>
         </div>
+      </div>
+      
+      {/* Current Filter Display */}
+      <div className="mb-4 bg-blue-50 border border-blue-200 rounded p-3">
+        <p className="text-sm text-gray-700">
+          Showing: <span className="font-semibold capitalize text-blue-800">{filter === 'pending_collection' ? 'Ready for Collection' : filter === 'pending_payment' ? 'Pending Payment' : filter === 'fully_paid' ? 'Fully Paid' : 'All'}</span>
+        </p>
       </div>
 
       {/* Repairs Table */}

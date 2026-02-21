@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useSales } from "../context/SalesContext";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
@@ -175,11 +176,20 @@ export default function TodaysSalesReport() {
     shareViaEmail(subject, body);
   };
 
+  // Get fully paid repairs count
+  const fullyPaidRepairs = filteredRepairs.filter(r => r.paymentStatus === 'fully_paid').length;
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
         <h1 className="text-3xl font-bold">Today's Sales Report</h1>
         <div className="flex gap-4 items-center flex-wrap">
+          <Link
+            to="/pending-collections/fully-paid"
+            className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 text-sm"
+          >
+            View Fully Paid ({fullyPaidRepairs})
+          </Link>
           <div>
             <label className="block text-xs text-gray-600 mb-1">Send to (optional)</label>
             <input
