@@ -64,11 +64,6 @@ function AppContent() {
           </li>
           {currentUser?.roles.includes('admin') && (
             <li>
-              <Link to="/pending-payment-approval" className="block hover:text-gray-300 transition-colors">Pending Payment Approval</Link>
-            </li>
-          )}
-          {currentUser?.roles.includes('admin') && (
-            <li>
               <Link to="/purchases" className="block hover:text-gray-300 transition-colors">Purchases</Link>
             </li>
           )}
