@@ -16,6 +16,7 @@ export default function CostOfParts() {
       qty: number;
       source: 'part' | 'additional';
       currentCost: number;
+      supplierName?: string;
     }> = [];
 
     // Parts with zero cost (outsourced, cost not yet entered)
@@ -27,6 +28,7 @@ export default function CostOfParts() {
           qty: part.qty,
           source: 'part',
           currentCost: 0,
+          supplierName: part.supplierName,
         });
       });
 
@@ -45,6 +47,7 @@ export default function CostOfParts() {
               qty: 1,
               source: 'additional',
               currentCost: 0,
+              supplierName: item.supplierName,
             });
           }
         });
@@ -187,6 +190,9 @@ export default function CostOfParts() {
                         {repair.phoneNumber} | {formatDate(repair.date)}
                         {repair.ticketNumber && <> | Ticket: <span className="font-mono">{repair.ticketNumber}</span></>}
                       </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Staff: <span className="font-medium text-indigo-700">{repair.technician || 'Unknown'}</span>
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${status.color}`}>
@@ -211,7 +217,8 @@ export default function CostOfParts() {
                           <div className="flex-1 min-w-[200px]">
                             <p className="font-medium text-gray-900">{item.itemName}</p>
                             <p className="text-xs text-gray-600">
-                              Qty: {item.qty} | Source: {item.source === 'additional' ? 'Outsourced' : 'Parts'}
+                              Qty: {item.qty}
+                              {item.supplierName && <> | Supplier: <span className="font-medium text-orange-700">{item.supplierName}</span></>}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
@@ -258,36 +265,35 @@ export default function CostOfParts() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="p-2 text-left">Date</th>
+                  <th className="p-2 text-left">Staff</th>
                   <th className="p-2 text-left">Customer</th>
                   <th className="p-2 text-left">Phone</th>
                   <th className="p-2 text-left">Parts & Costs</th>
                   <th className="p-2 text-right">Total Cost</th>
-                  <th className="p-2 text-right">Revenue</th>
-                  <th className="p-2 text-right">Profit</th>
                 </tr>
               </thead>
               <tbody>
                 {repairsWithCosts.map(repair => {
                   const partsCost = repair.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
-                  const revenue = repair.totalAgreedAmount || repair.totalCost;
-                  const profit = revenue - partsCost;
                   return (
                     <tr key={repair.id} className="border-t hover:bg-gray-50">
                       <td className="p-2">{new Date(repair.date).toLocaleDateString()}</td>
+                      <td className="p-2">
+                        <span className="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded font-medium">
+                          {repair.technician || 'Unknown'}
+                        </span>
+                      </td>
                       <td className="p-2 font-medium">{repair.customerName}</td>
                       <td className="p-2">{repair.phoneModel}</td>
                       <td className="p-2">
                         {repair.partsUsed.filter(p => p.cost > 0).map((p, i) => (
                           <span key={i} className="inline-block bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded mr-1 mb-1">
                             {p.itemName}: KES {p.cost.toLocaleString()} x{p.qty}
+                            {p.supplierName && ` (${p.supplierName})`}
                           </span>
                         ))}
                       </td>
                       <td className="p-2 text-right font-bold text-red-600">KES {partsCost.toLocaleString()}</td>
-                      <td className="p-2 text-right font-bold text-green-600">KES {revenue.toLocaleString()}</td>
-                      <td className={`p-2 text-right font-bold ${profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                        KES {profit.toLocaleString()}
-                      </td>
                     </tr>
                   );
                 })}
