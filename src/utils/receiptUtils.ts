@@ -123,68 +123,41 @@ export const formatReceiptText = (sale: any, shopName: string, shopAddress?: str
   const customerName = sale.customerName || `Customer-${sale.id}`;
   
   let text = `*${shopName}*\n`;
-  if (shopAddress) {
-    text += `${shopAddress}\n`;
-  }
-  if (shopPhone) {
-    text += `Phone: ${shopPhone}\n`;
-  }
-  text += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-  text += `*Receipt for ${customerName}*\n`;
-  text += `Receipt #${sale.id}\n`;
-  text += `Date & Time: ${dateTime}\n`;
+  if (shopAddress) text += `${shopAddress}\n`;
+  if (shopPhone) text += `${shopPhone}\n`;
+  text += `\n*Receipt - ${customerName}*\n`;
+  text += `#${sale.id} | ${dateTime}\n`;
   if (sale.saleType) {
-    const saleTypeText = sale.saleType === 'in-shop' ? 'In-Shop Sale' : sale.saleType === 'wholesale' ? 'Wholesale' : 'Repair Sale';
-    text += `Sale Type: ${saleTypeText}\n`;
+    const t = sale.saleType === 'in-shop' ? 'In-Shop' : sale.saleType === 'wholesale' ? 'Wholesale' : 'Repair';
+    text += `Type: ${t}\n`;
   }
-  
-  // Customer info for repairs
   if (sale.customerName) {
-    text += `\nCustomer: ${sale.customerName}\n`;
-    if (sale.customerPhone) {
-      text += `Phone: ${sale.customerPhone}\n`;
-    }
-    if (sale.phoneModel) {
-      text += `Phone Model: ${sale.phoneModel}\n`;
-    }
-    if (sale.serviceType) {
-      text += `Service: ${sale.serviceType}\n`;
-    }
+    text += `Customer: ${sale.customerName}`;
+    if (sale.customerPhone) text += ` | ${sale.customerPhone}`;
+    text += `\n`;
+    if (sale.phoneModel) text += `Phone: ${sale.phoneModel}\n`;
+    if (sale.serviceType) text += `Service: ${sale.serviceType}\n`;
   }
-  
-  text += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-  text += `*ITEMS USED*\n`;
-  text += `━━━━━━━━━━━━━━━━━━━━\n`;
-  sale.items.forEach((item: any) => {
-    text += `• ${item.name}${item.qty > 1 ? ` (Qty: ${item.qty})` : ''}\n`;
-  });
-  text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
-  
-  // Show total agreed amount if available, otherwise show calculated total
-  const totalAmount = sale.totalAgreedAmount || sale.total;
-  text += `*TOTAL: KES ${totalAmount.toLocaleString()}*\n`;
-  
-  // Payment info
-  if (sale.amountPaid !== undefined && sale.amountPaid > 0) {
-    text += `Amount Paid: KES ${sale.amountPaid.toLocaleString()}\n`;
-  }
-  if (sale.balance !== undefined && sale.balance > 0) {
-    text += `Balance: KES ${sale.balance.toLocaleString()}\n`;
-  }
-  
-  // Transaction codes
-  if (sale.transactionCodes && Array.isArray(sale.transactionCodes) && sale.transactionCodes.length > 0) {
-    text += `\n*Transaction Codes:*\n`;
-    sale.transactionCodes.forEach((tc: any) => {
-      text += `${tc.method.replace(/_/g, ' ').toUpperCase()}: ${tc.code}\n`;
-      if (tc.bank) {
-        text += `Bank: ${tc.bank}\n`;
-      }
+  if (sale.items && sale.items.length > 0) {
+    text += `\n*Items:*\n`;
+    sale.items.forEach((item: any) => {
+      text += `• ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}\n`;
     });
   }
-  
-  text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
+  const totalAmount = sale.totalAgreedAmount || sale.total;
+  text += `\n*TOTAL: KES ${totalAmount.toLocaleString()}*\n`;
+  if (sale.amountPaid !== undefined && sale.amountPaid > 0) {
+    text += `Paid: KES ${sale.amountPaid.toLocaleString()}`;
+    if (sale.balance !== undefined && sale.balance > 0) text += ` | Balance: KES ${sale.balance.toLocaleString()}`;
+    text += `\n`;
+  }
+  if (sale.transactionCodes && Array.isArray(sale.transactionCodes) && sale.transactionCodes.length > 0) {
+    sale.transactionCodes.forEach((tc: any) => {
+      text += `${tc.method.replace(/_/g, ' ').toUpperCase()}: ${tc.code}`;
+      if (tc.bank) text += ` (${tc.bank})`;
+      text += `\n`;
+    });
+  }
   text += `\nThank you for your business!`;
-  text += `\nThis is a digital receipt.`;
   return text;
 };
