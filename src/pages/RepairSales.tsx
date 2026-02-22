@@ -387,11 +387,14 @@ export default function RepairSales() {
         itemName: p.itemName,
         qty: p.qty,
         cost: p.cost,
+        supplierName: p.supplierName,
+        source: p.source,
       })),
       additionalItems: additionalLaborItems.map(item => ({
         itemName: item.itemName,
         source: item.source,
         itemId: item.itemId,
+        supplierName: item.supplierName,
       })),
       outsourcedCost: totals.totalOutsourced,
       laborCost: 0, // No longer tracking labor cost separately
@@ -660,36 +663,35 @@ export default function RepairSales() {
       {/* Parts Selection */}
       <div className="bg-white p-6 rounded shadow">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Parts Used</h3>
+          <h3 className="text-lg font-semibold">Spare Parts Used</h3>
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
               id="serviceOnly"
               checked={isServiceOnly}
-              onChange={(e) => {
-                setIsServiceOnly(e.target.checked);
-                if (e.target.checked) {
-                  setSelectedParts([]); // Clear parts if service only
-                }
-              }}
+              onChange={(e) => setIsServiceOnly(e.target.checked)}
               className="w-4 h-4"
             />
             <label htmlFor="serviceOnly" className="text-sm text-gray-700">
-              Service Only (No Parts - e.g., Cleaning, Water Damage)
+              Includes Service (e.g., Cleaning, Software Update)
             </label>
           </div>
         </div>
+
+        {isServiceOnly && (
+          <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
+            <p className="text-sm text-blue-700">Service repair selected. You can still add spare parts if needed.</p>
+          </div>
+        )}
         
-        {!isServiceOnly && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-              <input
-                type="text"
-                className="border border-gray-300 rounded-md px-3 py-2"
-                placeholder="Type the part name"
-                value={partName}
-                onChange={(e) => setPartName(e.target.value)}
-              />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+          <input
+            type="text"
+            className="border border-gray-300 rounded-md px-3 py-2"
+            placeholder="Type the part name"
+            value={partName}
+            onChange={(e) => setPartName(e.target.value)}
+          />
 
           <select
             className="border border-gray-300 rounded-md px-3 py-2"
@@ -763,15 +765,15 @@ export default function RepairSales() {
             <div></div>
           )}
 
-              <button
-                onClick={addPart}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 col-span-4 md:col-span-1"
-              >
-                Add Part
-              </button>
-            </div>
+          <button
+            onClick={addPart}
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 col-span-4 md:col-span-1"
+          >
+            Add Part
+          </button>
+        </div>
 
-            {selectedParts.length > 0 && (
+        {selectedParts.length > 0 && (
           <div className="mt-4">
             <table className="w-full">
               <thead className="bg-gray-100">
@@ -808,14 +810,6 @@ export default function RepairSales() {
                 ))}
               </tbody>
             </table>
-          </div>
-            )}
-          </>
-        )}
-        {isServiceOnly && (
-          <div className="bg-blue-50 border border-blue-200 rounded p-4">
-            <p className="text-blue-800 font-semibold">Service Only Repair</p>
-            <p className="text-sm text-blue-700 mt-1">No parts will be used for this repair (e.g., cleaning, water damage repair, software update).</p>
           </div>
         )}
       </div>

@@ -59,7 +59,8 @@ export default function AutomatedDailyReport() {
   const pendingDeposits = getPendingCashDeposits();
   const pendingDepositsAmount = pendingDeposits.reduce((sum, p) => sum + p.amount, 0);
 
-  const getSupplierForItem = (itemName: string): string => {
+  const getSupplierForItem = (itemName: string, storedSupplier?: string): string => {
+    if (storedSupplier) return storedSupplier;
     const inv = inventoryItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
     if (inv?.supplier) return inv.supplier;
     for (const p of purchases) {
@@ -106,7 +107,7 @@ export default function AutomatedDailyReport() {
           report += `Parts used:\n`;
           r.partsUsed.forEach(p => {
             const costStr = p.cost > 0 ? `Cost KES ${(p.cost * p.qty).toLocaleString()}` : 'Cost pending';
-            const supplier = getSupplierForItem(p.itemName);
+            const supplier = getSupplierForItem(p.itemName, p.supplierName);
             report += `-${p.itemName} x${p.qty} (${costStr})(${supplier})\n`;
           });
         }

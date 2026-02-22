@@ -24,11 +24,14 @@ export type Repair = {
     itemName: string;
     qty: number;
     cost: number;
+    supplierName?: string;
+    source?: string;
   }>;
   additionalItems?: Array<{
     itemName: string;
     source: 'inventory' | 'outsourced';
     itemId?: number;
+    supplierName?: string;
   }>;
   outsourcedCost: number;
   laborCost: number;
@@ -102,11 +105,14 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         itemName: p.item_name,
         qty: p.qty,
         cost: Number(p.cost) || 0,
+        supplierName: p.supplier_name || undefined,
+        source: p.source || undefined,
       })),
       additionalItems: (additionalData || []).map((a: any) => ({
         itemName: a.item_name,
         source: a.source as 'inventory' | 'outsourced',
         itemId: a.item_id || undefined,
+        supplierName: a.supplier_name || undefined,
       })),
       outsourcedCost: Number(repairData.outsourced_cost) || 0,
       laborCost: Number(repairData.labor_cost) || 0,
@@ -240,21 +246,36 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         return null;
       }
 
-      // Insert repair parts
+      // Insert repair parts (try with supplier columns, fallback without)
       if (repairData.partsUsed.length > 0) {
-        const partsPayload = repairData.partsUsed.map((part) => ({
+        const partsWithSupplier = repairData.partsUsed.map((part) => ({
           repair_id: repairRecord.id,
           item_id: part.itemId || null,
           item_name: part.itemName,
           qty: part.qty,
           cost: part.cost,
+          supplier_name: (part as any).supplierName || null,
+          source: (part as any).source || 'in-house',
         }));
         const { error: partsError } = await supabase
           .from("repair_parts")
-          .insert(partsPayload);
+          .insert(partsWithSupplier);
         if (partsError) {
-          console.error("Error adding repair parts:", partsError);
-          return null;
+          // Fallback: columns may not exist yet, try without supplier fields
+          const partsBasic = repairData.partsUsed.map((part) => ({
+            repair_id: repairRecord.id,
+            item_id: part.itemId || null,
+            item_name: part.itemName,
+            qty: part.qty,
+            cost: part.cost,
+          }));
+          const { error: fallbackError } = await supabase
+            .from("repair_parts")
+            .insert(partsBasic);
+          if (fallbackError) {
+            console.error("Error adding repair parts:", fallbackError);
+            return null;
+          }
         }
       }
 
@@ -265,7 +286,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
           item_name: item.itemName,
           source: item.source,
           item_id: item.itemId || null,
-          supplier_name: item.source === 'outsourced' ? item.itemName : null, // Store supplier name if outsourced
+          supplier_name: item.source === 'outsourced' ? ((item as any).supplierName || null) : null,
         }));
         const { error: additionalError } = await supabase
           .from("additional_repair_items")

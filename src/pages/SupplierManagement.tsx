@@ -94,7 +94,7 @@ export default function SupplierManagement() {
         });
       });
 
-      // --- REPAIR DATA (Parts used in repairs with their costs) ---
+      // --- REPAIR DATA (Parts from this supplier used in repairs) ---
       const repairRecords: Array<{
         repairId: string;
         customerName: string;
@@ -110,12 +110,14 @@ export default function SupplierManagement() {
       }> = [];
 
       repairs.forEach(repair => {
-        // Only include repairs that have parts with costs entered
-        const partsWithCost = repair.partsUsed.filter(p => p.cost > 0);
-        if (partsWithCost.length === 0) return;
+        // Only include parts from this specific supplier
+        const supplierParts = repair.partsUsed.filter(p =>
+          p.cost > 0 && p.supplierName?.toLowerCase() === supplier.name.toLowerCase()
+        );
+        if (supplierParts.length === 0) return;
 
         const revenue = repair.totalAgreedAmount || repair.totalCost;
-        const partsCost = partsWithCost.reduce((sum, p) => sum + (p.cost * p.qty), 0);
+        const partsCost = supplierParts.reduce((sum, p) => sum + (p.cost * p.qty), 0);
         const profit = revenue - partsCost;
 
         repairRecords.push({
@@ -127,7 +129,7 @@ export default function SupplierManagement() {
           revenue,
           partsCost,
           profit,
-          parts: partsWithCost.map(p => ({ itemName: p.itemName, qty: p.qty, cost: p.cost })),
+          parts: supplierParts.map(p => ({ itemName: p.itemName, qty: p.qty, cost: p.cost })),
           status: repair.status,
           ticketNumber: repair.ticketNumber,
         });

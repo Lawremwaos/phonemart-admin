@@ -29,8 +29,9 @@ export default function TodaysSalesReport() {
     ? todayRepairs
     : todayRepairs.filter(r => r.shopId === currentShop?.id);
 
-  // Helper: find supplier for an item (returns supplier name or "Own Inventory")
-  const getSupplierForItem = (itemName: string): string => {
+  // Helper: find supplier for an item (checks stored supplier first, then looks up)
+  const getSupplierForItem = (itemName: string, storedSupplier?: string): string => {
+    if (storedSupplier) return storedSupplier;
     const inv = inventoryItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
     if (inv?.supplier) return inv.supplier;
     for (const p of purchases) {
@@ -61,14 +62,15 @@ export default function TodaysSalesReport() {
       // All parts with their costs (from repair_parts table)
       const partsBreakdown = repair.partsUsed.map(part => {
         const costPerUnit = part.cost > 0 ? part.cost : getCostPrice(part.itemName);
-        const supplier = getSupplierForItem(part.itemName);
+        const supplier = getSupplierForItem(part.itemName, part.supplierName);
+        const source = part.source || (part.supplierName ? 'outsourced' : 'in-house');
         return {
           itemName: part.itemName,
           qty: part.qty,
           costPerUnit,
           totalCost: costPerUnit * part.qty,
           supplier,
-          source: 'inventory' as const,
+          source: source as 'inventory' | 'outsourced',
         };
       });
 
@@ -81,7 +83,7 @@ export default function TodaysSalesReport() {
           qty: 1,
           costPerUnit: 0,
           totalCost: 0,
-          supplier: getSupplierForItem(item.itemName),
+          supplier: getSupplierForItem(item.itemName, item.supplierName),
           source: 'outsourced' as const,
         }));
 
