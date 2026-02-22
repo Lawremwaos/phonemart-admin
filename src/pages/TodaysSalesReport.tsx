@@ -201,6 +201,7 @@ export default function TodaysSalesReport() {
         text += `\n${idx + 1}.${r.customerName}-${r.phoneModel}\n`;
         if (r.ticketNumber) text += `Ticket:${r.ticketNumber}\n`;
         text += `Issue: ${r.issue}\n`;
+        if (r.serviceType) text += `Service: ${r.serviceType}\n`;
         text += `Revenue:KES ${ra.revenue.toLocaleString()}\n`;
         if (ra.allParts.length > 0) {
           text += `Parts used:\n`;
@@ -441,7 +442,7 @@ export default function TodaysSalesReport() {
                         )}
                       </div>
                       <p className="font-semibold">{r.customerName}</p>
-                      <p className="text-sm text-gray-600">{r.phoneModel} - {r.issue}</p>
+                      <p className="text-sm text-gray-600">{r.phoneModel} - {r.issue}{r.serviceType ? ` (${r.serviceType})` : ''}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm text-gray-600">Revenue: <span className="font-bold text-green-700">KES {ra.revenue.toLocaleString()}</span></p>

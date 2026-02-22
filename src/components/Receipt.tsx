@@ -76,6 +76,12 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
                 <span className="font-semibold">{(sale as any).technician}</span>
               </div>
             )}
+            {(sale as any).serviceType && (
+              <div className="flex justify-between mb-2">
+                <span className="text-gray-600">Service:</span>
+                <span className="font-semibold text-blue-700">{(sale as any).serviceType}</span>
+              </div>
+            )}
           </>
         )}
       </div>

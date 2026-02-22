@@ -287,6 +287,9 @@ export default function PendingCollections() {
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
                       {repair.issue}
+                      {repair.serviceType && (
+                        <span className="ml-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-medium">{repair.serviceType}</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                       KES {(repair.totalAgreedAmount || repair.totalCost).toLocaleString()}
@@ -382,6 +385,7 @@ export default function PendingCollections() {
                                     paymentApproved: true,
                                     depositAmount: repair.depositAmount || 0,
                                     ticketNumber: repair.ticketNumber,
+                                    serviceType: repair.serviceType,
                                   };
                                   
                                   // Navigate to receipt
@@ -454,6 +458,7 @@ export default function PendingCollections() {
                                   paymentApproved: true,
                                   depositAmount: repair.depositAmount || 0,
                                   ticketNumber: repair.ticketNumber,
+                                  serviceType: repair.serviceType,
                                 };
                                 
                                 // Navigate to receipt

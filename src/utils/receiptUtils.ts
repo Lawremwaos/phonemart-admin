@@ -147,6 +147,9 @@ export const formatReceiptText = (sale: any, shopName: string, shopAddress?: str
     if (sale.phoneModel) {
       text += `Phone Model: ${sale.phoneModel}\n`;
     }
+    if (sale.serviceType) {
+      text += `Service: ${sale.serviceType}\n`;
+    }
   }
   
   text += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;

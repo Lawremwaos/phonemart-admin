@@ -41,7 +41,8 @@ export default function RepairSales() {
   const { currentShop, currentUser } = useShop();
   const { suppliers, addSupplier } = useSupplier();
   const [customerStatus, setCustomerStatus] = useState<'waiting' | 'coming_back'>('waiting');
-  const [isServiceOnly, setIsServiceOnly] = useState(false); // Service-only repair (no parts)
+  const [isServiceOnly, setIsServiceOnly] = useState(false);
+  const [serviceType, setServiceType] = useState("");
   const [additionalLaborItems, setAdditionalLaborItems] = useState<AdditionalLaborItem[]>([]);
   const [additionalLaborItemName, setAdditionalLaborItemName] = useState("");
   const [additionalLaborItemSource, setAdditionalLaborItemSource] = useState<'inventory' | 'outsourced'>('inventory');
@@ -273,10 +274,11 @@ export default function RepairSales() {
 
   const totals = calculateTotal();
 
-  function getTotalPaid() {
-    // Use agreed amount as the total
-    const finalTotal = form.totalAgreedAmount ? Number(form.totalAgreedAmount) : 0;
-    return finalTotal;
+  function getAmountPaid() {
+    const depositAmount = Number(form.depositAmount || 0);
+    if (depositAmount > 0) return depositAmount;
+    if (paymentMade === 'yes') return Number(form.totalAgreedAmount || 0);
+    return 0;
   }
 
   function validateTransactionCodes() {
@@ -337,22 +339,18 @@ export default function RepairSales() {
       return;
     }
 
-    // Parts are now optional - service-only repairs are allowed
-    // if (selectedParts.length === 0) {
-    //   alert("Please add at least one part");
-    //   return;
-    // }
+    if (isServiceOnly && !serviceType) {
+      alert("Please select the type of service");
+      return;
+    }
 
     if (!validateTransactionCodes()) {
       return;
     }
 
-    // Use agreed amount as the final total
     const finalTotal = Number(form.totalAgreedAmount);
     const depositAmount = Number(form.depositAmount || 0);
-    
-    // If deposit exists, use deposit as paid amount, otherwise use payment method amount
-    const paidAmount = depositAmount > 0 ? depositAmount : (paymentMade === 'yes' ? getTotalPaid() : 0);
+    const paidAmount = getAmountPaid();
     const balance = finalTotal - paidAmount;
     const paymentStatus = depositAmount > 0 
       ? (balance <= 0 ? 'fully_paid' : 'partial')
@@ -415,6 +413,7 @@ export default function RepairSales() {
       },
       ticketNumber: ticketNumber,
       collected: false,
+      serviceType: isServiceOnly ? serviceType : undefined,
     };
 
     const repairId = await addRepair(repair);
@@ -461,6 +460,7 @@ export default function RepairSales() {
       customerStatus,
       paymentApproved: false,
       depositAmount: depositAmount,
+      serviceType: isServiceOnly ? serviceType : undefined,
     };
 
     // Reset form
@@ -491,6 +491,8 @@ export default function RepairSales() {
     });
     setSelectedInventoryItem(null);
     setAdditionalLaborItemSource('inventory');
+    setIsServiceOnly(false);
+    setServiceType("");
 
     // Only navigate to receipt if deposit is made
     // Otherwise, just show success message and navigate to pending collections
@@ -679,8 +681,36 @@ export default function RepairSales() {
         </div>
 
         {isServiceOnly && (
-          <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
-            <p className="text-sm text-blue-700">Service repair selected. You can still add spare parts if needed.</p>
+          <div className="bg-blue-50 border border-blue-200 rounded p-4 mb-4">
+            <label className="block text-sm font-medium text-blue-800 mb-2">
+              Type of Service <span className="text-red-500">*</span>
+            </label>
+            <select
+              className="border border-blue-300 rounded-md px-3 py-2 w-full bg-white text-gray-900"
+              value={serviceType}
+              onChange={(e) => setServiceType(e.target.value)}
+            >
+              <option value="">Select service type</option>
+              <option value="Cleaning">Cleaning</option>
+              <option value="Software Update">Software Update</option>
+              <option value="Water Damage Repair">Water Damage Repair</option>
+              <option value="Data Recovery">Data Recovery</option>
+              <option value="Battery Calibration">Battery Calibration</option>
+              <option value="Virus Removal">Virus Removal</option>
+              <option value="System Reset">System Reset</option>
+              <option value="Unlocking">Unlocking</option>
+              <option value="Diagnostics">Diagnostics</option>
+              <option value="Other">Other</option>
+            </select>
+            {serviceType === 'Other' && (
+              <input
+                type="text"
+                className="border border-blue-300 rounded-md px-3 py-2 w-full mt-2"
+                placeholder="Describe the service..."
+                onChange={(e) => setServiceType(e.target.value || 'Other')}
+              />
+            )}
+            <p className="text-xs text-blue-600 mt-2">You can still add spare parts below if needed.</p>
           </div>
         )}
         
@@ -1187,26 +1217,38 @@ export default function RepairSales() {
         {/* Summary */}
         <div className="border-t pt-4 mt-4 bg-gray-50 p-4 rounded">
           <div className="space-y-2">
-            <div className="flex justify-between border-t pt-2 font-bold text-lg">
+            <div className="flex justify-between font-bold text-lg">
               <span>Total Agreed Amount:</span>
               <span className="text-green-600">KES {form.totalAgreedAmount ? Number(form.totalAgreedAmount).toLocaleString() : '0'}</span>
             </div>
-            {paymentMade === 'yes' && (
+            {Number(form.depositAmount || 0) > 0 && (
+              <>
+                <div className="flex justify-between border-t pt-2">
+                  <span>Deposit Paid:</span>
+                  <span className="font-semibold text-green-600">KES {Number(form.depositAmount).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-600 font-semibold">Balance Remaining:</span>
+                  <span className="font-bold text-red-600">KES {(Number(form.totalAgreedAmount || 0) - Number(form.depositAmount)).toLocaleString()}</span>
+                </div>
+              </>
+            )}
+            {Number(form.depositAmount || 0) === 0 && paymentMade === 'yes' && (
               <div className="flex justify-between border-t pt-2">
                 <span>Amount Paid:</span>
-                <span className="font-semibold text-green-600">KES {getTotalPaid().toLocaleString()}</span>
+                <span className="font-semibold text-green-600">KES {Number(form.totalAgreedAmount || 0).toLocaleString()}</span>
               </div>
             )}
-            {form.totalAgreedAmount && paymentMade === 'yes' && getTotalPaid() < Number(form.totalAgreedAmount) && (
-              <div className="flex justify-between">
-                <span className="text-red-600">Balance:</span>
-                <span className="font-semibold text-red-600">KES {(Number(form.totalAgreedAmount) - getTotalPaid()).toLocaleString()}</span>
-              </div>
-            )}
-            {paymentMade === 'no' && (
+            {Number(form.depositAmount || 0) === 0 && paymentMade === 'no' && (
               <div className="flex justify-between border-t pt-2">
                 <span className="text-orange-600">Payment Status:</span>
                 <span className="font-semibold text-orange-600">Not Paid - Will pay later</span>
+              </div>
+            )}
+            {isServiceOnly && serviceType && (
+              <div className="flex justify-between border-t pt-2">
+                <span className="text-blue-600">Service Type:</span>
+                <span className="font-semibold text-blue-600">{serviceType}</span>
               </div>
             )}
           </div>

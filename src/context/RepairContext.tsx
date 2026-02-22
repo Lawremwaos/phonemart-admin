@@ -51,8 +51,9 @@ export type Repair = {
     paymentMethod: string;
     transactionCodes: any;
   };
-  ticketNumber?: string; // Ticket number assigned to repair (not for deposits)
-  collected?: boolean; // Whether phone has been collected
+  ticketNumber?: string;
+  collected?: boolean;
+  serviceType?: string;
 };
 
 type RepairContextType = {
@@ -131,6 +132,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
       pendingTransactionCodes: repairData.pending_transaction_codes || undefined,
       ticketNumber: repairData.ticket_number || undefined,
       collected: repairData.collected || false,
+      serviceType: repairData.service_type || undefined,
     };
   }, []);
 
@@ -238,6 +240,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
           pending_transaction_codes: repairData.pendingTransactionCodes || null,
           ticket_number: (repairData as any).ticketNumber || null,
           collected: (repairData as any).collected || false,
+          service_type: (repairData as any).serviceType || null,
         })
         .select("*")
         .single();

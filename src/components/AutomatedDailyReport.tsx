@@ -102,6 +102,7 @@ export default function AutomatedDailyReport() {
         report += `\n${idx + 1}.${r.customerName}-${r.phoneModel}\n`;
         if (r.ticketNumber) report += `Ticket:${r.ticketNumber}\n`;
         report += `Issue: ${r.issue}\n`;
+        if (r.serviceType) report += `Service: ${r.serviceType}\n`;
         report += `Revenue:KES ${revenue.toLocaleString()}\n`;
         if (r.partsUsed.length > 0) {
           report += `Parts used:\n`;
