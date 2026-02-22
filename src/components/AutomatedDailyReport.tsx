@@ -147,19 +147,75 @@ export default function AutomatedDailyReport() {
   const totalRevenue = dailyRevenue + todayRepairRevenue;
   const grossProfit = totalRevenue - totalCosts;
 
+  // Check for outsourced parts missing cost entries
+  const repairsWithMissingCosts = useMemo(() => {
+    return todayRepairs
+      .filter(r => r.status === 'COLLECTED' || r.paymentApproved)
+      .map(r => {
+        const missingParts = r.partsUsed.filter(p =>
+          (p.source === 'outsourced' || p.supplierName) && p.cost === 0
+        );
+        const missingAdditional = (r.additionalItems || []).filter(item =>
+          item.source === 'outsourced' &&
+          !r.partsUsed.some(p => p.itemName === item.itemName && p.cost > 0)
+        );
+        if (missingParts.length === 0 && missingAdditional.length === 0) return null;
+        return {
+          repair: r,
+          missingParts: [...missingParts.map(p => p.itemName), ...missingAdditional.map(a => a.itemName)],
+        };
+      })
+      .filter(Boolean) as Array<{ repair: typeof todayRepairs[0]; missingParts: string[] }>;
+  }, [todayRepairs]);
+
+  const hasMissingCosts = repairsWithMissingCosts.length > 0;
+
+  const handleSendWithCheck = (sendFn: () => void) => {
+    if (hasMissingCosts) {
+      const names = repairsWithMissingCosts.map(r =>
+        `- ${r.repair.customerName} (${r.repair.phoneModel}): ${r.missingParts.join(', ')}`
+      ).join('\n');
+      alert(`Cannot send report. The following repairs have outsourced parts without cost entries:\n\n${names}\n\nPlease fill in the cost of parts first.`);
+      return;
+    }
+    sendFn();
+  };
+
   return (
     <div className="bg-white p-6 rounded-lg shadow">
       <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
         <h3 className="text-lg font-semibold">End-of-Day Report</h3>
         <div className="flex gap-2">
-          <button onClick={handleSendReport} className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 text-sm">
+          <button
+            onClick={() => handleSendWithCheck(handleSendReport)}
+            disabled={hasMissingCosts}
+            className={`px-3 py-2 rounded text-sm text-white ${hasMissingCosts ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+          >
             Send to Number
           </button>
-          <button onClick={handleSendToGroup} className="bg-green-700 text-white px-3 py-2 rounded hover:bg-green-800 text-sm">
+          <button
+            onClick={() => handleSendWithCheck(handleSendToGroup)}
+            disabled={hasMissingCosts}
+            className={`px-3 py-2 rounded text-sm text-white ${hasMissingCosts ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-700 hover:bg-green-800'}`}
+          >
             Send to Group
           </button>
         </div>
       </div>
+
+      {hasMissingCosts && (
+        <div className="bg-red-50 border border-red-300 rounded-lg p-3 mb-4">
+          <p className="text-sm font-semibold text-red-800 mb-1">Cannot send report — outsourced parts cost missing</p>
+          <ul className="text-xs text-red-700 space-y-1">
+            {repairsWithMissingCosts.map(r => (
+              <li key={r.repair.id}>
+                <span className="font-medium">{r.repair.customerName}</span> ({r.repair.phoneModel}): {r.missingParts.join(', ')}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-red-600 mt-2">Go to <a href="/cost-of-parts" className="underline font-semibold">Cost of Parts</a> to fill in the missing costs.</p>
+        </div>
+      )}
 
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
