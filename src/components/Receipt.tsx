@@ -64,22 +64,19 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
                 <span className="font-semibold">{(sale as any).phoneModel}</span>
               </div>
             )}
-            {(sale as any).issue && (
+            {((sale as any).issue || (sale as any).serviceType) && (
               <div className="mb-2">
                 <span className="text-gray-600">Issue:</span>
-                <p className="font-semibold">{(sale as any).issue}</p>
+                <p className="font-semibold">
+                  {(sale as any).issue}
+                  {(sale as any).serviceType && (sale as any).issue ? ` | ${(sale as any).serviceType}` : (sale as any).serviceType || ''}
+                </p>
               </div>
             )}
             {(sale as any).technician && (
               <div className="flex justify-between mb-2">
                 <span className="text-gray-600">Technician:</span>
                 <span className="font-semibold">{(sale as any).technician}</span>
-              </div>
-            )}
-            {(sale as any).serviceType && (
-              <div className="flex justify-between mb-2">
-                <span className="text-gray-600">Service:</span>
-                <span className="font-semibold text-blue-700">{(sale as any).serviceType}</span>
               </div>
             )}
           </>

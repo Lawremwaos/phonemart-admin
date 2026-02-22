@@ -339,8 +339,8 @@ export default function RepairSales() {
       return;
     }
 
-    if (isServiceOnly && !serviceType) {
-      alert("Please select the type of service");
+    if (isServiceOnly && !serviceType.trim()) {
+      alert("Please describe the service rendered");
       return;
     }
 
@@ -683,34 +683,16 @@ export default function RepairSales() {
         {isServiceOnly && (
           <div className="bg-blue-50 border border-blue-200 rounded p-4 mb-4">
             <label className="block text-sm font-medium text-blue-800 mb-2">
-              Type of Service <span className="text-red-500">*</span>
+              Describe the service rendered <span className="text-red-500">*</span>
             </label>
-            <select
+            <input
+              type="text"
               className="border border-blue-300 rounded-md px-3 py-2 w-full bg-white text-gray-900"
+              placeholder="e.g., Software update, Cleaning, Screen replacement + software update"
               value={serviceType}
               onChange={(e) => setServiceType(e.target.value)}
-            >
-              <option value="">Select service type</option>
-              <option value="Cleaning">Cleaning</option>
-              <option value="Software Update">Software Update</option>
-              <option value="Water Damage Repair">Water Damage Repair</option>
-              <option value="Data Recovery">Data Recovery</option>
-              <option value="Battery Calibration">Battery Calibration</option>
-              <option value="Virus Removal">Virus Removal</option>
-              <option value="System Reset">System Reset</option>
-              <option value="Unlocking">Unlocking</option>
-              <option value="Diagnostics">Diagnostics</option>
-              <option value="Other">Other</option>
-            </select>
-            {serviceType === 'Other' && (
-              <input
-                type="text"
-                className="border border-blue-300 rounded-md px-3 py-2 w-full mt-2"
-                placeholder="Describe the service..."
-                onChange={(e) => setServiceType(e.target.value || 'Other')}
-              />
-            )}
-            <p className="text-xs text-blue-600 mt-2">You can still add spare parts below if needed.</p>
+            />
+            <p className="text-xs text-blue-600 mt-2">This will appear as part of the issue on the receipt. You can still add spare parts below.</p>
           </div>
         )}
         

@@ -136,7 +136,11 @@ export const formatReceiptText = (sale: any, shopName: string, shopAddress?: str
     if (sale.customerPhone) text += ` | ${sale.customerPhone}`;
     text += `\n`;
     if (sale.phoneModel) text += `Phone: ${sale.phoneModel}\n`;
-    if (sale.serviceType) text += `Service: ${sale.serviceType}\n`;
+    if (sale.issue || sale.serviceType) {
+      let issueLine = sale.issue || '';
+      if (sale.serviceType) issueLine += issueLine ? ` | ${sale.serviceType}` : sale.serviceType;
+      text += `Issue: ${issueLine}\n`;
+    }
   }
   if (sale.items && sale.items.length > 0) {
     text += `\n*Items:*\n`;
