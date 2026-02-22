@@ -69,6 +69,29 @@ export default function AutomatedDailyReport() {
     return 'Own Inventory';
   };
 
+  // Accessory sale breakdown by type
+  const retailSales = dailySales.filter(s => s.saleType === 'retail' || s.saleType === 'in-shop');
+  const wholesaleSales = dailySales.filter(s => s.saleType === 'wholesale');
+  const retailCount = retailSales.length;
+  const wholesaleCount = wholesaleSales.length;
+  const retailRevenue = retailSales.reduce((sum, s) => sum + s.total, 0);
+  const wholesaleRevenue = wholesaleSales.reduce((sum, s) => sum + s.total, 0);
+
+  // Deposited breakdown
+  const depositedBreakdown = useMemo(() => {
+    const breakdown: Record<string, number> = {};
+    dailySales.forEach(sale => {
+      if (sale.paymentType && sale.total > 0) {
+        const method = sale.paymentType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        breakdown[method] = (breakdown[method] || 0) + sale.total;
+      }
+    });
+    if (cashCollected > 0) breakdown['Cash'] = (breakdown['Cash'] || 0) + cashCollected;
+    if (mpesaCollected > 0) breakdown['MPESA'] = (breakdown['MPESA'] || 0) + mpesaCollected;
+    if (bankDeposits > 0) breakdown['Bank'] = (breakdown['Bank'] || 0) + bankDeposits;
+    return breakdown;
+  }, [dailySales, cashCollected, mpesaCollected, bankDeposits]);
+
   const generateDailyReport = () => {
     const todayStr = new Date().toLocaleDateString('en-US', {
       year: 'numeric', month: 'long', day: 'numeric',
@@ -77,20 +100,46 @@ export default function AutomatedDailyReport() {
     const totalRevenue = dailyRevenue + todayRepairRevenue;
     const grossProfit = totalRevenue - totalCosts;
 
-    let report = `*PHONEMART DAILY REPORT*\n`;
-    report += `*${currentShop?.name || 'PHONEMART'}*\n`;
+    let report = `*${currentShop?.name || 'PHONEMART'} DAILY REPORT*\n`;
     report += `Date: ${todayStr}\n`;
     report += `━━━━━━━━━━━━━━━━━━━━\n\n`;
 
+    // SUMMARY
     report += `*SUMMARY*\n`;
     report += `Accessory Sales: ${dailySales.length}\n`;
+    report += `Inventory:\n`;
+    if (retailCount > 0) report += `  -Retail Sale: ${retailCount} (KES ${retailRevenue.toLocaleString()})\n`;
+    if (wholesaleCount > 0) report += `  -Wholesale Sale: ${wholesaleCount} (KES ${wholesaleRevenue.toLocaleString()})\n`;
+    // Outsourced accessories (items from suppliers, not from own inventory)
+    const outsourcedAccessorySales = dailySales.filter(s =>
+      s.items.some(item => {
+        const inv = inventoryItems.find(i => i.name.toLowerCase() === item.name.toLowerCase());
+        return inv?.supplier && inv.supplier !== '';
+      })
+    );
+    if (outsourcedAccessorySales.length > 0) {
+      const outsourcedRev = outsourcedAccessorySales.reduce((sum, s) => sum + s.total, 0);
+      report += `  -Outsourced Sale: ${outsourcedAccessorySales.length} (KES ${outsourcedRev.toLocaleString()})\n`;
+    }
     report += `Repair Sales: ${todayRepairs.length}\n`;
     report += `Total Revenue: KES ${totalRevenue.toLocaleString()}\n`;
-    report += `Total Costs: KES ${totalCosts.toLocaleString()}\n`;
+    report += `Total Cost: KES ${totalCosts.toLocaleString()}\n`;
     report += `*Total Profit: KES ${grossProfit.toLocaleString()}*\n`;
+
+    // Deposited
+    const depositEntries = Object.entries(depositedBreakdown);
+    if (depositEntries.length > 0) {
+      report += `Deposited:\n`;
+      depositEntries.forEach(([method, amount]) => {
+        report += `  -${method}: KES ${amount.toLocaleString()}\n`;
+      });
+    }
+    if (pendingDepositsAmount > 0) {
+      report += `  -Pending: KES ${pendingDepositsAmount.toLocaleString()}\n`;
+    }
     report += `━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-    // Detailed Repairs
+    // REPAIR SALES
     if (todayRepairs.length > 0) {
       report += `*REPAIR SALES*\n`;
       report += `━━━━━━━━━━━━━━━━━━━━\n`;
@@ -103,7 +152,8 @@ export default function AutomatedDailyReport() {
         if (r.ticketNumber) report += `Ticket:${r.ticketNumber}\n`;
         report += `Issue: ${r.issue}\n`;
         if (r.serviceType) report += `Service: ${r.serviceType}\n`;
-        report += `Revenue:KES ${revenue.toLocaleString()}\n`;
+        report += `Amount Paid:KES ${r.amountPaid.toLocaleString()}\n`;
+        if (r.balance > 0) report += `Balance:KES ${r.balance.toLocaleString()}\n`;
         if (r.partsUsed.length > 0) {
           report += `Parts used:\n`;
           r.partsUsed.forEach(p => {
@@ -117,16 +167,6 @@ export default function AutomatedDailyReport() {
       });
       report += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
     }
-
-    // Payment breakdown
-    report += `*PAYMENTS*\n`;
-    report += `Cash: KES ${cashCollected.toLocaleString()}\n`;
-    report += `MPESA: KES ${mpesaCollected.toLocaleString()}\n`;
-    report += `Bank: KES ${bankDeposits.toLocaleString()}\n`;
-    if (pendingDepositsAmount > 0) {
-      report += `Pending: KES ${pendingDepositsAmount.toLocaleString()}\n`;
-    }
-    report += `\n`;
 
     report += `*End of Report*`;
 
@@ -219,41 +259,62 @@ export default function AutomatedDailyReport() {
 
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
-          <span className="text-gray-600">Accessory Revenue:</span>
+          <span className="text-gray-600">Accessory Sales ({dailySales.length}):</span>
           <span className="font-semibold">KES {dailyRevenue.toLocaleString()}</span>
         </div>
+        {retailCount > 0 && (
+          <div className="flex justify-between pl-3 text-xs text-gray-500">
+            <span>Retail: {retailCount}</span>
+            <span>KES {retailRevenue.toLocaleString()}</span>
+          </div>
+        )}
+        {wholesaleCount > 0 && (
+          <div className="flex justify-between pl-3 text-xs text-gray-500">
+            <span>Wholesale: {wholesaleCount}</span>
+            <span>KES {wholesaleRevenue.toLocaleString()}</span>
+          </div>
+        )}
         <div className="flex justify-between">
-          <span className="text-gray-600">Repair Revenue:</span>
+          <span className="text-gray-600">Repair Sales ({todayRepairs.length}):</span>
           <span className="font-semibold">KES {todayRepairRevenue.toLocaleString()}</span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-gray-600">Cash Collected:</span>
-          <span className="font-semibold">KES {cashCollected.toLocaleString()}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-600">MPESA Collected:</span>
-          <span className="font-semibold">KES {mpesaCollected.toLocaleString()}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-600">Bank Deposits:</span>
-          <span className="font-semibold">KES {bankDeposits.toLocaleString()}</span>
+        <div className="flex justify-between border-t pt-2">
+          <span className="font-semibold">Total Revenue:</span>
+          <span className="font-bold">KES {totalRevenue.toLocaleString()}</span>
         </div>
         <div className="flex justify-between text-red-600">
-          <span>Parts & Supplier Costs:</span>
+          <span>Total Cost:</span>
           <span className="font-semibold">KES {totalCosts.toLocaleString()}</span>
         </div>
         <div className="flex justify-between border-t pt-2">
-          <span className="text-gray-600 font-semibold">Gross Profit:</span>
+          <span className="font-semibold">Total Profit:</span>
           <span className={`font-bold ${grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             KES {grossProfit.toLocaleString()}
           </span>
         </div>
-        {pendingDepositsAmount > 0 && (
-          <div className="flex justify-between text-orange-600">
-            <span>Pending Deposits:</span>
-            <span className="font-semibold">KES {pendingDepositsAmount.toLocaleString()}</span>
-          </div>
-        )}
+        <div className="border-t pt-2">
+          <span className="text-gray-600 font-medium">Deposited:</span>
+          {cashCollected > 0 && (
+            <div className="flex justify-between pl-3 text-xs text-gray-500">
+              <span>Cash:</span><span>KES {cashCollected.toLocaleString()}</span>
+            </div>
+          )}
+          {mpesaCollected > 0 && (
+            <div className="flex justify-between pl-3 text-xs text-gray-500">
+              <span>MPESA:</span><span>KES {mpesaCollected.toLocaleString()}</span>
+            </div>
+          )}
+          {bankDeposits > 0 && (
+            <div className="flex justify-between pl-3 text-xs text-gray-500">
+              <span>Bank:</span><span>KES {bankDeposits.toLocaleString()}</span>
+            </div>
+          )}
+          {pendingDepositsAmount > 0 && (
+            <div className="flex justify-between pl-3 text-xs text-orange-600">
+              <span>Pending:</span><span>KES {pendingDepositsAmount.toLocaleString()}</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
