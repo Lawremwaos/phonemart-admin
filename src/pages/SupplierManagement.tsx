@@ -1,20 +1,44 @@
-import { useState, useMemo } from "react";
+import { Fragment, useState, useMemo, useEffect, useCallback } from "react";
 import { useSupplier } from "../context/SupplierContext";
 import { useInventory } from "../context/InventoryContext";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
+import { supabase } from "../lib/supabaseClient";
 
 type Purchase = ReturnType<typeof useInventory>['purchases'][number];
+type PaymentMethod = 'mpesa' | 'bank' | 'cash' | 'other';
+
+type SupplierPayment = {
+  id: string;
+  purchaseId: string;
+  supplierName: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  paymentDate: Date;
+  notes?: string;
+  recordedBy?: string;
+};
 
 export default function SupplierManagement() {
   const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useSupplier();
   const { purchases, deletePurchase } = useInventory();
   const { repairs, deleteRepair } = useRepair();
   const { currentUser } = useShop();
+  const isAdmin = currentUser?.roles.includes('admin') || false;
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedSupplierId, setExpandedSupplierId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'purchases' | 'parts_taken' | 'all'>('all');
+  const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>([]);
+  const [paymentTableError, setPaymentTableError] = useState<string | null>(null);
+  const [activePaymentPurchaseId, setActivePaymentPurchaseId] = useState<string | null>(null);
+  const [paymentHistoryPurchase, setPaymentHistoryPurchase] = useState<Purchase | null>(null);
+  const [paymentForm, setPaymentForm] = useState({
+    amount: "",
+    method: "mpesa" as PaymentMethod,
+    paymentDate: new Date().toISOString().slice(0, 10),
+    notes: "",
+  });
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -72,6 +96,98 @@ export default function SupplierManagement() {
     if (window.confirm("Are you sure you want to delete this supplier?")) {
       deleteSupplier(id);
     }
+  };
+
+  const loadSupplierPayments = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("supplier_payments")
+      .select("*")
+      .order("payment_date", { ascending: false });
+
+    if (error) {
+      const tableMissing = error.code === "42P01";
+      setPaymentTableError(
+        tableMissing
+          ? "Supplier payments table is missing. Run supabase/add_supplier_payments.sql in Supabase SQL Editor."
+          : "Could not load supplier payments right now."
+      );
+      setSupplierPayments([]);
+      return;
+    }
+
+    setPaymentTableError(null);
+    const mapped: SupplierPayment[] = (data || []).map((row: any) => ({
+      id: row.id,
+      purchaseId: row.purchase_id,
+      supplierName: row.supplier_name,
+      amount: Number(row.amount) || 0,
+      paymentMethod: row.payment_method as PaymentMethod,
+      paymentDate: new Date(row.payment_date),
+      notes: row.notes || undefined,
+      recordedBy: row.recorded_by || undefined,
+    }));
+    setSupplierPayments(mapped);
+  }, []);
+
+  useEffect(() => {
+    loadSupplierPayments();
+  }, [loadSupplierPayments]);
+
+  const getPurchasePaymentInfo = useCallback((purchaseId: string, purchaseTotal: number) => {
+    const purchasePayments = supplierPayments.filter((p) => p.purchaseId === purchaseId);
+    const paidAmount = purchasePayments.reduce((sum, p) => sum + p.amount, 0);
+    const balance = Math.max(0, purchaseTotal - paidAmount);
+    const status: 'pending' | 'partial' | 'fully_paid' =
+      paidAmount <= 0 ? 'pending' : balance > 0 ? 'partial' : 'fully_paid';
+    return { purchasePayments, paidAmount, balance, status };
+  }, [supplierPayments]);
+
+  const resetPaymentForm = () => {
+    setPaymentForm({
+      amount: "",
+      method: "mpesa",
+      paymentDate: new Date().toISOString().slice(0, 10),
+      notes: "",
+    });
+  };
+
+  const handleRecordPayment = async (purchase: Purchase) => {
+    const amount = Number(paymentForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert("Please enter a valid payment amount.");
+      return;
+    }
+
+    const { balance } = getPurchasePaymentInfo(purchase.id, purchase.total);
+    if (amount > balance) {
+      alert(`Amount cannot be greater than outstanding balance (KES ${balance.toLocaleString()}).`);
+      return;
+    }
+
+    if (!paymentForm.paymentDate) {
+      alert("Please select the payment date.");
+      return;
+    }
+
+    const { error } = await supabase.from("supplier_payments").insert({
+      purchase_id: purchase.id,
+      supplier_name: purchase.supplier,
+      amount,
+      payment_method: paymentForm.method,
+      payment_date: new Date(paymentForm.paymentDate).toISOString(),
+      notes: paymentForm.notes.trim() || null,
+      recorded_by: currentUser?.name || "Admin",
+    });
+
+    if (error) {
+      alert("Failed to save payment. Please try again.");
+      console.error("Error recording supplier payment:", error);
+      return;
+    }
+
+    await loadSupplierPayments();
+    setActivePaymentPurchaseId(null);
+    resetPaymentForm();
   };
 
   const supplierData = useMemo(() => {
@@ -178,11 +294,28 @@ export default function SupplierManagement() {
     const totalPartsCost = supplierData.reduce((sum, d) => sum + d.totalPartsCost, 0);
     const totalOrders = supplierData.reduce((sum, d) => sum + d.supplierPurchases.length, 0);
     const totalPartsTaken = supplierData.reduce((sum, d) => sum + d.partsTaken.length, 0);
-    return { totalPurchases, totalPartsCost, totalOrders, totalPartsTaken, grandTotal: totalPurchases + totalPartsCost };
-  }, [supplierData]);
+    const totalPaidToSuppliers = supplierPayments.reduce((sum, p) => sum + p.amount, 0);
+    const totalOutstandingSupplierBalance = Math.max(0, totalPurchases - totalPaidToSuppliers);
+    return {
+      totalPurchases,
+      totalPartsCost,
+      totalOrders,
+      totalPartsTaken,
+      totalPaidToSuppliers,
+      totalOutstandingSupplierBalance,
+      grandTotal: totalPurchases + totalPartsCost,
+    };
+  }, [supplierData, supplierPayments]);
 
   const formatDate = (date: Date) =>
     new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+  const formatPaymentMethod = (method: PaymentMethod) => {
+    if (method === "mpesa") return "M-Pesa";
+    if (method === "bank") return "Bank";
+    if (method === "cash") return "Cash";
+    return "Other";
+  };
 
   return (
     <div className="space-y-6">
@@ -238,7 +371,7 @@ export default function SupplierManagement() {
       {/* Overall Summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
-          <p className="text-sm text-gray-600">Total Paid to Suppliers</p>
+          <p className="text-sm text-gray-600">Total Supplier Purchases</p>
           <p className="text-2xl font-bold text-blue-700">KES {overallStats.totalPurchases.toLocaleString()}</p>
           <p className="text-xs text-gray-500">{overallStats.totalOrders} purchase orders</p>
         </div>
@@ -256,9 +389,11 @@ export default function SupplierManagement() {
           </p>
         </div>
         <div className="bg-white p-4 rounded shadow border-l-4 border-red-500">
-          <p className="text-sm text-gray-600">Grand Total (Purchases + Parts)</p>
-          <p className="text-2xl font-bold text-red-700">KES {overallStats.grandTotal.toLocaleString()}</p>
-          <p className="text-xs text-gray-500">Total spent with all suppliers</p>
+          <p className="text-sm text-gray-600">Outstanding Supplier Balance</p>
+          <p className="text-2xl font-bold text-red-700">KES {overallStats.totalOutstandingSupplierBalance.toLocaleString()}</p>
+          <p className="text-xs text-gray-500">
+            Paid so far: KES {overallStats.totalPaidToSuppliers.toLocaleString()}
+          </p>
         </div>
       </div>
 
@@ -268,6 +403,11 @@ export default function SupplierManagement() {
         <p className="text-sm text-gray-600 mb-4">
           Track purchases from suppliers and outsourced spare parts taken by staff for repairs.
         </p>
+        {paymentTableError && (
+          <div className="mb-4 rounded border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-800">
+            {paymentTableError}
+          </div>
+        )}
 
         <div className="flex gap-2 mb-4 border-b pb-2">
           {(['all', 'purchases', 'parts_taken'] as const).map(tab => (
@@ -359,55 +499,185 @@ export default function SupplierManagement() {
                                     <th className="p-2 text-left">Items</th>
                                     <th className="p-2 text-right">Total Qty</th>
                                     <th className="p-2 text-right">Total Cost</th>
-                                    <th className="p-2 text-center">Status</th>
+                                    <th className="p-2 text-right">Paid</th>
+                                    <th className="p-2 text-right">Balance</th>
+                                    <th className="p-2 text-center">Payment Status</th>
                                     {currentUser?.roles.includes('admin') && <th className="p-2 text-center">Actions</th>}
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {data.supplierPurchases.map((purchase: Purchase) => (
-                                    <tr key={purchase.id} className="border-t hover:bg-blue-50/50">
-                                      <td className="p-2">{formatDate(purchase.date)}</td>
-                                      <td className="p-2">
-                                        <div className="space-y-1">
-                                          {purchase.items.map((item, idx) => (
-                                            <div key={idx} className="text-xs">
-                                              <span className="font-medium">{item.itemName}</span>
-                                              <span className="text-gray-500"> x{item.qty} @ KES {item.costPrice.toLocaleString()}</span>
+                                  {data.supplierPurchases.map((purchase: Purchase) => {
+                                    const paymentInfo = getPurchasePaymentInfo(purchase.id, purchase.total);
+                                    const isPaymentFormOpen = activePaymentPurchaseId === purchase.id;
+                                    const paymentBadgeClass =
+                                      paymentInfo.status === 'fully_paid'
+                                        ? 'bg-green-100 text-green-800'
+                                        : paymentInfo.status === 'partial'
+                                          ? 'bg-orange-100 text-orange-800'
+                                          : 'bg-yellow-100 text-yellow-800';
+                                    const paymentBadgeText =
+                                      paymentInfo.status === 'fully_paid'
+                                        ? 'Fully Paid'
+                                        : paymentInfo.status === 'partial'
+                                          ? 'Partially Paid'
+                                          : 'Unpaid';
+
+                                    return (
+                                      <Fragment key={purchase.id}>
+                                        <tr className="border-t hover:bg-blue-50/50">
+                                          <td className="p-2">{formatDate(purchase.date)}</td>
+                                          <td className="p-2">
+                                            <div className="space-y-1">
+                                              {purchase.items.map((item, idx) => (
+                                                <div key={idx} className="text-xs">
+                                                  <span className="font-medium">{item.itemName}</span>
+                                                  <span className="text-gray-500"> x{item.qty} @ KES {item.costPrice.toLocaleString()}</span>
+                                                </div>
+                                              ))}
                                             </div>
-                                          ))}
-                                        </div>
-                                      </td>
-                                      <td className="p-2 text-right font-medium">
-                                        {purchase.items.reduce((s, i) => s + i.qty, 0)}
-                                      </td>
-                                      <td className="p-2 text-right font-bold">KES {purchase.total.toLocaleString()}</td>
-                                      <td className="p-2 text-center">
-                                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${purchase.confirmed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                          {purchase.confirmed ? 'Confirmed' : 'Pending'}
-                                        </span>
-                                      </td>
-                                      {currentUser?.roles.includes('admin') && (
-                                        <td className="p-2 text-center">
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              if (window.confirm(`Delete this purchase of KES ${purchase.total.toLocaleString()} from ${data.supplier.name}?`)) {
-                                                deletePurchase(purchase.id);
-                                              }
-                                            }}
-                                            className="text-red-600 hover:text-red-800 text-xs font-semibold hover:bg-red-50 px-2 py-1 rounded"
-                                          >
-                                            Delete
-                                          </button>
-                                        </td>
-                                      )}
-                                    </tr>
-                                  ))}
+                                          </td>
+                                          <td className="p-2 text-right font-medium">
+                                            {purchase.items.reduce((s, i) => s + i.qty, 0)}
+                                          </td>
+                                          <td className="p-2 text-right font-bold">KES {purchase.total.toLocaleString()}</td>
+                                          <td className="p-2 text-right text-green-700 font-semibold">
+                                            KES {paymentInfo.paidAmount.toLocaleString()}
+                                          </td>
+                                          <td className="p-2 text-right text-red-700 font-semibold">
+                                            KES {paymentInfo.balance.toLocaleString()}
+                                          </td>
+                                          <td className="p-2 text-center">
+                                            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${paymentBadgeClass}`}>
+                                              {paymentBadgeText}
+                                            </span>
+                                          </td>
+                                          {isAdmin && (
+                                            <td className="p-2 text-center">
+                                              <div className="flex items-center justify-center gap-2">
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setActivePaymentPurchaseId(isPaymentFormOpen ? null : purchase.id);
+                                                    if (isPaymentFormOpen) {
+                                                      resetPaymentForm();
+                                                    }
+                                                  }}
+                                                  className="text-green-700 hover:text-green-900 text-xs font-semibold hover:bg-green-50 px-2 py-1 rounded"
+                                                >
+                                                  {isPaymentFormOpen ? "Cancel Payment" : "Record Payment"}
+                                                </button>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setPaymentHistoryPurchase(purchase);
+                                                }}
+                                                className="text-blue-700 hover:text-blue-900 text-xs font-semibold hover:bg-blue-50 px-2 py-1 rounded"
+                                              >
+                                                History ({paymentInfo.purchasePayments.length})
+                                              </button>
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (window.confirm(`Delete this purchase of KES ${purchase.total.toLocaleString()} from ${data.supplier.name}?`)) {
+                                                      deletePurchase(purchase.id);
+                                                    }
+                                                  }}
+                                                  className="text-red-600 hover:text-red-800 text-xs font-semibold hover:bg-red-50 px-2 py-1 rounded"
+                                                >
+                                                  Delete
+                                                </button>
+                                              </div>
+                                            </td>
+                                          )}
+                                        </tr>
+                                        {isAdmin && isPaymentFormOpen && (
+                                          <tr className="bg-green-50/40 border-t">
+                                            <td className="p-3" colSpan={8}>
+                                              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                                                <div>
+                                                  <label className="block text-xs font-medium text-gray-700 mb-1">Amount (KES)</label>
+                                                  <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    aria-label="Payment amount in Kenya shillings"
+                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    value={paymentForm.amount}
+                                                    onChange={(e) => setPaymentForm((prev) => ({ ...prev, amount: e.target.value }))}
+                                                    placeholder={`Max ${paymentInfo.balance.toLocaleString()}`}
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="block text-xs font-medium text-gray-700 mb-1">Method</label>
+                                                  <select
+                                                    aria-label="Payment method"
+                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    value={paymentForm.method}
+                                                    onChange={(e) => setPaymentForm((prev) => ({ ...prev, method: e.target.value as PaymentMethod }))}
+                                                  >
+                                                    <option value="mpesa">M-Pesa</option>
+                                                    <option value="bank">Bank</option>
+                                                    <option value="cash">Cash</option>
+                                                    <option value="other">Other</option>
+                                                  </select>
+                                                </div>
+                                                <div>
+                                                  <label className="block text-xs font-medium text-gray-700 mb-1">Payment Date</label>
+                                                  <input
+                                                    type="date"
+                                                    aria-label="Date the supplier was paid"
+                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    value={paymentForm.paymentDate}
+                                                    onChange={(e) => setPaymentForm((prev) => ({ ...prev, paymentDate: e.target.value }))}
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="block text-xs font-medium text-gray-700 mb-1">Notes (Optional)</label>
+                                                  <input
+                                                    type="text"
+                                                    aria-label="Payment notes"
+                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    value={paymentForm.notes}
+                                                    onChange={(e) => setPaymentForm((prev) => ({ ...prev, notes: e.target.value }))}
+                                                    placeholder="Txn code, bank ref, etc."
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleRecordPayment(purchase);
+                                                    }}
+                                                    className="bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 w-full"
+                                                  >
+                                                    Save Payment
+                                                  </button>
+                                                </div>
+                                              </div>
+                                              <div className="mt-2 text-xs text-gray-600">
+                                                Workaround for unpaid day: leave balance pending and record payment later using the exact payment date.
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </Fragment>
+                                    );
+                                  })}
                                 </tbody>
                                 <tfoot className="bg-blue-50 font-semibold">
                                   <tr>
                                     <td className="p-2" colSpan={3}>Total Purchases</td>
                                     <td className="p-2 text-right text-blue-800">KES {data.totalPurchaseCost.toLocaleString()}</td>
+                                    <td className="p-2 text-right text-green-800">
+                                      KES {data.supplierPurchases.reduce((sum, purchase) => {
+                                        return sum + getPurchasePaymentInfo(purchase.id, purchase.total).paidAmount;
+                                      }, 0).toLocaleString()}
+                                    </td>
+                                    <td className="p-2 text-right text-red-800">
+                                      KES {data.supplierPurchases.reduce((sum, purchase) => {
+                                        return sum + getPurchasePaymentInfo(purchase.id, purchase.total).balance;
+                                      }, 0).toLocaleString()}
+                                    </td>
                                     <td></td>
                                     {currentUser?.roles.includes('admin') && <td></td>}
                                   </tr>
@@ -608,6 +878,71 @@ export default function SupplierManagement() {
           </div>
         )}
       </div>
+
+      {paymentHistoryPurchase && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-lg shadow-lg">
+            <div className="p-4 border-b flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-lg">Payment History</h4>
+                <p className="text-sm text-gray-600">
+                  {paymentHistoryPurchase.supplier} - Purchase total: KES {paymentHistoryPurchase.total.toLocaleString()}
+                </p>
+              </div>
+              <button
+                onClick={() => setPaymentHistoryPurchase(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-4">
+              {(() => {
+                const paymentInfo = getPurchasePaymentInfo(paymentHistoryPurchase.id, paymentHistoryPurchase.total);
+                const sortedPayments = [...paymentInfo.purchasePayments].sort(
+                  (a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime()
+                );
+                if (sortedPayments.length === 0) {
+                  return <p className="text-sm text-gray-500">No payments recorded yet for this purchase.</p>;
+                }
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2 text-sm bg-gray-50 p-3 rounded border">
+                      <p><span className="text-gray-600">Total:</span> <span className="font-semibold">KES {paymentHistoryPurchase.total.toLocaleString()}</span></p>
+                      <p><span className="text-gray-600">Paid:</span> <span className="font-semibold text-green-700">KES {paymentInfo.paidAmount.toLocaleString()}</span></p>
+                      <p><span className="text-gray-600">Balance:</span> <span className="font-semibold text-red-700">KES {paymentInfo.balance.toLocaleString()}</span></p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-blue-50">
+                          <tr>
+                            <th className="p-2 text-left">Payment Date</th>
+                            <th className="p-2 text-right">Amount</th>
+                            <th className="p-2 text-left">Method</th>
+                            <th className="p-2 text-left">Recorded By</th>
+                            <th className="p-2 text-left">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedPayments.map((payment) => (
+                            <tr key={payment.id} className="border-t">
+                              <td className="p-2">{formatDate(payment.paymentDate)}</td>
+                              <td className="p-2 text-right font-semibold">KES {payment.amount.toLocaleString()}</td>
+                              <td className="p-2">{formatPaymentMethod(payment.paymentMethod)}</td>
+                              <td className="p-2">{payment.recordedBy || "Admin"}</td>
+                              <td className="p-2">{payment.notes || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

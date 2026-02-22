@@ -64,6 +64,11 @@ export default function InventoryManagement() {
       return;
     }
 
+    if (currentUser?.roles.includes('admin') && formData.costPrice <= 0) {
+      alert("Admin must enter a valid cost price greater than 0 before saving this stock item.");
+      return;
+    }
+
     // Combine itemType and itemTypeDetail for storage
     const finalItemType = formData.itemTypeDetail 
       ? `${formData.itemType} - ${formData.itemTypeDetail}`.trim()
@@ -309,16 +314,18 @@ export default function InventoryManagement() {
             </div>
             {currentUser?.roles.includes('admin') && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price (KES) - Admin Only</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price (KES) - Admin Only *</label>
                 <input
                   type="number"
                   value={formData.costPrice}
                   onChange={(e) => setFormData({ ...formData, costPrice: Number(e.target.value) })}
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  min="0"
-                  placeholder="Admin: Enter purchase cost"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="Admin: required purchase cost"
+                  required
                 />
-                <p className="text-xs text-gray-500 mt-1">Only admin can set cost price. Staff cannot see or edit this.</p>
+                <p className="text-xs text-gray-500 mt-1">Required for profit reporting. Staff cannot see or edit this.</p>
               </div>
             )}
           </div>

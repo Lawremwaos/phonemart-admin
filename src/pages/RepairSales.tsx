@@ -127,19 +127,45 @@ export default function RepairSales() {
       }
     }
 
-    const supplier = suppliers.find(s => s.id === selectedSupplierId);
-    const cost = 0; // Cost not shown for parts
+    let selectedItemId = Date.now();
+    let supplierName: string | undefined;
+    let supplierId: string | undefined;
+    let cost = 0;
+
+    if (partSource === 'in-house') {
+      const inventoryItem = items.find(
+        (i) =>
+          i.name.toLowerCase() === partName.trim().toLowerCase() &&
+          i.stock > 0
+      );
+      if (!inventoryItem) {
+        alert("For in-house part, type an exact inventory item name with available stock.");
+        return;
+      }
+
+      selectedItemId = inventoryItem.id;
+      cost = inventoryItem.adminCostPrice || inventoryItem.costPrice || 0;
+
+      // Deduct stock immediately for in-house parts.
+      addStock(inventoryItem.id, -1);
+    } else {
+      const supplier = suppliers.find(s => s.id === selectedSupplierId);
+      supplierId = selectedSupplierId;
+      supplierName = supplier?.name;
+      // Outsourced cost is filled later on Cost of Parts page.
+      cost = 0;
+    }
 
     setSelectedParts(prev => [
       ...prev,
       {
-        itemId: Date.now(), // Use timestamp as ID for custom parts
+        itemId: selectedItemId,
         itemName: partName.trim(),
         qty: 1,
         cost,
         source: partSource,
-        supplierId: partSource === 'outsourced' ? selectedSupplierId : undefined,
-        supplierName: partSource === 'outsourced' ? supplier?.name : undefined,
+        supplierId,
+        supplierName,
         additionalLaborCost: 0,
       },
     ]);
@@ -189,9 +215,24 @@ export default function RepairSales() {
           itemId: selectedInventoryItem,
         },
       ]);
+      // Track inventory item in partsUsed for accurate cost/profit reporting.
+      setSelectedParts(prev => [
+        ...prev,
+        {
+          itemId: item.id,
+          itemName: item.name,
+          qty: 1,
+          cost: item.adminCostPrice || item.costPrice || 0,
+          source: 'in-house',
+        },
+      ]);
       setSelectedInventoryItem(null);
     } else {
       // Outsourced item - require supplier selection
+      if (!additionalLaborItemName.trim()) {
+        alert("Please enter outsourced item name");
+        return;
+      }
       if (!outsourcedItemSupplier) {
         alert("Please select a supplier");
         return;
@@ -218,6 +259,14 @@ export default function RepairSales() {
     if (item && item.source === 'inventory' && item.itemId) {
       // Restore stock
       addStock(item.itemId, 1);
+      // Remove mirrored in-house cost entry added for profit tracking.
+      setSelectedParts(prev => {
+        const indexToRemove = prev.findIndex(
+          (part) => part.source === 'in-house' && part.itemId === item.itemId
+        );
+        if (indexToRemove === -1) return prev;
+        return prev.filter((_, idx) => idx !== indexToRemove);
+      });
     }
     setAdditionalLaborItems(prev => prev.filter(item => item.id !== id));
   }

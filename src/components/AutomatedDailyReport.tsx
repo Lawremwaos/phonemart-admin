@@ -32,9 +32,16 @@ export default function AutomatedDailyReport() {
   const todayPartsCost = useMemo(() => {
     return todayRepairs.reduce((sum, r) => {
       const partsCost = r.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
-      return sum + partsCost;
+      const inventoryAdditionalCost = (r.additionalItems || [])
+        .filter((item) => item.source === 'inventory')
+        .reduce((s, item) => {
+          const inv = inventoryItems.find((i) => i.id === item.itemId || i.name.toLowerCase() === item.itemName.toLowerCase());
+          const itemCost = inv?.adminCostPrice || inv?.costPrice || 0;
+          return s + itemCost;
+        }, 0);
+      return sum + partsCost + inventoryAdditionalCost;
     }, 0);
-  }, [todayRepairs]);
+  }, [todayRepairs, inventoryItems]);
 
   // Calculate accessory cost from inventory data
   const todayAccessoryCost = useMemo(() => {
@@ -172,35 +179,89 @@ export default function AutomatedDailyReport() {
   const totalRevenue = dailyRevenue + todayRepairRevenue;
   const grossProfit = totalRevenue - totalCosts;
 
-  // Check for outsourced parts missing cost entries
+  // Check for all missing item costs before allowing report send.
   const repairsWithMissingCosts = useMemo(() => {
     return todayRepairs
       .filter(r => r.status === 'COLLECTED' || r.paymentApproved)
       .map(r => {
-        const missingParts = r.partsUsed.filter(p =>
-          (p.source === 'outsourced' || p.supplierName) && p.cost === 0
+        const missingOutsourcedParts = r.partsUsed.filter(p =>
+          (p.source === 'outsourced' || p.supplierName) && p.cost <= 0
         );
+        const missingInHouseParts = r.partsUsed.filter((p) => {
+          if (p.source !== 'in-house') return false;
+          if (p.cost > 0) return false;
+          const inv = inventoryItems.find((i) => i.id === p.itemId || i.name.toLowerCase() === p.itemName.toLowerCase());
+          const inventoryCost = inv?.adminCostPrice || inv?.costPrice || 0;
+          return inventoryCost <= 0;
+        });
         const missingAdditional = (r.additionalItems || []).filter(item =>
           item.source === 'outsourced' &&
           !r.partsUsed.some(p => p.itemName === item.itemName && p.cost > 0)
         );
-        if (missingParts.length === 0 && missingAdditional.length === 0) return null;
+        const missingInventoryAdditional = (r.additionalItems || []).filter((item) => {
+          if (item.source !== 'inventory') return false;
+          const inv = inventoryItems.find((i) => i.id === item.itemId || i.name.toLowerCase() === item.itemName.toLowerCase());
+          const itemCost = inv?.adminCostPrice || inv?.costPrice || 0;
+          return itemCost <= 0;
+        });
+        if (
+          missingOutsourcedParts.length === 0 &&
+          missingInHouseParts.length === 0 &&
+          missingAdditional.length === 0 &&
+          missingInventoryAdditional.length === 0
+        ) return null;
+
         return {
           repair: r,
-          missingParts: [...missingParts.map(p => p.itemName), ...missingAdditional.map(a => a.itemName)],
+          missingParts: [
+            ...missingOutsourcedParts.map(p => `${p.itemName} (outsourced)`),
+            ...missingInHouseParts.map(p => `${p.itemName} (in-house)`),
+            ...missingAdditional.map(a => `${a.itemName} (outsourced additional)`),
+            ...missingInventoryAdditional.map(a => `${a.itemName} (inventory additional)`),
+          ],
         };
       })
       .filter(Boolean) as Array<{ repair: typeof todayRepairs[0]; missingParts: string[] }>;
-  }, [todayRepairs]);
+  }, [todayRepairs, inventoryItems]);
 
-  const hasMissingCosts = repairsWithMissingCosts.length > 0;
+  const salesItemsMissingCosts = useMemo(() => {
+    return dailySales
+      .flatMap((sale) =>
+        sale.items.map((saleItem) => {
+          const inv = inventoryItems.find((i) => i.name.toLowerCase() === saleItem.name.toLowerCase());
+          const cost = inv?.adminCostPrice || inv?.costPrice || 0;
+          return {
+            name: saleItem.name,
+            cost,
+          };
+        })
+      )
+      .filter((entry) => entry.cost <= 0)
+      .reduce((unique, entry) => {
+        if (!unique.some((u) => u.name.toLowerCase() === entry.name.toLowerCase())) {
+          unique.push(entry);
+        }
+        return unique;
+      }, [] as Array<{ name: string; cost: number }>);
+  }, [dailySales, inventoryItems]);
+
+  const hasMissingCosts = repairsWithMissingCosts.length > 0 || salesItemsMissingCosts.length > 0;
 
   const handleSendWithCheck = (sendFn: () => void) => {
     if (hasMissingCosts) {
       const names = repairsWithMissingCosts.map(r =>
         `- ${r.repair.customerName} (${r.repair.phoneModel}): ${r.missingParts.join(', ')}`
       ).join('\n');
-      alert(`Cannot send report. The following repairs have outsourced parts without cost entries:\n\n${names}\n\nPlease fill in the cost of parts first.`);
+      const salesMissing = salesItemsMissingCosts.map((item) => `- ${item.name}`).join('\n');
+      let message = "Cannot send report. Some used items do not have costs.\n\n";
+      if (names) {
+        message += `Repairs with missing costs:\n${names}\n\n`;
+      }
+      if (salesMissing) {
+        message += `Sales items missing inventory cost:\n${salesMissing}\n\n`;
+      }
+      message += "Please fill in all costs first so profit is accurate.";
+      alert(message);
       return;
     }
     sendFn();
@@ -230,15 +291,20 @@ export default function AutomatedDailyReport() {
 
       {hasMissingCosts && (
         <div className="bg-red-50 border border-red-300 rounded-lg p-3 mb-4">
-          <p className="text-sm font-semibold text-red-800 mb-1">Cannot send report — outsourced parts cost missing</p>
+          <p className="text-sm font-semibold text-red-800 mb-1">Cannot send report — item costs missing</p>
           <ul className="text-xs text-red-700 space-y-1">
             {repairsWithMissingCosts.map(r => (
               <li key={r.repair.id}>
                 <span className="font-medium">{r.repair.customerName}</span> ({r.repair.phoneModel}): {r.missingParts.join(', ')}
               </li>
             ))}
+            {salesItemsMissingCosts.map((item) => (
+              <li key={`sale-${item.name}`}>
+                <span className="font-medium">Sales Item:</span> {item.name} (inventory cost missing)
+              </li>
+            ))}
           </ul>
-          <p className="text-xs text-red-600 mt-2">Go to <a href="/cost-of-parts" className="underline font-semibold">Cost of Parts</a> to fill in the missing costs.</p>
+          <p className="text-xs text-red-600 mt-2">Go to <a href="/cost-of-parts" className="underline font-semibold">Cost of Parts</a> for outsourced costs and ensure inventory items have admin/cost price in stock management.</p>
         </div>
       )}
 
