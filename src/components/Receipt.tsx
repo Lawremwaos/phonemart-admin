@@ -41,7 +41,7 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
           <div className="flex justify-between mb-2">
             <span className="text-gray-600">Sale Type:</span>
             <span className="font-semibold capitalize">
-              {sale.saleType === 'in-shop' ? 'In-Shop Sale' : sale.saleType === 'wholesale' ? 'Wholesale' : 'Repair Sale'}
+              {sale.saleType === 'in-shop' ? 'In-Shop Sale' : sale.saleType === 'wholesale' ? 'Wholesale' : sale.saleType === 'retail' ? 'Accessories Sale' : 'Repair Sale'}
             </span>
           </div>
         )}

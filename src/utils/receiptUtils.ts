@@ -128,7 +128,7 @@ export const formatReceiptText = (sale: any, shopName: string, shopAddress?: str
   text += `\n*Receipt - ${customerName}*\n`;
   text += `#${sale.id} | ${dateTime}\n`;
   if (sale.saleType) {
-    const t = sale.saleType === 'in-shop' ? 'In-Shop' : sale.saleType === 'wholesale' ? 'Wholesale' : 'Repair';
+    const t = sale.saleType === 'in-shop' ? 'In-Shop' : sale.saleType === 'wholesale' ? 'Wholesale' : sale.saleType === 'retail' ? 'Accessories Sale' : 'Repair';
     text += `Type: ${t}\n`;
   }
   if (sale.customerName) {

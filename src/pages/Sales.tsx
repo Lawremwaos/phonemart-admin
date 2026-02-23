@@ -9,6 +9,8 @@ type SaleItem = {
   name: string;
   qty: number;
   price: number;
+  source?: 'inventory' | 'custom';
+  supplier?: string;
 };
 
 export default function Sales() {
@@ -20,60 +22,65 @@ export default function Sales() {
 
   const [saleType, setSaleType] = useState<'retail' | 'wholesale'>('retail');
   
-  // For retail sales
   const [selectedItemName, setSelectedItemName] = useState("");
+  const [customItemName, setCustomItemName] = useState("");
+  const [customSupplier, setCustomSupplier] = useState("");
+  const [itemSource, setItemSource] = useState<'inventory' | 'custom'>('inventory');
   const [qty, setQty] = useState(1);
   const [price, setPrice] = useState(0);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [paymentType, setPaymentType] = useState<'cash' | 'mpesa' | 'bank_deposit'>('mpesa');
-  const [amountPaid, setAmountPaid] = useState(0);
+  const [amountPaid, setAmountPaid] = useState<number | ''>('');
   const [bank, setBank] = useState<string>('');
   const [depositReference, setDepositReference] = useState<string>('');
 
-  // For wholesale sales (closing)
   const [wholesalePaymentType, setWholesalePaymentType] = useState<'cash' | 'mpesa' | 'bank_deposit'>('mpesa');
   const [wholesaleBank, setWholesaleBank] = useState<string>('');
   const [wholesaleDepositReference, setWholesaleDepositReference] = useState<string>('');
 
-  // Filter items to show only phones and accessories (not spares for repairs)
   const salesItems = items.filter(item => 
-    item.category === 'Phone' || item.category === 'Accessory'
+    (item.category === 'Phone' || item.category === 'Accessory') && item.stock > 0
   );
 
-  // Get selected item from inventory
-  const selectedItem = salesItems.find(item => item.name === selectedItemName);
+  const selectedItem = itemSource === 'inventory' ? salesItems.find(item => item.name === selectedItemName) : null;
 
-  // Update price when item is selected - but staff can change it
   const handleItemSelect = (itemName: string) => {
     setSelectedItemName(itemName);
-    const item = items.find(i => i.name === itemName);
-    if (item) {
-      // Set initial price but staff can modify it
-      setPrice(item.price || 0);
-    }
+    setPrice(0);
   };
 
-  // Add item to retail sale
   function addItemToRetailSale() {
-    if (!selectedItemName || qty <= 0 || price <= 0) return;
-
-    const inventoryItem = salesItems.find(item => item.name === selectedItemName);
-    if (!inventoryItem) {
-      alert("Item not found in inventory!");
-      return;
+    if (itemSource === 'inventory') {
+      if (!selectedItemName || qty <= 0) {
+        alert("Please select an item and enter a valid quantity.");
+        return;
+      }
+      const inventoryItem = salesItems.find(item => item.name === selectedItemName);
+      if (!inventoryItem) {
+        alert("Item not found in inventory!");
+        return;
+      }
+      if (inventoryItem.stock < qty) {
+        alert(`Not enough stock! Available: ${inventoryItem.stock}`);
+        return;
+      }
+      setSaleItems((prev) => [
+        ...prev,
+        { name: selectedItemName, qty, price, source: 'inventory' },
+      ]);
+      deductStock(selectedItemName, qty);
+    } else {
+      if (!customItemName.trim() || qty <= 0) {
+        alert("Please enter item name and valid quantity.");
+        return;
+      }
+      setSaleItems((prev) => [
+        ...prev,
+        { name: customItemName.trim(), qty, price, source: 'custom', supplier: customSupplier.trim() || undefined },
+      ]);
+      setCustomItemName("");
+      setCustomSupplier("");
     }
-
-    if (inventoryItem.stock < qty) {
-      alert(`Not enough stock! Available: ${inventoryItem.stock}`);
-      return;
-    }
-
-    setSaleItems((prev) => [
-      ...prev,
-      { name: selectedItemName, qty, price },
-    ]);
-
-    deductStock(selectedItemName, qty);
 
     setSelectedItemName("");
     setQty(1);
@@ -127,9 +134,11 @@ export default function Sales() {
 
   function removeItemFromRetail(index: number) {
     const itemToRemove = saleItems[index];
-    const inventoryItem = salesItems.find(item => item.name === itemToRemove.name);
-    if (inventoryItem) {
-      addStock(inventoryItem.id, itemToRemove.qty);
+    if (itemToRemove.source !== 'custom') {
+      const inventoryItem = items.find(item => item.name === itemToRemove.name);
+      if (inventoryItem) {
+        addStock(inventoryItem.id, itemToRemove.qty);
+      }
     }
     setSaleItems((prev) => prev.filter((_, i) => i !== index));
   }
@@ -149,7 +158,7 @@ export default function Sales() {
       return;
     }
 
-    const paidAmount = amountPaid || retailTotal;
+    const paidAmount = typeof amountPaid === 'number' && amountPaid > 0 ? amountPaid : retailTotal;
     const balance = retailTotal - paidAmount;
     const paymentStatus = balance <= 0 ? 'fully_paid' : paidAmount > 0 ? 'partial' : 'pending';
     
@@ -184,7 +193,7 @@ export default function Sales() {
     });
     
     setSaleItems([]);
-    setAmountPaid(0);
+    setAmountPaid('');
     setBank('');
     setDepositReference('');
     
@@ -276,26 +285,47 @@ export default function Sales() {
         <>
           <div className="bg-white p-4 rounded shadow mb-6">
             <h3 className="text-lg font-semibold mb-4">Add Items to Sale</h3>
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <select
-                className="border p-2 rounded"
-                value={selectedItemName}
-                onChange={(e) => handleItemSelect(e.target.value)}
-              >
-                <option value="">Select Item</option>
-                {salesItems.map((item) => (
-                  <option key={item.id} value={item.name}>
-                    {item.name} (Stock: {item.stock})
-                  </option>
-                ))}
-              </select>
+            <div className="flex gap-4 mb-4">
+              <label className="flex items-center text-sm">
+                <input type="radio" value="inventory" checked={itemSource === 'inventory'} onChange={() => { setItemSource('inventory'); setCustomItemName(''); setCustomSupplier(''); }} className="mr-1" />
+                From Stock
+              </label>
+              <label className="flex items-center text-sm">
+                <input type="radio" value="custom" checked={itemSource === 'custom'} onChange={() => { setItemSource('custom'); setSelectedItemName(''); }} className="mr-1" />
+                Custom / Outsourced
+              </label>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              {itemSource === 'inventory' ? (
+                <select
+                  className="border p-2 rounded"
+                  value={selectedItemName}
+                  onChange={(e) => handleItemSelect(e.target.value)}
+                >
+                  <option value="">Select Item (in stock)</option>
+                  {salesItems.map((item) => (
+                    <option key={item.id} value={item.name}>
+                      {item.name} ({item.stock} pcs)
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="border p-2 rounded"
+                  type="text"
+                  placeholder="Item name"
+                  value={customItemName}
+                  onChange={(e) => setCustomItemName(e.target.value)}
+                />
+              )}
 
               <input
                 className="border p-2 rounded"
                 type="number"
                 placeholder="Qty"
                 min="1"
-                max={selectedItem?.stock || 0}
+                max={selectedItem?.stock || 9999}
                 value={qty}
                 onChange={(e) => setQty(Number(e.target.value))}
               />
@@ -303,15 +333,25 @@ export default function Sales() {
               <input
                 className="border p-2 rounded"
                 type="number"
-                placeholder="Amount Sold (KES)"
-                value={price}
+                placeholder="Selling Price (KES)"
+                value={price || ''}
                 onChange={(e) => setPrice(Number(e.target.value))}
                 min="0"
               />
+
+              {itemSource === 'custom' && (
+                <input
+                  className="border p-2 rounded"
+                  type="text"
+                  placeholder="Supplier name (optional)"
+                  value={customSupplier}
+                  onChange={(e) => setCustomSupplier(e.target.value)}
+                />
+              )}
             </div>
             {selectedItem && (
               <p className="text-sm text-gray-600 mb-2">
-                Available stock: {selectedItem.stock} | Last sold for: KES {selectedItem.price || 0}
+                Available: {selectedItem.stock} pcs
               </p>
             )}
 
@@ -329,21 +369,31 @@ export default function Sales() {
               <table className="w-full">
                 <thead className="bg-gray-100">
                   <tr>
-                    <th className="p-3">Item</th>
-                    <th className="p-3">Qty</th>
-                    <th className="p-3">Amount Sold</th>
-                    <th className="p-3">Total</th>
-                    <th className="p-3">Actions</th>
+                    <th className="p-3 text-left">Item</th>
+                    <th className="p-3 text-center">Qty</th>
+                    <th className="p-3 text-right">Price</th>
+                    <th className="p-3 text-right">Total</th>
+                    <th className="p-3 text-left">Source</th>
+                    <th className="p-3 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {saleItems.map((item, index) => (
                     <tr key={index} className="border-t">
-                      <td className="p-3">{item.name}</td>
-                      <td className="p-3">{item.qty}</td>
-                      <td className="p-3">KES {item.price.toLocaleString()}</td>
-                      <td className="p-3">KES {(item.qty * item.price).toLocaleString()}</td>
+                      <td className="p-3 font-medium">{item.name}</td>
+                      <td className="p-3 text-center">{item.qty}</td>
+                      <td className="p-3 text-right">KES {item.price.toLocaleString()}</td>
+                      <td className="p-3 text-right font-semibold">KES {(item.qty * item.price).toLocaleString()}</td>
                       <td className="p-3">
+                        {item.source === 'custom' ? (
+                          <span className="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded">
+                            Outsourced{item.supplier ? ` - ${item.supplier}` : ''}
+                          </span>
+                        ) : (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">In Stock</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-center">
                         <button
                           onClick={() => removeItemFromRetail(index)}
                           className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 text-sm"
@@ -407,20 +457,22 @@ export default function Sales() {
                   )}
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Amount Paid</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Amount Paid (KES)</label>
                     <input
                       type="number"
-                      value={amountPaid || retailTotal}
-                      onChange={(e) => setAmountPaid(Number(e.target.value))}
+                      value={amountPaid}
+                      onChange={(e) => setAmountPaid(e.target.value === '' ? '' : Number(e.target.value))}
                       className="border border-gray-300 rounded-md px-3 py-2 w-full"
-                      placeholder="Amount paid"
+                      placeholder={`Total: KES ${retailTotal.toLocaleString()}`}
                       min={0}
-                      max={retailTotal}
                     />
-                    {amountPaid < retailTotal && (
+                    {typeof amountPaid === 'number' && amountPaid > 0 && amountPaid < retailTotal && (
                       <p className="text-sm text-red-600 mt-1">
                         Balance: KES {(retailTotal - amountPaid).toLocaleString()}
                       </p>
+                    )}
+                    {(amountPaid === '' || amountPaid === 0) && (
+                      <p className="text-xs text-gray-500 mt-1">Leave empty to record as fully paid (KES {retailTotal.toLocaleString()})</p>
                     )}
                   </div>
 
