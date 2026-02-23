@@ -1,18 +1,24 @@
-import { useState } from "react";
+import { Fragment, useState, useMemo } from "react";
 import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
 
 export default function InventoryManagement() {
-  const { items, addItem, updateItem, removeItem } = useInventory();
+  const { items, addItem, updateItem, removeItem, stockAllocations, requestStockAllocation, approveStockAllocation, rejectStockAllocation } = useInventory();
   const { currentShop, currentUser, shops } = useShop();
+  const isAdmin = currentUser?.roles.includes('admin') || false;
   
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [allocatingItemId, setAllocatingItemId] = useState<number | null>(null);
+  const [allocRows, setAllocRows] = useState<Array<{ shopId: string; qty: number }>>([]);
+  const [requestingItemId, setRequestingItemId] = useState<number | null>(null);
+  const [requestQty, setRequestQty] = useState(1);
+  const [activeTab, setActiveTab] = useState<'inventory' | 'allocations'>('inventory');
   const [formData, setFormData] = useState({
     name: "",
     category: "Phone" as 'Phone' | 'Spare' | 'Accessory',
     itemType: "",
-    itemTypeDetail: "", // For specific type details (e.g., "USB-C" for charger)
+    itemTypeDetail: "",
     stock: 0,
     price: 0,
     reorderLevel: 0,
@@ -126,18 +132,109 @@ export default function InventoryManagement() {
     }
   };
 
+  const unassignedItems = useMemo(() =>
+    items.filter(i => !i.shopId && i.stock > 0),
+    [items]
+  );
+
+  const openAllocateForm = (item: typeof items[0]) => {
+    setAllocatingItemId(item.id);
+    setAllocRows([{ shopId: shops[0]?.id || "", qty: 1 }]);
+  };
+
+  const handleAllocate = () => {
+    const item = items.find(i => i.id === allocatingItemId);
+    if (!item) return;
+
+    const validRows = allocRows.filter(r => r.shopId && r.qty > 0);
+    if (validRows.length === 0) {
+      alert("Please add at least one allocation with a shop and quantity.");
+      return;
+    }
+
+    const totalAllocQty = validRows.reduce((s, r) => s + r.qty, 0);
+    const availableStock = item.shopId ? item.stock : item.stock;
+    if (totalAllocQty > availableStock) {
+      alert(`Total allocation (${totalAllocQty}) exceeds available stock (${availableStock}).`);
+      return;
+    }
+
+    requestStockAllocation({
+      itemId: item.id,
+      itemName: item.name,
+      totalQty: totalAllocQty,
+      allocations: validRows.map(r => ({
+        shopId: r.shopId,
+        shopName: shops.find(s => s.id === r.shopId)?.name || r.shopId,
+        qty: r.qty,
+      })),
+      requestedBy: currentUser?.name || "Unknown",
+    });
+
+    setAllocatingItemId(null);
+    setAllocRows([]);
+    alert("Allocation request submitted!" + (isAdmin ? " Auto-processing..." : " Waiting for admin approval."));
+  };
+
+  const handleRequestStock = (item: typeof items[0]) => {
+    if (requestQty <= 0) {
+      alert("Please enter a valid quantity.");
+      return;
+    }
+    if (!currentShop) {
+      alert("No shop assigned to you.");
+      return;
+    }
+
+    requestStockAllocation({
+      itemId: item.id,
+      itemName: item.name,
+      totalQty: requestQty,
+      allocations: [{
+        shopId: currentShop.id,
+        shopName: currentShop.name,
+        qty: requestQty,
+      }],
+      requestedBy: currentUser?.name || "Unknown",
+    });
+
+    setRequestingItemId(null);
+    setRequestQty(1);
+    alert("Stock request submitted! Admin will approve or reject.");
+  };
+
+  const getUserName = (name?: string) => name || "Unknown";
+  const formatDate = (d: Date) => new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Inventory Management</h2>
-        <button
-          onClick={handleAdd}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          + Add Item
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleAdd}
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
+          >
+            + Add Item
+          </button>
+        </div>
       </div>
 
+      <div className="flex gap-2 border-b pb-2">
+        {(['inventory', 'allocations'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 rounded-t text-sm font-medium ${
+              activeTab === tab ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {tab === 'inventory' ? 'Inventory Items' : `Stock Allocations (${stockAllocations.length})`}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'inventory' && <>
       {/* Add/Edit Form */}
       {(isAdding || editingId) && (
         <div className="bg-white p-6 rounded-lg shadow mb-6">
@@ -371,14 +468,13 @@ export default function InventoryManagement() {
           <tbody>
             {filteredItems.map((item) => {
               const lowStock = item.stock <= item.reorderLevel;
-              // Color code by category
               const categoryColor = 
                 item.category === 'Phone' ? 'bg-blue-50 border-blue-200' :
                 item.category === 'Spare' ? 'bg-orange-50 border-orange-200' :
-                'bg-green-50 border-green-200'; // Accessory
+                'bg-green-50 border-green-200';
               return (
+                <Fragment key={item.id}>
                 <tr
-                  key={item.id}
                   className={`border-t ${lowStock ? 'bg-red-50' : categoryColor}`}
                 >
                   <td className="p-3 font-semibold">{item.name}</td>
@@ -414,31 +510,281 @@ export default function InventoryManagement() {
                     )}
                   </td>
                   <td className="p-3">
-                    {currentUser?.roles.includes('admin') ? (
-                      <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-1">
+                      {isAdmin && (
+                        <>
+                          <button onClick={() => handleEdit(item)} className="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700">Edit</button>
+                          <button onClick={() => handleDelete(item.id)} className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">Delete</button>
+                        </>
+                      )}
+                      {item.stock > 0 && (
                         <button
-                          onClick={() => handleEdit(item)}
-                          className="bg-blue-600 text-white px-2 py-1 rounded text-sm hover:bg-blue-700"
+                          onClick={() => openAllocateForm(item)}
+                          className="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700"
                         >
-                          Edit
+                          Allocate
                         </button>
+                      )}
+                      {!isAdmin && item.stock <= 0 && (
                         <button
-                          onClick={() => handleDelete(item.id)}
-                          className="bg-red-600 text-white px-2 py-1 rounded text-sm hover:bg-red-700"
+                          onClick={() => { setRequestingItemId(item.id); setRequestQty(1); }}
+                          className="bg-yellow-600 text-white px-2 py-1 rounded text-xs hover:bg-yellow-700"
                         >
-                          Delete
+                          Request Stock
                         </button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-500">View only</span>
-                    )}
+                      )}
+                    </div>
                   </td>
                 </tr>
+
+                {/* Allocation form row */}
+                {allocatingItemId === item.id && (
+                  <tr className="bg-purple-50 border-t">
+                    <td colSpan={11} className="p-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-semibold text-purple-800">
+                            Allocate &quot;{item.name}&quot; (Available: {item.stock})
+                          </h4>
+                          <button onClick={() => setAllocatingItemId(null)} className="text-gray-500 hover:text-gray-700 text-sm">Cancel</button>
+                        </div>
+                        {allocRows.map((row, ri) => (
+                          <div key={ri} className="flex gap-3 items-end">
+                            <div className="flex-1">
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Shop / Staff</label>
+                              <select
+                                aria-label="Select shop to allocate to"
+                                value={row.shopId}
+                                onChange={(e) => {
+                                  const updated = [...allocRows];
+                                  updated[ri].shopId = e.target.value;
+                                  setAllocRows(updated);
+                                }}
+                                className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                              >
+                                <option value="">Select Shop</option>
+                                {shops.map(s => (
+                                  <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="w-24">
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Qty</label>
+                              <input
+                                type="number"
+                                aria-label="Quantity to allocate"
+                                min="1"
+                                max={item.stock}
+                                value={row.qty}
+                                onChange={(e) => {
+                                  const updated = [...allocRows];
+                                  updated[ri].qty = Number(e.target.value);
+                                  setAllocRows(updated);
+                                }}
+                                className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                              />
+                            </div>
+                            <button
+                              onClick={() => setAllocRows(allocRows.filter((_, i) => i !== ri))}
+                              className="text-red-600 hover:text-red-800 text-xs font-semibold px-2 py-1"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setAllocRows([...allocRows, { shopId: "", qty: 1 }])}
+                            className="text-purple-700 hover:text-purple-900 text-xs font-semibold border border-purple-300 px-3 py-1 rounded hover:bg-purple-50"
+                          >
+                            + Add Shop
+                          </button>
+                          <span className="text-xs text-gray-500 self-center">
+                            Total: {allocRows.reduce((s, r) => s + r.qty, 0)} / {item.stock}
+                          </span>
+                        </div>
+                        <button
+                          onClick={handleAllocate}
+                          className="bg-purple-600 text-white px-4 py-2 rounded text-sm hover:bg-purple-700"
+                        >
+                          Submit Allocation
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+
+                {/* Request stock form row (staff only) */}
+                {requestingItemId === item.id && (
+                  <tr className="bg-yellow-50 border-t">
+                    <td colSpan={11} className="p-4">
+                      <div className="flex items-center gap-4">
+                        <h4 className="font-semibold text-yellow-800">
+                          Request &quot;{item.name}&quot; from unallocated stock
+                        </h4>
+                        <div className="w-24">
+                          <input
+                            type="number"
+                            aria-label="Quantity to request"
+                            min="1"
+                            value={requestQty}
+                            onChange={(e) => setRequestQty(Number(e.target.value))}
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                          />
+                        </div>
+                        <button
+                          onClick={() => handleRequestStock(item)}
+                          className="bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700"
+                        >
+                          Submit Request
+                        </button>
+                        <button
+                          onClick={() => setRequestingItemId(null)}
+                          className="text-gray-500 hover:text-gray-700 text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
+      </>}
+
+      {/* Stock Allocations Tab */}
+      {activeTab === 'allocations' && (
+        <div className="space-y-4">
+          {/* Pending requests (admin can approve/reject) */}
+          {isAdmin && stockAllocations.filter(a => a.status === 'pending').length > 0 && (
+            <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4">
+              <h3 className="font-semibold text-yellow-800 mb-3">Pending Allocation Requests</h3>
+              <div className="space-y-3">
+                {stockAllocations.filter(a => a.status === 'pending').map(alloc => (
+                  <div key={alloc.id} className="bg-white rounded p-4 border shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-semibold text-lg">{alloc.itemName}</p>
+                        <p className="text-sm text-gray-600">
+                          Requested by <span className="font-medium text-indigo-700">{getUserName(alloc.requestedBy)}</span> on {formatDate(alloc.requestedDate)}
+                        </p>
+                        <p className="text-sm mt-1">Total Qty: <span className="font-bold">{alloc.totalQty}</span></p>
+                        <div className="mt-2 space-y-1">
+                          {alloc.allocations.map((a, i) => (
+                            <div key={i} className="text-sm flex gap-2">
+                              <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs font-medium">{a.shopName}</span>
+                              <span className="font-semibold">{a.qty} pcs</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => approveStockAllocation(alloc.id)}
+                          className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => rejectStockAllocation(alloc.id)}
+                          className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* All allocations history */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-semibold text-lg mb-3">Allocation History</h3>
+            {stockAllocations.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No stock allocations yet. Use the "Allocate" button on any inventory item to distribute stock to shops.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-3 text-left">Date</th>
+                      <th className="p-3 text-left">Item</th>
+                      <th className="p-3 text-left">Allocated By</th>
+                      <th className="p-3 text-center">Total Qty</th>
+                      <th className="p-3 text-left">Distribution</th>
+                      <th className="p-3 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stockAllocations
+                      .sort((a, b) => new Date(b.requestedDate).getTime() - new Date(a.requestedDate).getTime())
+                      .map(alloc => (
+                        <tr key={alloc.id} className="border-t hover:bg-gray-50">
+                          <td className="p-3">{formatDate(alloc.requestedDate)}</td>
+                          <td className="p-3 font-semibold">{alloc.itemName}</td>
+                          <td className="p-3">
+                            <span className="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded font-medium">
+                              {getUserName(alloc.requestedBy)}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center font-bold">{alloc.totalQty}</td>
+                          <td className="p-3">
+                            <div className="space-y-1">
+                              {alloc.allocations.map((a, i) => (
+                                <div key={i} className="flex gap-2 items-center text-xs">
+                                  <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-medium">{a.shopName}</span>
+                                  <span className="font-semibold">{a.qty} pcs</span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                              alloc.status === 'approved' ? 'bg-green-100 text-green-800' :
+                              alloc.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {alloc.status === 'approved' ? 'Approved' : alloc.status === 'rejected' ? 'Rejected' : 'Pending'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Unallocated stock summary (admin view) */}
+          {isAdmin && unassignedItems.length > 0 && (
+            <div className="bg-white rounded-lg shadow p-4">
+              <h3 className="font-semibold text-lg mb-3">Unallocated Stock</h3>
+              <p className="text-sm text-gray-600 mb-3">These items have stock but are not assigned to any shop. Use "Allocate" from the Inventory tab to distribute.</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {unassignedItems.map(item => (
+                  <div key={item.id} className="border rounded p-3 bg-gray-50">
+                    <p className="font-semibold truncate" title={item.name}>{item.name}</p>
+                    <p className="text-sm text-gray-600">{item.category} {item.itemType ? `- ${item.itemType}` : ''}</p>
+                    <p className="text-lg font-bold text-purple-700 mt-1">{item.stock} pcs</p>
+                    <button
+                      onClick={() => { setActiveTab('inventory'); openAllocateForm(item); }}
+                      className="mt-2 text-purple-700 hover:text-purple-900 text-xs font-semibold border border-purple-300 px-2 py-1 rounded hover:bg-purple-50 w-full"
+                    >
+                      Allocate Now
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
