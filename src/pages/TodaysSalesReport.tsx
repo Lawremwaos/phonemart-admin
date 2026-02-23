@@ -217,6 +217,12 @@ export default function TodaysSalesReport() {
             text += `-${p.itemName} x${p.qty} ${costStr} (${getSupplierDisplay(p.supplier)})\n`;
           });
         }
+        const splitPayments = (r.pendingTransactionCodes as any)?.splitPayments;
+        if (splitPayments && splitPayments.length > 0) {
+          text += `Payment: Partial/Split – `;
+          text += splitPayments.map((p: any) => `${(p.method || '').replace(/_/g, ' ')} KES ${(p.amount || 0).toLocaleString()}`).join(', ');
+          text += `\n`;
+        }
         text += `Cost:${ra.totalCost.toLocaleString()} ${b('Profit:' + ra.profit.toLocaleString())}\n`;
       });
     }

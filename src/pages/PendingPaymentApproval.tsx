@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
-import { usePayment } from "../context/PaymentContext";
+import { usePayment, type Bank } from "../context/PaymentContext";
 
 export default function PendingPaymentApproval() {
   const { repairs, approvePayment } = useRepair();
@@ -59,35 +59,55 @@ export default function PendingPaymentApproval() {
     approvePayment(repair.id);
 
     // Record the payment (transaction codes are already filled by staff on repair sale page)
-    if (repair.pendingTransactionCodes) {
-      const { paymentMethod, transactionCodes } = repair.pendingTransactionCodes;
-      let paymentType: 'cash' | 'mpesa' | 'bank_deposit' = 'cash';
-      let depositReference = '';
-      let bank: any = undefined;
+    const pending = repair.pendingTransactionCodes;
+    if (pending) {
+      const splitPayments = pending.splitPayments;
+      if (splitPayments && splitPayments.length > 0) {
+        // Split payment: record one payment with combined reference
+        const refs = splitPayments.map(p => `${p.method.replace(/_/g, ' ')}: ${p.transactionCode} (KES ${p.amount.toLocaleString()}${p.bank ? `, ${p.bank}` : ''})`).join('; ');
+        const hasBank = splitPayments.some(p => p.bank);
+        addPayment({
+          type: hasBank ? 'bank_deposit' : 'mpesa',
+          amount: repair.amountPaid,
+          state: repair.balance <= 0 ? 'fully_paid' : 'partial',
+          bank: hasBank ? (splitPayments.find(p => p.bank)?.bank as Bank | undefined) : undefined,
+          depositReference: refs,
+          shopId: repair.shopId,
+          relatedTo: 'repair',
+          relatedId: repair.id,
+          deposited: true,
+        });
+      } else {
+        const paymentMethod = pending.paymentMethod!;
+        const transactionCodes = pending.transactionCodes || {};
+        let paymentType: 'cash' | 'mpesa' | 'bank_deposit' = 'cash';
+        let depositReference = '';
+        let bank: any = undefined;
 
-      if (paymentMethod === 'cash_to_deposit') {
-        paymentType = 'cash';
-        depositReference = transactionCodes.cash_to_deposit || '';
-      } else if (paymentMethod === 'mpesa_to_paybill' || paymentMethod === 'mpesa_to_mpesa_shop') {
-        paymentType = 'mpesa';
-        depositReference = transactionCodes.mpesa_to_paybill || transactionCodes.mpesa_to_mpesa_shop || '';
-      } else if (paymentMethod === 'bank_to_mpesa_shop' || paymentMethod === 'bank_to_shop_bank' || paymentMethod === 'sacco_to_mpesa') {
-        paymentType = 'bank_deposit';
-        depositReference = transactionCodes.bank_to_mpesa_shop || transactionCodes.bank_to_shop_bank || transactionCodes.sacco_to_mpesa || '';
-        bank = transactionCodes.bank;
+        if (paymentMethod === 'cash_to_deposit') {
+          paymentType = 'cash';
+          depositReference = transactionCodes.cash_to_deposit || '';
+        } else if (paymentMethod === 'mpesa_to_paybill' || paymentMethod === 'mpesa_to_mpesa_shop') {
+          paymentType = 'mpesa';
+          depositReference = transactionCodes.mpesa_to_paybill || transactionCodes.mpesa_to_mpesa_shop || '';
+        } else if (paymentMethod === 'bank_to_mpesa_shop' || paymentMethod === 'bank_to_shop_bank' || paymentMethod === 'sacco_to_mpesa') {
+          paymentType = 'bank_deposit';
+          depositReference = transactionCodes.bank_to_mpesa_shop || transactionCodes.bank_to_shop_bank || transactionCodes.sacco_to_mpesa || '';
+          bank = transactionCodes.bank;
+        }
+
+        addPayment({
+          type: paymentType,
+          amount: repair.amountPaid,
+          state: repair.balance <= 0 ? 'fully_paid' : 'partial',
+          bank: bank,
+          depositReference: depositReference,
+          shopId: repair.shopId,
+          relatedTo: 'repair',
+          relatedId: repair.id,
+          deposited: paymentType !== 'cash',
+        });
       }
-
-      addPayment({
-        type: paymentType,
-        amount: repair.amountPaid,
-        state: repair.balance <= 0 ? 'fully_paid' : 'partial',
-        bank: bank,
-        depositReference: depositReference,
-        shopId: repair.shopId,
-        relatedTo: 'repair',
-        relatedId: repair.id,
-        deposited: paymentType !== 'cash',
-      });
     }
 
     alert(balance > 0 
@@ -176,9 +196,20 @@ export default function PendingPaymentApproval() {
                         </button>
                         {repair.pendingTransactionCodes && (
                           <div className="text-xs text-gray-500 mt-1">
-                            <div>Method: {repair.pendingTransactionCodes.paymentMethod.replace(/_/g, ' ')}</div>
-                            {repair.pendingTransactionCodes.transactionCodes && (
-                              <div>Code: {String(Object.values(repair.pendingTransactionCodes.transactionCodes).find((v: any) => v && v !== '') || 'N/A')}</div>
+                            {repair.pendingTransactionCodes.splitPayments && repair.pendingTransactionCodes.splitPayments.length > 0 ? (
+                              <div>
+                                <div className="font-medium text-gray-700">Split payments:</div>
+                                {repair.pendingTransactionCodes.splitPayments.map((p: any, i: number) => (
+                                  <div key={i}>{p.method.replace(/_/g, ' ')}: KES {p.amount.toLocaleString()} – {p.transactionCode}{p.bank ? ` (${p.bank})` : ''}</div>
+                                ))}
+                              </div>
+                            ) : (
+                              <>
+                                <div>Method: {(repair.pendingTransactionCodes.paymentMethod || '').replace(/_/g, ' ')}</div>
+                                {repair.pendingTransactionCodes.transactionCodes && (
+                                  <div>Code: {String(Object.values(repair.pendingTransactionCodes.transactionCodes).find((v: any) => v && v !== '') || 'N/A')}</div>
+                                )}
+                              </>
                             )}
                           </div>
                         )}

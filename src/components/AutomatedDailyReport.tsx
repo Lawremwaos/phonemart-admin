@@ -205,6 +205,12 @@ export default function AutomatedDailyReport() {
         report += partsList.length ? partsList.join(', ') : '(None)';
         report += `\n`;
         report += `Revenue: KES ${revenue.toLocaleString()}\n`;
+        const splitPayments = (r.pendingTransactionCodes as any)?.splitPayments;
+        if (splitPayments && splitPayments.length > 0) {
+          report += `Payment: Partial/Split – `;
+          report += splitPayments.map((p: any) => `${(p.method || '').replace(/_/g, ' ')} KES ${(p.amount || 0).toLocaleString()}`).join(', ');
+          report += `\n`;
+        }
         report += `Part cost: KES ${totalPartCost.toLocaleString()}\n`;
         report += `Profit: KES ${profit.toLocaleString()}\n\n`;
       });

@@ -48,8 +48,9 @@ export type Repair = {
   paymentApproved?: boolean;
   paymentMade?: boolean;
   pendingTransactionCodes?: {
-    paymentMethod: string;
-    transactionCodes: any;
+    paymentMethod?: string;
+    transactionCodes?: any;
+    splitPayments?: Array<{ method: string; amount: number; transactionCode: string; bank?: string }>;
   };
   ticketNumber?: string;
   collected?: boolean;

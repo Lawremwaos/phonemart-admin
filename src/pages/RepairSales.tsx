@@ -32,7 +32,12 @@ type RepairPart = {
 
 type PaymentMethod = 'cash_to_deposit' | 'mpesa_to_paybill' | 'mpesa_to_mpesa_shop' | 'bank_to_mpesa_shop' | 'bank_to_shop_bank' | 'sacco_to_mpesa';
 
-// Split payment not currently used
+type SplitPaymentEntry = {
+  method: PaymentMethod;
+  amount: number;
+  transactionCode: string;
+  bank?: string;
+};
 
 export default function RepairSales() {
   const navigate = useNavigate();
@@ -91,12 +96,12 @@ export default function RepairSales() {
     bank: "",
     customBank: "", // For custom bank name input
   });
-  // Split payment UI is not currently used in this flow
-  // const [splitPayments, setSplitPayments] = useState<SplitPayment[]>([]);
-  // const [splitPaymentMethod, setSplitPaymentMethod] = useState<'cash' | 'mpesa' | 'bank_deposit'>('cash');
-  // const [splitPaymentAmount, setSplitPaymentAmount] = useState("");
-  // const [splitPaymentCode, setSplitPaymentCode] = useState("");
-  // const [splitPaymentBank, setSplitPaymentBank] = useState("");
+  const [paymentMode, setPaymentMode] = useState<'single' | 'split'>('single');
+  const [splitPayments, setSplitPayments] = useState<SplitPaymentEntry[]>([]);
+  const [splitPaymentMethod, setSplitPaymentMethod] = useState<PaymentMethod>('mpesa_to_paybill');
+  const [splitPaymentAmount, setSplitPaymentAmount] = useState("");
+  const [splitPaymentCode, setSplitPaymentCode] = useState("");
+  const [splitPaymentBank, setSplitPaymentBank] = useState("");
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<number | null>(null);
   const [outsourcedItemSupplier, setOutsourcedItemSupplier] = useState("");
 
@@ -273,31 +278,28 @@ export default function RepairSales() {
     setAdditionalLaborItems(prev => prev.filter(item => item.id !== id));
   }
 
-  /*
+  const bankMethods: PaymentMethod[] = ['bank_to_mpesa_shop', 'bank_to_shop_bank', 'sacco_to_mpesa'];
+
   function addSplitPayment() {
-    if (!splitPaymentAmount || Number(splitPaymentAmount) <= 0) {
+    const amount = Number(splitPaymentAmount);
+    if (!splitPaymentAmount || amount <= 0) {
       alert("Please enter a valid amount");
       return;
     }
-    if (!splitPaymentCode) {
+    const code = splitPaymentCode.trim().toUpperCase();
+    if (!code) {
       alert("Please enter transaction code");
       return;
     }
-    if (splitPaymentMethod === 'bank_deposit' && !splitPaymentBank) {
-      alert("Please select a bank");
+    if (bankMethods.includes(splitPaymentMethod) && !transactionCodes.bank && !splitPaymentBank) {
+      alert("Please select a bank for this payment");
       return;
     }
-
+    const bank = bankMethods.includes(splitPaymentMethod) ? (splitPaymentBank || transactionCodes.bank || transactionCodes.customBank) : undefined;
     setSplitPayments(prev => [
       ...prev,
-      {
-        method: splitPaymentMethod,
-        amount: Number(splitPaymentAmount),
-        transactionCode: splitPaymentCode.toUpperCase(),
-        bank: splitPaymentMethod === 'bank_deposit' ? splitPaymentBank : undefined,
-      },
+      { method: splitPaymentMethod, amount, transactionCode: code, bank },
     ]);
-
     setSplitPaymentAmount("");
     setSplitPaymentCode("");
     setSplitPaymentBank("");
@@ -306,7 +308,6 @@ export default function RepairSales() {
   function removeSplitPayment(index: number) {
     setSplitPayments(prev => prev.filter((_, i) => i !== index));
   }
-  */
 
   function calculateTotal() {
     // Note: This is just for reference display. The actual total is the agreed amount.
@@ -328,16 +329,35 @@ export default function RepairSales() {
   function getAmountPaid() {
     const depositAmount = Number(form.depositAmount || 0);
     if (depositAmount > 0) return depositAmount;
-    if (paymentMade === 'yes') return Number(form.totalAgreedAmount || 0);
-    return 0;
+    if (paymentMade === 'no') return 0;
+    if (paymentMode === 'split' && splitPayments.length > 0) {
+      return splitPayments.reduce((sum, p) => sum + p.amount, 0);
+    }
+    return Number(form.totalAgreedAmount || 0);
   }
 
   function validateTransactionCodes() {
-    // If payment is not made, skip validation
-    if (paymentMade === 'no') {
+    if (paymentMade === 'no') return true;
+
+    if (paymentMode === 'split') {
+      if (splitPayments.length === 0) {
+        alert("Add at least one payment (e.g. M-Pesa amount + code, then Bank amount + code).");
+        return false;
+      }
+      for (let i = 0; i < splitPayments.length; i++) {
+        const p = splitPayments[i];
+        if (p.amount <= 0 || !p.transactionCode.trim()) {
+          alert(`Payment ${i + 1}: enter amount and transaction code.`);
+          return false;
+        }
+        if (bankMethods.includes(p.method) && !p.bank?.trim()) {
+          alert(`Payment ${i + 1}: select bank for ${p.method}.`);
+          return false;
+        }
+      }
       return true;
     }
-    
+
     if (paymentMethod === 'cash_to_deposit') {
       if (!transactionCodes.cash_to_deposit) {
         alert("Transaction code is required! Staff must deposit cash and provide the code.");
@@ -458,10 +478,9 @@ export default function RepairSales() {
       paymentApproved: false, // Admin must approve
       amountPaid: paidAmount,
       balance: balance,
-      pendingTransactionCodes: {
-        paymentMethod,
-        transactionCodes: { ...transactionCodes },
-      },
+      pendingTransactionCodes: paymentMode === 'split' && splitPayments.length > 0
+        ? { splitPayments: splitPayments.map(p => ({ method: p.method, amount: p.amount, transactionCode: p.transactionCode, bank: p.bank })) }
+        : { paymentMethod, transactionCodes: { ...transactionCodes } },
       ticketNumber: ticketNumber,
       collected: false,
       serviceType: isServiceOnly ? serviceType : undefined,
@@ -512,6 +531,7 @@ export default function RepairSales() {
       paymentApproved: false,
       depositAmount: depositAmount,
       serviceType: isServiceOnly ? serviceType : undefined,
+      ...(paymentMode === 'split' && splitPayments.length > 0 ? { splitPayments } : {}),
     };
 
     // Reset form
@@ -544,6 +564,11 @@ export default function RepairSales() {
     setAdditionalLaborItemSource('inventory');
     setIsServiceOnly(false);
     setServiceType("");
+    setPaymentMode('single');
+    setSplitPayments([]);
+    setSplitPaymentAmount('');
+    setSplitPaymentCode('');
+    setSplitPaymentBank('');
 
     // Only navigate to receipt if deposit is made
     // Otherwise, just show success message and navigate to pending collections
@@ -787,7 +812,7 @@ export default function RepairSales() {
                   }
                 }}
               >
-                <option value="">Select Supplier</option>
+                <option value="">Select Supplier (spare parts only)</option>
                 {suppliers
                   .filter(s => s.categories.includes('spare_parts'))
                   .map((supplier) => (
@@ -1025,14 +1050,91 @@ export default function RepairSales() {
             {paymentMade === 'yes' && (
               <>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment type</label>
+                  <div className="flex gap-4 mb-3">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        checked={paymentMode === 'single'}
+                        onChange={() => { setPaymentMode('single'); setSplitPayments([]); }}
+                        className="mr-2"
+                      />
+                      Single method (full amount one way)
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        checked={paymentMode === 'split'}
+                        onChange={() => setPaymentMode('split')}
+                        className="mr-2"
+                      />
+                      Partial / split (e.g. part M-Pesa + part Bank)
+                    </label>
+                  </div>
+                </div>
+
+                {paymentMode === 'split' ? (
+                  <div className="space-y-3 border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    <h5 className="font-medium text-gray-800">Split payments</h5>
+                    {splitPayments.length > 0 && (
+                      <ul className="space-y-2 mb-3">
+                        {splitPayments.map((p, idx) => (
+                          <li key={idx} className="flex justify-between items-center bg-white rounded px-3 py-2 border">
+                            <span className="text-sm">{p.method.replace(/_/g, ' ')}: KES {p.amount.toLocaleString()} – {p.transactionCode}{p.bank ? ` (${p.bank})` : ''}</span>
+                            <button type="button" onClick={() => removeSplitPayment(idx)} className="text-red-600 hover:text-red-800 text-sm font-medium">Remove</button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="text-sm text-gray-600">Total from payments: KES {(splitPayments.reduce((s, p) => s + p.amount, 0)).toLocaleString()}{form.totalAgreedAmount ? ` (Agreed: KES ${Number(form.totalAgreedAmount).toLocaleString()})` : ''}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end flex-wrap">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Method</label>
+                        <select
+                          className="border border-gray-300 rounded-md px-2 py-1.5 w-full text-sm"
+                          value={splitPaymentMethod}
+                          onChange={(e) => setSplitPaymentMethod(e.target.value as PaymentMethod)}
+                        >
+                          <option value="cash_to_deposit">Cash to Deposit</option>
+                          <option value="mpesa_to_paybill">M-pesa to Paybill</option>
+                          <option value="mpesa_to_mpesa_shop">M-pesa to M-pesa Shop</option>
+                          <option value="bank_to_mpesa_shop">Bank to M-pesa Shop</option>
+                          <option value="bank_to_shop_bank">Bank to Shop Bank</option>
+                          <option value="sacco_to_mpesa">Sacco to M-pesa</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Amount (KES)</label>
+                        <input type="number" min="1" step="1" className="border border-gray-300 rounded-md px-2 py-1.5 w-full text-sm" value={splitPaymentAmount} onChange={(e) => setSplitPaymentAmount(e.target.value)} placeholder="Amount" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Transaction code</label>
+                        <input type="text" className="border border-gray-300 rounded-md px-2 py-1.5 w-full text-sm uppercase" value={splitPaymentCode} onChange={(e) => setSplitPaymentCode(e.target.value)} placeholder="Code" />
+                      </div>
+                      {bankMethods.includes(splitPaymentMethod) && (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Bank</label>
+                          <select className="border border-gray-300 rounded-md px-2 py-1.5 w-full text-sm" value={splitPaymentBank || transactionCodes.bank} onChange={(e) => setSplitPaymentBank(e.target.value)}>
+                            <option value="">Select</option>
+                            <option value="KCB">KCB</option>
+                            <option value="Equity">Equity</option>
+                            <option value="Cooperative">Cooperative</option>
+                            <option value="Absa">Absa</option>
+                            <option value="Standard Chartered">Standard Chartered</option>
+                          </select>
+                        </div>
+                      )}
+                      <button type="button" onClick={addSplitPayment} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">Add payment</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
                   <select
                     className="border border-gray-300 rounded-md px-3 py-2 w-full"
                     value={paymentMethod}
-                    onChange={(e) => {
-                      setPaymentMethod(e.target.value as PaymentMethod);
-                      // split payments not used
-                    }}
+                    onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                   >
                     <option value="cash_to_deposit">Cash to Deposit</option>
                     <option value="mpesa_to_paybill">M-pesa to Paybill</option>
@@ -1246,6 +1348,8 @@ export default function RepairSales() {
                   </>
                 )}
 
+                  </>
+                )}
               </>
             )}
           </div>
@@ -1271,10 +1375,18 @@ export default function RepairSales() {
               </>
             )}
             {Number(form.depositAmount || 0) === 0 && paymentMade === 'yes' && (
-              <div className="flex justify-between border-t pt-2">
-                <span>Amount Paid:</span>
-                <span className="font-semibold text-green-600">KES {Number(form.totalAgreedAmount || 0).toLocaleString()}</span>
-              </div>
+              <>
+                <div className="flex justify-between border-t pt-2">
+                  <span>Amount Paid:</span>
+                  <span className="font-semibold text-green-600">KES {getAmountPaid().toLocaleString()}</span>
+                </div>
+                {getAmountPaid() < Number(form.totalAgreedAmount || 0) && (
+                  <div className="flex justify-between">
+                    <span className="text-red-600 font-semibold">Balance Remaining:</span>
+                    <span className="font-bold text-red-600">KES {(Number(form.totalAgreedAmount || 0) - getAmountPaid()).toLocaleString()}</span>
+                  </div>
+                )}
+              </>
             )}
             {Number(form.depositAmount || 0) === 0 && paymentMade === 'no' && (
               <div className="flex justify-between border-t pt-2">

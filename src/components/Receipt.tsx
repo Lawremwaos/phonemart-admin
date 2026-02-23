@@ -152,6 +152,21 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
             </span>
           </div>
         )}
+
+        {/* Split / partial payment breakdown */}
+        {(sale as any).splitPayments && Array.isArray((sale as any).splitPayments) && (sale as any).splitPayments.length > 0 && (
+          <div className="pt-2 border-t border-gray-300 mt-2">
+            <div className="text-sm font-medium text-gray-700 mb-1">Payment (partial/split):</div>
+            <ul className="text-sm text-gray-600 space-y-0.5">
+              {(sale as any).splitPayments.map((p: { method: string; amount: number; transactionCode?: string; bank?: string }, i: number) => (
+                <li key={i}>
+                  {p.method.replace(/_/g, ' ')}: KES {p.amount.toLocaleString()}
+                  {p.bank ? ` (${p.bank})` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* Footer */}
