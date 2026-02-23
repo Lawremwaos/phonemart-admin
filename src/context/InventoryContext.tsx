@@ -76,7 +76,7 @@ type InventoryContextType = {
   updateItem: (id: number, updates: Partial<InventoryItem>) => void;
   removeItem: (id: number) => void;
   addStock: (itemId: number, qty: number) => void;
-  deductStock: (name: string, qty: number) => void;
+  deductStock: (name: string, qty: number, shopId?: string) => void;
   addPurchase: (purchase: Omit<Purchase, 'id' | 'date'>) => void;
   confirmPurchase: (purchaseId: string) => void;
   deletePurchase: (purchaseId: string) => void;
@@ -433,8 +433,10 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     updateItem(itemId, { stock: item.stock + qty });
   }, [items, updateItem]);
 
-  const deductStock = useCallback((name: string, qty: number) => {
-    const item = items.find((i) => i.name === name);
+  const deductStock = useCallback((name: string, qty: number, shopId?: string) => {
+    const item = shopId
+      ? items.find((i) => i.name === name && i.shopId === shopId)
+      : items.find((i) => i.name === name);
     if (!item) return;
     updateItem(item.id, { stock: Math.max(0, item.stock - qty) });
   }, [items, updateItem]);
@@ -722,7 +724,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         .from("stock_allocations")
         .update({
           status: 'approved',
-          approved_by: 'admin', // TODO: Get actual admin user
+          approved_by: currentUser?.name || 'admin',
           approved_date: new Date().toISOString(),
         })
         .eq("id", allocationId);
@@ -737,7 +739,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         )
       );
     })();
-  }, [stockAllocations, items, addItem, updateItem]);
+  }, [stockAllocations, items, addItem, updateItem, currentUser?.name]);
 
   const rejectStockAllocation = useCallback((allocationId: string) => {
     (async () => {

@@ -14,6 +14,7 @@ export default function TodaysSalesReport() {
   const [whatsAppNumber, setWhatsAppNumber] = useState("");
   const report = getTodaysSalesReport();
   const todaysSales = getDailySales();
+  const isAdmin = currentUser?.roles.includes('admin') ?? false;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -42,11 +43,23 @@ export default function TodaysSalesReport() {
     return 'Own Inventory';
   };
 
-  // Helper: find cost price for an inventory item
+  // Display: our own = "From the shop", else show supplier name
+  const getSupplierDisplay = (supplier: string): string =>
+    supplier === 'Own Inventory' ? 'From the shop' : supplier;
+
+  // Helper: find cost price for an inventory item. Staff never see adminCostPrice.
   const getCostPrice = (itemName: string): number => {
     const inv = inventoryItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
-    if (inv?.adminCostPrice && inv.adminCostPrice > 0) return inv.adminCostPrice;
-    if (inv?.costPrice && inv.costPrice > 0) return inv.costPrice;
+    if (!isAdmin) {
+      if (inv?.costPrice != null && inv.costPrice > 0) return inv.costPrice;
+      for (const p of purchases) {
+        const pi = p.items.find(pi => pi.itemName.toLowerCase() === itemName.toLowerCase());
+        if (pi) return pi.costPrice;
+      }
+      return 0;
+    }
+    if (inv?.adminCostPrice != null && inv.adminCostPrice > 0) return inv.adminCostPrice;
+    if (inv?.costPrice != null && inv.costPrice > 0) return inv.costPrice;
     for (const p of purchases) {
       const pi = p.items.find(pi => pi.itemName.toLowerCase() === itemName.toLowerCase());
       if (pi) return pi.costPrice;
@@ -101,7 +114,7 @@ export default function TodaysSalesReport() {
         profit,
       };
     });
-  }, [filteredRepairs, inventoryItems, purchases]);
+  }, [filteredRepairs, inventoryItems, purchases, isAdmin]);
 
   // --- ACCESSORY ANALYSIS ---
   const accessoryAnalysis = useMemo(() => {
@@ -125,14 +138,15 @@ export default function TodaysSalesReport() {
       const profit = revenue - totalCost;
       return { sale, revenue, itemsBreakdown, totalCost, profit };
     });
-  }, [todaysSales, inventoryItems, purchases]);
+  }, [todaysSales, inventoryItems, purchases, isAdmin]);
 
-  // --- SUPPLIER SUMMARY ---
+  // --- SUPPLIER SUMMARY (only outsourced suppliers; our own = "From the shop" not listed) ---
   const supplierSummary = useMemo(() => {
     const map: Record<string, { name: string; partsCost: number; items: string[]; repairCount: number; accessoryCount: number }> = {};
 
     repairAnalysis.forEach(ra => {
       ra.allParts.forEach(part => {
+        if (part.supplier === 'Own Inventory') return;
         if (!map[part.supplier]) map[part.supplier] = { name: part.supplier, partsCost: 0, items: [], repairCount: 0, accessoryCount: 0 };
         map[part.supplier].partsCost += part.totalCost;
         if (!map[part.supplier].items.includes(part.itemName)) map[part.supplier].items.push(part.itemName);
@@ -142,6 +156,7 @@ export default function TodaysSalesReport() {
 
     accessoryAnalysis.forEach(aa => {
       aa.itemsBreakdown.forEach(item => {
+        if (item.supplier === 'Own Inventory') return;
         if (!map[item.supplier]) map[item.supplier] = { name: item.supplier, partsCost: 0, items: [], repairCount: 0, accessoryCount: 0 };
         map[item.supplier].partsCost += item.totalCost;
         if (!map[item.supplier].items.includes(item.itemName)) map[item.supplier].items.push(item.itemName);
@@ -198,8 +213,8 @@ export default function TodaysSalesReport() {
         text += ` |Rev:${ra.revenue.toLocaleString()}\n`;
         if (ra.allParts.length > 0) {
           ra.allParts.forEach(p => {
-            const costStr = p.totalCost > 0 ? `${p.totalCost.toLocaleString()}` : '?';
-            text += `-${p.itemName} x${p.qty} KES ${costStr} (${p.supplier})\n`;
+            const costStr = p.supplier === 'Own Inventory' ? '-' : (p.totalCost > 0 ? `KES ${p.totalCost.toLocaleString()}` : '?');
+            text += `-${p.itemName} x${p.qty} ${costStr} (${getSupplierDisplay(p.supplier)})\n`;
           });
         }
         text += `Cost:${ra.totalCost.toLocaleString()} ${b('Profit:' + ra.profit.toLocaleString())}\n`;
@@ -213,7 +228,9 @@ export default function TodaysSalesReport() {
         if (aa.sale.paymentType) text += ` |${aa.sale.paymentType}`;
         text += `\n`;
         aa.itemsBreakdown.forEach(item => {
-          text += `-${item.itemName} x${item.qty} KES ${item.costPrice.toLocaleString()} (${item.supplier})\n`;
+          const fromShop = item.supplier === 'Own Inventory';
+          const costStr = fromShop ? '' : ` KES ${item.costPrice.toLocaleString()}`;
+          text += `-${item.itemName} x${item.qty}${costStr} (${getSupplierDisplay(item.supplier)})\n`;
         });
         text += `Rev:${aa.revenue.toLocaleString()} Cost:${aa.totalCost.toLocaleString()} ${b('Profit:' + aa.profit.toLocaleString())}\n`;
       });
@@ -445,13 +462,13 @@ export default function TodaysSalesReport() {
                             <div>
                               <span className="font-medium">{part.itemName}</span>
                               <span className="text-gray-500"> x{part.qty}</span>
-                              <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">{part.supplier}</span>
-                              {part.source === 'outsourced' && (
+                              <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">{getSupplierDisplay(part.supplier)}</span>
+                              {part.supplier !== 'Own Inventory' && (
                                 <span className="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-xs rounded">Outsourced</span>
                               )}
                             </div>
                             <span className="font-semibold text-red-600">
-                              {part.totalCost > 0 ? `KES ${part.totalCost.toLocaleString()}` : '-'}
+                              {part.supplier === 'Own Inventory' ? '-' : (part.totalCost > 0 ? `KES ${part.totalCost.toLocaleString()}` : '-')}
                             </span>
                           </div>
                         ))}
@@ -493,19 +510,26 @@ export default function TodaysSalesReport() {
 
                 <div className="bg-gray-50 rounded p-3">
                   <div className="space-y-1">
-                    {aa.itemsBreakdown.map((item, iidx) => (
-                      <div key={iidx} className="flex justify-between items-center text-sm">
-                        <div>
-                          <span className="font-medium">{item.itemName}</span>
-                          <span className="text-gray-500"> x{item.qty}</span>
-                          <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">{item.supplier}</span>
+                    {aa.itemsBreakdown.map((item, iidx) => {
+                      const fromShop = item.supplier === 'Own Inventory';
+                      return (
+                        <div key={iidx} className="flex justify-between items-center text-sm">
+                          <div>
+                            <span className="font-medium">{item.itemName}</span>
+                            <span className="text-gray-500"> x{item.qty}</span>
+                            <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">{getSupplierDisplay(item.supplier)}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-green-700 mr-3">Sold: KES {item.sellingPrice.toLocaleString()}</span>
+                            {fromShop ? (
+                              <span className="text-gray-500">Cost: -</span>
+                            ) : (
+                              <span className="text-red-600">Cost: KES {item.costPrice.toLocaleString()}</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-green-700 mr-3">Sold: KES {item.sellingPrice.toLocaleString()}</span>
-                          <span className="text-red-600">Cost: KES {item.costPrice.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 

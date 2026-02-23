@@ -239,7 +239,7 @@ export default function Repairs() {
               >
                 <option value="">Select Part</option>
                 {items
-                  .filter(item => item.category === 'Spare' || item.category === 'Accessory')
+                  .filter(item => (item.category === 'Spare' || item.category === 'Accessory') && item.stock > 0 && item.shopId === currentShop?.id)
                   .map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name} (KES {item.costPrice || item.price})

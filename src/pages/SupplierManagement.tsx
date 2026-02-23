@@ -30,7 +30,7 @@ export default function SupplierManagement() {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedSupplierId, setExpandedSupplierId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'purchases' | 'parts_taken' | 'all'>('all');
+  const [activeTab, setActiveTab] = useState<'purchases' | 'parts_taken' | 'all'>(currentUser?.roles.includes('admin') ? 'all' : 'parts_taken');
   const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>([]);
   const [paymentTableError, setPaymentTableError] = useState<string | null>(null);
   const [activePaymentPurchaseId, setActivePaymentPurchaseId] = useState<string | null>(null);
@@ -426,13 +426,15 @@ export default function SupplierManagement() {
         </div>
       )}
 
-      {/* Overall Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
-          <p className="text-sm text-gray-600">Total Supplier Purchases</p>
-          <p className="text-2xl font-bold text-blue-700">KES {overallStats.totalPurchases.toLocaleString()}</p>
-          <p className="text-xs text-gray-500">{overallStats.totalOrders} purchase orders</p>
-        </div>
+      {/* Overall Summary - Staff see only Parts Taken and Active Suppliers; Admin sees all */}
+      <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-2'}`}>
+        {isAdmin && (
+          <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+            <p className="text-sm text-gray-600">Total Supplier Purchases</p>
+            <p className="text-2xl font-bold text-blue-700">KES {overallStats.totalPurchases.toLocaleString()}</p>
+            <p className="text-xs text-gray-500">{overallStats.totalOrders} purchase orders</p>
+          </div>
+        )}
         <div className="bg-white p-4 rounded shadow border-l-4 border-orange-500">
           <p className="text-sm text-gray-600">Total Parts Taken (Outsourced)</p>
           <p className="text-2xl font-bold text-orange-700">KES {overallStats.totalPartsCost.toLocaleString()}</p>
@@ -446,58 +448,64 @@ export default function SupplierManagement() {
             {suppliers.filter(s => s.categories.includes('accessories')).length} accessories
           </p>
         </div>
-        <div className="bg-white p-4 rounded shadow border-l-4 border-red-500">
-          <p className="text-sm text-gray-600">Outstanding Supplier Balance</p>
-          <p className="text-2xl font-bold text-red-700">KES {overallStats.totalOutstandingSupplierBalance.toLocaleString()}</p>
-          <p className="text-xs text-gray-500">
-            Paid so far: KES {overallStats.totalPaidToSuppliers.toLocaleString()}
-          </p>
-        </div>
+        {isAdmin && (
+          <div className="bg-white p-4 rounded shadow border-l-4 border-red-500">
+            <p className="text-sm text-gray-600">Outstanding Supplier Balance</p>
+            <p className="text-2xl font-bold text-red-700">KES {overallStats.totalOutstandingSupplierBalance.toLocaleString()}</p>
+            <p className="text-xs text-gray-500">
+              Paid so far: KES {overallStats.totalPaidToSuppliers.toLocaleString()}
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Supplier Records */}
+      {/* Supplier Records - Staff see only Parts Taken; Admin sees All / Purchases / Parts Taken */}
       <div className="bg-white p-6 rounded shadow">
         <h3 className="text-lg font-semibold mb-2">Supplier Records</h3>
         <p className="text-sm text-gray-600 mb-4">
-          Track purchases from suppliers and outsourced spare parts taken by staff for repairs.
+          {isAdmin
+            ? 'Track purchases from suppliers and outsourced spare parts taken by staff for repairs.'
+            : 'Outsourced parts you have used in repairs. Fill in cost in Cost of Parts so amounts show here.'}
         </p>
-        {paymentTableError && (
+        {paymentTableError && isAdmin && (
           <div className="mb-4 rounded border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-800">
             {paymentTableError}
           </div>
         )}
 
-        <div className="flex gap-2 mb-4 border-b pb-2">
-          {(['all', 'purchases', 'parts_taken'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-t text-sm font-medium ${
-                activeTab === tab ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {tab === 'all' ? 'All Records' : tab === 'purchases' ? 'Purchases' : 'Parts Taken'}
-            </button>
-          ))}
-        </div>
+        {isAdmin && (
+          <div className="flex gap-2 mb-4 border-b pb-2">
+            {(['all', 'purchases', 'parts_taken'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 rounded-t text-sm font-medium ${
+                  activeTab === tab ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {tab === 'all' ? 'All Records' : tab === 'purchases' ? 'Purchases' : 'Parts Taken'}
+              </button>
+            ))}
+          </div>
+        )}
 
-        {supplierData.filter(d => d.supplierPurchases.length > 0 || d.partsTaken.length > 0).length === 0 ? (
+        {supplierData.filter(d => isAdmin ? (d.supplierPurchases.length > 0 || d.partsTaken.length > 0) : d.partsTaken.length > 0).length === 0 ? (
           <div className="text-center text-gray-500 py-8">
-            <p className="text-lg font-medium mb-2">No supplier transactions yet</p>
-            <p className="text-sm">Purchase orders and outsourced parts records will appear here.</p>
+            <p className="text-lg font-medium mb-2">{isAdmin ? 'No supplier transactions yet' : 'No outsourced parts taken yet'}</p>
+            <p className="text-sm">{isAdmin ? 'Purchase orders and outsourced parts records will appear here.' : 'When you use outsourced parts in repairs and fill in their cost in Cost of Parts, they will appear here.'}</p>
           </div>
         ) : (
           <div className="space-y-4">
             {supplierData
-              .filter(d => d.supplierPurchases.length > 0 || d.partsTaken.length > 0)
+              .filter(d => isAdmin ? (d.supplierPurchases.length > 0 || d.partsTaken.length > 0) : d.partsTaken.length > 0)
               .map((data) => {
                 const isExpanded = expandedSupplierId === data.supplier.id;
-                const showPurchases = activeTab === 'all' || activeTab === 'purchases';
+                const showPurchases = isAdmin && (activeTab === 'all' || activeTab === 'purchases');
                 const showParts = activeTab === 'all' || activeTab === 'parts_taken';
                 const hasPurchases = data.supplierPurchases.length > 0;
                 const hasParts = data.partsTaken.length > 0;
 
-                if ((activeTab === 'purchases' && !hasPurchases) || (activeTab === 'parts_taken' && !hasParts)) {
+                if (isAdmin && ((activeTab === 'purchases' && !hasPurchases) || (activeTab === 'parts_taken' && !hasParts))) {
                   return null;
                 }
 
@@ -522,7 +530,7 @@ export default function SupplierManagement() {
                           </div>
                         </div>
                         <div className="flex gap-6 text-sm">
-                          {hasPurchases && (
+                          {isAdmin && hasPurchases && (
                             <div className="text-right">
                               <p className="text-gray-600">Purchases</p>
                               <p className="font-bold text-blue-700">KES {data.totalPurchaseCost.toLocaleString()}</p>
@@ -759,7 +767,7 @@ export default function SupplierManagement() {
                           </div>
                         )}
 
-                        {/* Parts Taken (Outsourced spare parts used in repairs) */}
+                        {/* Parts Taken (Outsourced spare parts used in repairs) - Staff: list + prices + total only; Admin: full with payments */}
                         {showParts && hasParts && (
                           <div>
                             <h5 className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
@@ -775,10 +783,14 @@ export default function SupplierManagement() {
                                     <th className="p-2 text-left">Customer</th>
                                     <th className="p-2 text-left">Part Name</th>
                                     <th className="p-2 text-right">Cost</th>
-                                    <th className="p-2 text-right">Paid</th>
-                                    <th className="p-2 text-right">Balance</th>
-                                    <th className="p-2 text-center">Payment Status</th>
-                                    {isAdmin && <th className="p-2 text-center">Actions</th>}
+                                    {isAdmin && (
+                                      <>
+                                        <th className="p-2 text-right">Paid</th>
+                                        <th className="p-2 text-right">Balance</th>
+                                        <th className="p-2 text-center">Payment Status</th>
+                                        <th className="p-2 text-center">Actions</th>
+                                      </>
+                                    )}
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -824,57 +836,59 @@ export default function SupplierManagement() {
                                               : <span className="text-yellow-600 text-xs">Pending</span>
                                             }
                                           </td>
-                                          <td className="p-2 text-right text-green-700 font-semibold">
-                                            KES {rpInfo.paidAmount.toLocaleString()}
-                                          </td>
-                                          <td className="p-2 text-right text-red-700 font-semibold">
-                                            KES {rpInfo.balance.toLocaleString()}
-                                          </td>
-                                          <td className="p-2 text-center">
-                                            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${rpBadgeClass}`}>
-                                              {rpBadgeText}
-                                            </span>
-                                          </td>
                                           {isAdmin && (
-                                            <td className="p-2 text-center">
-                                              <div className="flex items-center justify-center gap-2">
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setActivePaymentRepairKey(isRepairPaymentOpen ? null : repairKey);
-                                                    if (isRepairPaymentOpen) resetPaymentForm();
-                                                  }}
-                                                  className="text-green-700 hover:text-green-900 text-xs font-semibold hover:bg-green-50 px-2 py-1 rounded"
-                                                >
-                                                  {isRepairPaymentOpen ? "Cancel" : "Record Payment"}
-                                                </button>
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setPaymentHistoryRepairKey({
-                                                      repairId: record.repairId,
-                                                      partName: record.partName,
-                                                      supplierName: data.supplier.name,
-                                                      cost: record.cost,
-                                                    });
-                                                  }}
-                                                  className="text-blue-700 hover:text-blue-900 text-xs font-semibold hover:bg-blue-50 px-2 py-1 rounded"
-                                                >
-                                                  History ({rpInfo.partPayments.length})
-                                                </button>
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (window.confirm(`Delete repair for ${record.customerName} (${record.phoneModel})?`)) {
-                                                      deleteRepair(record.repairId);
-                                                    }
-                                                  }}
-                                                  className="text-red-600 hover:text-red-800 text-xs font-semibold hover:bg-red-50 px-2 py-1 rounded"
-                                                >
-                                                  Delete
-                                                </button>
-                                              </div>
-                                            </td>
+                                            <>
+                                              <td className="p-2 text-right text-green-700 font-semibold">
+                                                KES {rpInfo.paidAmount.toLocaleString()}
+                                              </td>
+                                              <td className="p-2 text-right text-red-700 font-semibold">
+                                                KES {rpInfo.balance.toLocaleString()}
+                                              </td>
+                                              <td className="p-2 text-center">
+                                                <span className={`px-2 py-0.5 rounded text-xs font-semibold ${rpBadgeClass}`}>
+                                                  {rpBadgeText}
+                                                </span>
+                                              </td>
+                                              <td className="p-2 text-center">
+                                                <div className="flex items-center justify-center gap-2">
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setActivePaymentRepairKey(isRepairPaymentOpen ? null : repairKey);
+                                                      if (isRepairPaymentOpen) resetPaymentForm();
+                                                    }}
+                                                    className="text-green-700 hover:text-green-900 text-xs font-semibold hover:bg-green-50 px-2 py-1 rounded"
+                                                  >
+                                                    {isRepairPaymentOpen ? "Cancel" : "Record Payment"}
+                                                  </button>
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setPaymentHistoryRepairKey({
+                                                        repairId: record.repairId,
+                                                        partName: record.partName,
+                                                        supplierName: data.supplier.name,
+                                                        cost: record.cost,
+                                                      });
+                                                    }}
+                                                    className="text-blue-700 hover:text-blue-900 text-xs font-semibold hover:bg-blue-50 px-2 py-1 rounded"
+                                                  >
+                                                    History ({rpInfo.partPayments.length})
+                                                  </button>
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      if (window.confirm(`Delete repair for ${record.customerName} (${record.phoneModel})?`)) {
+                                                        deleteRepair(record.repairId);
+                                                      }
+                                                    }}
+                                                    className="text-red-600 hover:text-red-800 text-xs font-semibold hover:bg-red-50 px-2 py-1 rounded"
+                                                  >
+                                                    Delete
+                                                  </button>
+                                                </div>
+                                              </td>
+                                            </>
                                           )}
                                         </tr>
                                         {isAdmin && isRepairPaymentOpen && (
@@ -955,14 +969,18 @@ export default function SupplierManagement() {
                                   <tr>
                                     <td className="p-2" colSpan={4}>Total Parts Cost</td>
                                     <td className="p-2 text-right text-orange-800">KES {data.totalPartsCost.toLocaleString()}</td>
-                                    <td className="p-2 text-right text-green-800">
-                                      KES {data.partsTaken.reduce((s, r) => s + getRepairPartPaymentInfo(r.repairId, r.partName, r.cost).paidAmount, 0).toLocaleString()}
-                                    </td>
-                                    <td className="p-2 text-right text-red-800">
-                                      KES {data.partsTaken.reduce((s, r) => s + getRepairPartPaymentInfo(r.repairId, r.partName, r.cost).balance, 0).toLocaleString()}
-                                    </td>
-                                    <td></td>
-                                    {isAdmin && <td></td>}
+                                    {isAdmin && (
+                                      <>
+                                        <td className="p-2 text-right text-green-800">
+                                          KES {data.partsTaken.reduce((s, r) => s + getRepairPartPaymentInfo(r.repairId, r.partName, r.cost).paidAmount, 0).toLocaleString()}
+                                        </td>
+                                        <td className="p-2 text-right text-red-800">
+                                          KES {data.partsTaken.reduce((s, r) => s + getRepairPartPaymentInfo(r.repairId, r.partName, r.cost).balance, 0).toLocaleString()}
+                                        </td>
+                                        <td></td>
+                                        <td></td>
+                                      </>
+                                    )}
                                   </tr>
                                 </tfoot>
                               </table>
@@ -970,22 +988,26 @@ export default function SupplierManagement() {
                           </div>
                         )}
 
-                        {/* Summary for this supplier */}
+                        {/* Summary for this supplier - Admin: all; Staff: Parts Taken only */}
                         <div className="bg-gray-50 rounded p-4 border">
                           <h5 className="font-semibold mb-2">Summary: {data.supplier.name}</h5>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                            <div>
-                              <p className="text-gray-600">Purchase Orders</p>
-                              <p className="text-lg font-bold text-blue-700">KES {data.totalPurchaseCost.toLocaleString()}</p>
-                            </div>
+                          <div className={`grid grid-cols-1 text-sm ${isAdmin ? 'md:grid-cols-3 gap-4' : ''}`}>
+                            {isAdmin && (
+                              <div>
+                                <p className="text-gray-600">Purchase Orders</p>
+                                <p className="text-lg font-bold text-blue-700">KES {data.totalPurchaseCost.toLocaleString()}</p>
+                              </div>
+                            )}
                             <div>
                               <p className="text-gray-600">Parts Taken (Outsourced)</p>
                               <p className="text-lg font-bold text-orange-700">KES {data.totalPartsCost.toLocaleString()}</p>
                             </div>
-                            <div>
-                              <p className="text-gray-600">Grand Total</p>
-                              <p className="text-lg font-bold text-red-700">KES {data.grandTotal.toLocaleString()}</p>
-                            </div>
+                            {isAdmin && (
+                              <div>
+                                <p className="text-gray-600">Grand Total</p>
+                                <p className="text-lg font-bold text-red-700">KES {data.grandTotal.toLocaleString()}</p>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1012,7 +1034,7 @@ export default function SupplierManagement() {
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Email</th>
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Address</th>
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Categories</th>
-                  <th className="p-3 text-right text-sm font-semibold text-gray-700">Total Spent</th>
+                  <th className="p-3 text-right text-sm font-semibold text-gray-700">{isAdmin ? 'Total Spent' : 'Parts Taken Total'}</th>
                   <th className="p-3 text-center text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
@@ -1035,7 +1057,7 @@ export default function SupplierManagement() {
                         </div>
                       </td>
                       <td className="p-3 text-sm text-right font-bold text-red-700">
-                        KES {(data?.grandTotal || 0).toLocaleString()}
+                        KES {(isAdmin ? (data?.grandTotal || 0) : (data?.totalPartsCost || 0)).toLocaleString()}
                       </td>
                       <td className="p-3 text-center">
                         <div className="flex gap-2 justify-center">

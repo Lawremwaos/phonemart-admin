@@ -6,6 +6,7 @@ import type { RepairStatus } from "../context/RepairContext";
 // import { usePayment } from "../context/PaymentContext";
 import { useShop } from "../context/ShopContext";
 import { useSupplier } from "../context/SupplierContext";
+import ShopSelector from "../components/ShopSelector";
 
 type PartSource = 'in-house' | 'outsourced';
 
@@ -136,10 +137,11 @@ export default function RepairSales() {
       const inventoryItem = items.find(
         (i) =>
           i.name.toLowerCase() === partName.trim().toLowerCase() &&
-          i.stock > 0
+          i.stock > 0 &&
+          i.shopId === currentShop?.id
       );
       if (!inventoryItem) {
-        alert("For in-house part, type an exact inventory item name with available stock.");
+        alert("For in-house part, type an exact inventory item name with available stock allocated to your shop.");
         return;
       }
 
@@ -558,6 +560,10 @@ export default function RepairSales() {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Repair Sales</h2>
+      <ShopSelector />
+      {currentShop && (
+        <p className="text-sm text-gray-600">Only stock <strong>allocated to {currentShop.name}</strong> is available for in-house parts and additional items. Unallocated items cannot be selected.</p>
+      )}
 
       {/* Customer Status */}
       <div className="bg-white p-4 rounded shadow">
@@ -906,7 +912,7 @@ export default function RepairSales() {
                 onChange={(e) => setSelectedInventoryItem(e.target.value ? Number(e.target.value) : null)}
               >
                 <option value="">Select Inventory Item</option>
-                {items && items.filter(i => i.stock > 0).map((item) => (
+                {items && items.filter(i => i.stock > 0 && i.shopId === currentShop?.id).map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name} (Stock: {item.stock})
                   </option>

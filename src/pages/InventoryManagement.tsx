@@ -14,6 +14,8 @@ export default function InventoryManagement() {
   const [requestingItemId, setRequestingItemId] = useState<number | null>(null);
   const [requestQty, setRequestQty] = useState(1);
   const [activeTab, setActiveTab] = useState<'inventory' | 'allocations'>('inventory');
+  // Admin: filter inventory by shop to view/delete items per shop
+  const [selectedShopIdForManage, setSelectedShopIdForManage] = useState<string>('');
   const [formData, setFormData] = useState({
     name: "",
     category: "Phone" as 'Phone' | 'Spare' | 'Accessory',
@@ -26,10 +28,15 @@ export default function InventoryManagement() {
     costPrice: 0,
   });
 
-  // Filter items by shop (technicians see only their shop, admin sees all)
-  const filteredItems = currentUser?.roles.includes('admin') 
-    ? items 
-    : items.filter(item => !item.shopId || item.shopId === currentShop?.id);
+  // Filter items by shop (technicians see only their shop; admin sees all or filtered by selected shop)
+  const filteredItems = useMemo(() => {
+    if (!currentUser?.roles.includes('admin')) {
+      return items.filter(item => !item.shopId || item.shopId === currentShop?.id);
+    }
+    if (!selectedShopIdForManage) return items;
+    if (selectedShopIdForManage === 'unassigned') return items.filter(item => !item.shopId);
+    return items.filter(item => item.shopId === selectedShopIdForManage);
+  }, [items, currentShop, currentUser, selectedShopIdForManage]);
 
   const handleAdd = () => {
     setIsAdding(true);
@@ -235,6 +242,31 @@ export default function InventoryManagement() {
       </div>
 
       {activeTab === 'inventory' && <>
+      {/* Admin: Select shop to view and manage (delete) that shop's inventory */}
+      {isAdmin && (
+        <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">Manage shop inventory</h3>
+          <p className="text-xs text-gray-500 mb-2">Select a shop to see its inventory and delete items you no longer need.</p>
+          <select
+            value={selectedShopIdForManage}
+            onChange={(e) => setSelectedShopIdForManage(e.target.value)}
+            className="border border-gray-300 rounded-md px-3 py-2 text-sm min-w-[200px]"
+            aria-label="Select shop to view inventory"
+          >
+            <option value="">All inventory (all shops + unassigned)</option>
+            <option value="unassigned">Unassigned / Main stock only</option>
+            {shops.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          {selectedShopIdForManage && (
+            <span className="ml-2 text-sm text-gray-600">
+              Showing {filteredItems.length} item(s)
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Add/Edit Form */}
       {(isAdding || editingId) && (
         <div className="bg-white p-6 rounded-lg shadow mb-6">

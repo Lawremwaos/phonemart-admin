@@ -11,7 +11,8 @@ export default function AutomatedDailyReport() {
   const { repairs } = useRepair();
   const { items: inventoryItems, purchases } = useInventory();
   const { getTotalCashCollected, getTotalMpesaCollected, getTotalBankDeposits, getPendingCashDeposits } = usePayment();
-  const { currentShop } = useShop();
+  const { currentShop, currentUser } = useShop();
+  const isAdmin = currentUser?.roles.includes('admin') ?? false;
 
   const dailySales = getDailySales();
   const dailyRevenue = getDailyRevenue();
@@ -28,6 +29,13 @@ export default function AutomatedDailyReport() {
 
   const todayRepairRevenue = todayRepairs.reduce((sum, r) => sum + (r.totalAgreedAmount || r.totalCost), 0);
 
+  // Staff never see admin cost. Use costPrice only for staff; admin can see adminCostPrice.
+  const getItemCost = (inv: { adminCostPrice?: number; costPrice?: number } | undefined): number => {
+    if (!inv) return 0;
+    if (!isAdmin) return inv.costPrice ?? 0;
+    return inv.adminCostPrice ?? inv.costPrice ?? 0;
+  };
+
   // Calculate actual parts cost from persisted repair data
   const todayPartsCost = useMemo(() => {
     return todayRepairs.reduce((sum, r) => {
@@ -36,25 +44,23 @@ export default function AutomatedDailyReport() {
         .filter((item) => item.source === 'inventory')
         .reduce((s, item) => {
           const inv = inventoryItems.find((i) => i.id === item.itemId || i.name.toLowerCase() === item.itemName.toLowerCase());
-          const itemCost = inv?.adminCostPrice || inv?.costPrice || 0;
-          return s + itemCost;
+          return s + getItemCost(inv);
         }, 0);
       return sum + partsCost + inventoryAdditionalCost;
     }, 0);
-  }, [todayRepairs, inventoryItems]);
+  }, [todayRepairs, inventoryItems, isAdmin]);
 
-  // Calculate accessory cost from inventory data
+  // Calculate accessory cost from inventory data (staff don't see admin cost)
   const todayAccessoryCost = useMemo(() => {
     let cost = 0;
     dailySales.forEach(sale => {
       sale.items.forEach(item => {
         const inv = inventoryItems.find(i => i.name.toLowerCase() === item.name.toLowerCase());
-        const costPrice = inv?.adminCostPrice || inv?.costPrice || 0;
-        cost += costPrice * item.qty;
+        cost += getItemCost(inv) * item.qty;
       });
     });
     return cost;
-  }, [dailySales, inventoryItems]);
+  }, [dailySales, inventoryItems, isAdmin]);
 
   const totalCosts = todayPartsCost + todayAccessoryCost;
 
@@ -75,6 +81,9 @@ export default function AutomatedDailyReport() {
     }
     return 'Own Inventory';
   };
+
+  const getSupplierDisplay = (supplier: string): string =>
+    supplier === 'Own Inventory' ? 'From the shop' : supplier;
 
   // Accessory sale breakdown by type
   const retailSales = dailySales.filter(s => s.saleType === 'retail' || s.saleType === 'in-shop');
@@ -99,70 +108,162 @@ export default function AutomatedDailyReport() {
     return breakdown;
   }, [dailySales, cashCollected, mpesaCollected, bankDeposits]);
 
-  const generateDailyReport = () => {
-    const todayStr = new Date().toLocaleDateString('en-US', {
-      year: 'numeric', month: 'long', day: 'numeric',
-    });
+  const todayStr = new Date().toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric',
+  });
+  const shopLabel = currentShop?.name || 'PHONEMART';
 
-    const totalRevenue = dailyRevenue + todayRepairRevenue;
-    const grossProfit = totalRevenue - totalCosts;
-
-    let report = `*${currentShop?.name || 'PHONEMART'} DAILY REPORT*\n`;
+  /** Part 1: Accessories Daily Report */
+  const generateAccessoriesReport = () => {
+    let report = `*PHONEMART (${shopLabel}) ACCESSORIES DAILY REPORT*\n`;
     report += `${todayStr}\n\n`;
 
-    report += `*SUMMARY*\n`;
-    report += `Accessories:${dailySales.length}`;
-    if (retailCount > 0) report += ` |Retail:${retailCount}`;
-    if (wholesaleCount > 0) report += ` |Wholesale:${wholesaleCount}`;
-    const outsourcedAccessorySales = dailySales.filter(s =>
-      s.items.some(item => {
-        const inv = inventoryItems.find(i => i.name.toLowerCase() === item.name.toLowerCase());
-        return inv?.supplier && inv.supplier !== '';
-      })
-    );
-    if (outsourcedAccessorySales.length > 0) report += ` |Outsourced:${outsourcedAccessorySales.length}`;
-    report += `\n`;
-    report += `Repairs:${todayRepairs.length}\n`;
-    report += `Revenue:KES ${totalRevenue.toLocaleString()}\n`;
-    report += `Cost:KES ${totalCosts.toLocaleString()}\n`;
-    report += `*Profit:KES ${grossProfit.toLocaleString()}*\n`;
-    const depositEntries = Object.entries(depositedBreakdown);
-    if (depositEntries.length > 0) {
-      const depParts = depositEntries.map(([m, a]) => `${m}:${a.toLocaleString()}`).join(' |');
-      report += `Deposited: ${depParts}`;
-      if (pendingDepositsAmount > 0) report += ` |Pending:${pendingDepositsAmount.toLocaleString()}`;
-      report += `\n`;
-    }
+    report += `*ACCESSORIES SUMMARY*\n\n`;
 
-    if (todayRepairs.length > 0) {
-      report += `\n*REPAIRS*\n`;
-      todayRepairs.forEach((r, idx) => {
-        const revenue = r.totalAgreedAmount || r.totalCost;
-        const partsCost = r.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
-        const profit = revenue - partsCost;
-
-        report += `${idx + 1}.${r.customerName}-${r.phoneModel}`;
-        if (r.ticketNumber) report += ` ${r.ticketNumber}`;
-        report += `\n`;
-        report += `${r.issue}`;
-        if (r.serviceType) report += ` (${r.serviceType})`;
-        report += ` |Paid:${r.amountPaid.toLocaleString()}`;
-        if (r.balance > 0) report += ` |Bal:${r.balance.toLocaleString()}`;
-        report += `\n`;
-        if (r.partsUsed.length > 0) {
-          r.partsUsed.forEach(p => {
-            const costStr = p.cost > 0 ? `${(p.cost * p.qty).toLocaleString()}` : '?';
-            const supplier = getSupplierForItem(p.itemName, p.supplierName);
-            report += `-${p.itemName} x${p.qty} KES ${costStr} (${supplier})\n`;
-          });
-        }
-        report += `Cost:${partsCost.toLocaleString()} *Profit:${profit.toLocaleString()}*\n`;
+    report += `*Wholesale:*\n`;
+    if (wholesaleSales.length === 0) {
+      report += `(None)\n`;
+    } else {
+      wholesaleSales.forEach((sale) => {
+        sale.items.forEach((item) => {
+          report += `• ${item.name} x${item.qty} @ KES ${item.price.toLocaleString()} = KES ${(item.qty * item.price).toLocaleString()}\n`;
+        });
       });
     }
 
-    report += `\n_End of Report_`;
+    const usedInRepairOurOwn: Array<{ name: string; qty: number }> = [];
+    const usedInRepairOutsource: Array<{ name: string; qty: number; supplier?: string }> = [];
+    todayRepairs.forEach((r) => {
+      r.partsUsed.forEach((p) => {
+        const supplier = getSupplierForItem(p.itemName, p.supplierName);
+        const isOutsource = (p.source === 'outsourced' || p.supplierName || (supplier && supplier !== 'Own Inventory'));
+        if (isOutsource) {
+          const existing = usedInRepairOutsource.find((x) => x.name === p.itemName && x.supplier === supplier);
+          if (existing) existing.qty += p.qty;
+          else usedInRepairOutsource.push({ name: p.itemName, qty: p.qty, supplier });
+        } else {
+          const existing = usedInRepairOurOwn.find((x) => x.name === p.itemName);
+          if (existing) existing.qty += p.qty;
+          else usedInRepairOurOwn.push({ name: p.itemName, qty: p.qty });
+        }
+      });
+      (r.additionalItems || []).forEach((a) => {
+        const inv = inventoryItems.find((i) => i.name.toLowerCase() === a.itemName.toLowerCase());
+        const supplier = a.supplierName || inv?.supplier;
+        if (a.source === 'outsourced' || supplier) {
+          const s = supplier || 'Outsourced';
+          const existing = usedInRepairOutsource.find((x) => x.name === a.itemName && x.supplier === s);
+          if (existing) existing.qty += 1;
+          else usedInRepairOutsource.push({ name: a.itemName, qty: 1, supplier: s });
+        } else {
+          const existing = usedInRepairOurOwn.find((x) => x.name === a.itemName);
+          if (existing) existing.qty += 1;
+          else usedInRepairOurOwn.push({ name: a.itemName, qty: 1 });
+        }
+      });
+    });
+
+    report += `\n*Used in Repair Sale:*\n`;
+    report += `Our own:\n`;
+    if (usedInRepairOurOwn.length === 0) {
+      report += `(None)\n`;
+    } else {
+      usedInRepairOurOwn.forEach((item) => report += `• ${item.name} x${item.qty}\n`);
+    }
+    report += `Outsource:\n`;
+    if (usedInRepairOutsource.length === 0) {
+      report += `(None)\n`;
+    } else {
+      usedInRepairOutsource.forEach((item) => report += `• ${item.name} x${item.qty} (${item.supplier || 'Outsourced'})\n`);
+    }
+
+    const totalDeposit = cashCollected + mpesaCollected + bankDeposits;
+    report += `\n*Total Deposit:* KES ${totalDeposit.toLocaleString()}`;
+    if (pendingDepositsAmount > 0) report += `\n(Pending: KES ${pendingDepositsAmount.toLocaleString()})`;
+    report += `\n`;
 
     return report;
+  };
+
+  /** Part 2: Repair Daily Report */
+  const generateRepairReport = () => {
+    let report = `*PHONEMART (${shopLabel}) REPAIR DAILY REPORT*\n`;
+    report += `${todayStr}\n\n`;
+
+    report += `*REPAIR SALE SUMMARY*\n\n`;
+    if (todayRepairs.length === 0) {
+      report += `(No repairs today)\n\n`;
+    } else {
+      todayRepairs.forEach((r) => {
+        const revenue = r.totalAgreedAmount || r.totalCost;
+        const partsCost = r.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
+        const additionalCost = (r.additionalItems || []).reduce((sum, item) => {
+          if (item.source === 'inventory') {
+            const inv = inventoryItems.find((i) => i.id === item.itemId || i.name.toLowerCase() === item.itemName.toLowerCase());
+            return sum + getItemCost(inv);
+          }
+          return sum;
+        }, 0);
+        const totalPartCost = partsCost + additionalCost;
+        const profit = revenue - totalPartCost;
+
+        report += `${r.customerName} - ${r.phoneModel}\n`;
+        report += `Parts Used: `;
+        const partsList = r.partsUsed.map((p) => {
+          const supplier = getSupplierForItem(p.itemName, p.supplierName);
+          return `${p.itemName} (${getSupplierDisplay(supplier)})`;
+        });
+        (r.additionalItems || []).forEach((a) => {
+          const sup = a.supplierName || getSupplierForItem(a.itemName) || 'Outsourced';
+          partsList.push(`${a.itemName} (${getSupplierDisplay(sup)})`);
+        });
+        report += partsList.length ? partsList.join(', ') : '(None)';
+        report += `\n`;
+        report += `Revenue: KES ${revenue.toLocaleString()}\n`;
+        report += `Part cost: KES ${totalPartCost.toLocaleString()}\n`;
+        report += `Profit: KES ${profit.toLocaleString()}\n\n`;
+      });
+    }
+
+    report += `*SUPPLIER COST*\n\n`;
+    const bySupplier = new Map<string, Array<{ name: string; qty: number; total: number }>>();
+    todayRepairs.forEach((r) => {
+      r.partsUsed.forEach((p) => {
+        const supplier = getSupplierForItem(p.itemName, p.supplierName);
+        if (supplier && supplier !== 'Own Inventory') {
+          const key = supplier;
+          if (!bySupplier.has(key)) bySupplier.set(key, []);
+          const arr = bySupplier.get(key)!;
+          const total = p.cost * p.qty;
+          const existing = arr.find((x) => x.name === p.itemName);
+          if (existing) {
+            existing.qty += p.qty;
+            existing.total += total;
+          } else arr.push({ name: p.itemName, qty: p.qty, total });
+        }
+      });
+    });
+    if (bySupplier.size === 0) {
+      report += `(No outsourced parts)\n`;
+    } else {
+      bySupplier.forEach((lines, supplierName) => {
+        report += `${supplierName}\n`;
+        let supplierTotal = 0;
+        lines.forEach((line) => {
+          supplierTotal += line.total;
+          report += `• ${line.name} x${line.qty}: KES ${line.total.toLocaleString()}\n`;
+        });
+        report += `Total amount to pay: KES ${supplierTotal.toLocaleString()}\n\n`;
+      });
+    }
+
+    return report;
+  };
+
+  const generateDailyReport = () => {
+    const part1 = generateAccessoriesReport();
+    const part2 = generateRepairReport();
+    return `${part1}\n━━━━━━━━━━━━━━━━━━━━\n*PART 2: REPAIR*\n━━━━━━━━━━━━━━━━━━━━\n\n${part2}\n_End of Report_`;
   };
 
   const handleSendReport = () => {
@@ -176,10 +277,30 @@ export default function AutomatedDailyReport() {
     window.open(`https://wa.me/?text=${encodedText}`, '_blank');
   };
 
+  const handleSendAccessoriesOnly = () => {
+    const report = generateAccessoriesReport();
+    shareViaWhatsApp(report, currentShop?.phone || undefined);
+  };
+
+  const handleSendRepairOnly = () => {
+    const report = generateRepairReport();
+    shareViaWhatsApp(report, currentShop?.phone || undefined);
+  };
+
+  const handleSendToGroupAccessoriesOnly = () => {
+    const encodedText = encodeURIComponent(generateAccessoriesReport());
+    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
+  };
+
+  const handleSendToGroupRepairOnly = () => {
+    const encodedText = encodeURIComponent(generateRepairReport());
+    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
+  };
+
   const totalRevenue = dailyRevenue + todayRepairRevenue;
   const grossProfit = totalRevenue - totalCosts;
 
-  // Check for all missing item costs before allowing report send.
+  // Check for all missing item costs before allowing report send. Staff only need costPrice (not admin cost).
   const repairsWithMissingCosts = useMemo(() => {
     return todayRepairs
       .filter(r => r.status === 'COLLECTED' || r.paymentApproved)
@@ -191,7 +312,7 @@ export default function AutomatedDailyReport() {
           if (p.source !== 'in-house') return false;
           if (p.cost > 0) return false;
           const inv = inventoryItems.find((i) => i.id === p.itemId || i.name.toLowerCase() === p.itemName.toLowerCase());
-          const inventoryCost = inv?.adminCostPrice || inv?.costPrice || 0;
+          const inventoryCost = getItemCost(inv);
           return inventoryCost <= 0;
         });
         const missingAdditional = (r.additionalItems || []).filter(item =>
@@ -201,8 +322,7 @@ export default function AutomatedDailyReport() {
         const missingInventoryAdditional = (r.additionalItems || []).filter((item) => {
           if (item.source !== 'inventory') return false;
           const inv = inventoryItems.find((i) => i.id === item.itemId || i.name.toLowerCase() === item.itemName.toLowerCase());
-          const itemCost = inv?.adminCostPrice || inv?.costPrice || 0;
-          return itemCost <= 0;
+          return getItemCost(inv) <= 0;
         });
         if (
           missingOutsourcedParts.length === 0 &&
@@ -222,14 +342,14 @@ export default function AutomatedDailyReport() {
         };
       })
       .filter(Boolean) as Array<{ repair: typeof todayRepairs[0]; missingParts: string[] }>;
-  }, [todayRepairs, inventoryItems]);
+  }, [todayRepairs, inventoryItems, isAdmin]);
 
   const salesItemsMissingCosts = useMemo(() => {
     return dailySales
       .flatMap((sale) =>
         sale.items.map((saleItem) => {
           const inv = inventoryItems.find((i) => i.name.toLowerCase() === saleItem.name.toLowerCase());
-          const cost = inv?.adminCostPrice || inv?.costPrice || 0;
+          const cost = getItemCost(inv);
           return {
             name: saleItem.name,
             cost,
@@ -243,7 +363,7 @@ export default function AutomatedDailyReport() {
         }
         return unique;
       }, [] as Array<{ name: string; cost: number }>);
-  }, [dailySales, inventoryItems]);
+  }, [dailySales, inventoryItems, isAdmin]);
 
   const hasMissingCosts = repairsWithMissingCosts.length > 0 || salesItemsMissingCosts.length > 0;
 
@@ -270,21 +390,39 @@ export default function AutomatedDailyReport() {
   return (
     <div className="bg-white p-6 rounded-lg shadow">
       <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-        <h3 className="text-lg font-semibold">End-of-Day Report</h3>
-        <div className="flex gap-2">
+        <h3 className="text-lg font-semibold">End-of-Day Report (Two Parts)</h3>
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => handleSendWithCheck(handleSendReport)}
             disabled={hasMissingCosts}
             className={`px-3 py-2 rounded text-sm text-white ${hasMissingCosts ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+            title="Sends Accessories + Repair in one message"
           >
-            Send to Number
+            Send Full to Number
           </button>
           <button
             onClick={() => handleSendWithCheck(handleSendToGroup)}
             disabled={hasMissingCosts}
             className={`px-3 py-2 rounded text-sm text-white ${hasMissingCosts ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-700 hover:bg-green-800'}`}
+            title="Sends Accessories + Repair in one message"
           >
-            Send to Group
+            Send Full to Group
+          </button>
+          <button
+            onClick={() => handleSendWithCheck(handleSendAccessoriesOnly)}
+            disabled={hasMissingCosts}
+            className={`px-3 py-2 rounded text-sm text-white border border-green-600 ${hasMissingCosts ? 'bg-gray-400 cursor-not-allowed border-gray-400' : 'bg-white text-green-700 hover:bg-green-50'}`}
+            title="Part 1: Accessories only"
+          >
+            Part 1: Accessories
+          </button>
+          <button
+            onClick={() => handleSendWithCheck(handleSendRepairOnly)}
+            disabled={hasMissingCosts}
+            className={`px-3 py-2 rounded text-sm text-white border border-green-600 ${hasMissingCosts ? 'bg-gray-400 cursor-not-allowed border-gray-400' : 'bg-white text-green-700 hover:bg-green-50'}`}
+            title="Part 2: Repair only"
+          >
+            Part 2: Repair
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useInventory } from "../context/InventoryContext";
 import { useSales } from "../context/SalesContext";
 import { useShop } from "../context/ShopContext";
 import { usePayment } from "../context/PaymentContext";
+import ShopSelector from "../components/ShopSelector";
 
 type SaleItem = {
   name: string;
@@ -38,8 +39,11 @@ export default function Sales() {
   const [wholesaleBank, setWholesaleBank] = useState<string>('');
   const [wholesaleDepositReference, setWholesaleDepositReference] = useState<string>('');
 
-  const salesItems = items.filter(item => 
-    (item.category === 'Phone' || item.category === 'Accessory') && item.stock > 0
+  // Only items allocated to current shop (no unallocated items) — aligns with stock allocation
+  const salesItems = items.filter(item =>
+    (item.category === 'Phone' || item.category === 'Accessory') &&
+    item.stock > 0 &&
+    item.shopId === currentShop?.id
   );
 
   const selectedItem = itemSource === 'inventory' ? salesItems.find(item => item.name === selectedItemName) : null;
@@ -68,7 +72,7 @@ export default function Sales() {
         ...prev,
         { name: selectedItemName, qty, price, source: 'inventory' },
       ]);
-      deductStock(selectedItemName, qty);
+      deductStock(selectedItemName, qty, currentShop?.id);
     } else {
       if (!customItemName.trim() || qty <= 0) {
         alert("Please enter item name and valid quantity.");
@@ -119,8 +123,8 @@ export default function Sales() {
       // Add to wholesale sale
       addItemToWholesaleSale({ name: selectedItemName, qty, price }, currentShop?.id);
       
-      // Deduct inventory
-      deductStock(selectedItemName, qty);
+      // Deduct inventory (from current shop's allocated stock)
+      deductStock(selectedItemName, qty, currentShop?.id);
 
       // Clear form
       setSelectedItemName("");
@@ -135,7 +139,7 @@ export default function Sales() {
   function removeItemFromRetail(index: number) {
     const itemToRemove = saleItems[index];
     if (itemToRemove.source !== 'custom') {
-      const inventoryItem = items.find(item => item.name === itemToRemove.name);
+      const inventoryItem = items.find(item => item.name === itemToRemove.name && item.shopId === currentShop?.id);
       if (inventoryItem) {
         addStock(inventoryItem.id, itemToRemove.qty);
       }
@@ -253,6 +257,11 @@ export default function Sales() {
         </a>
       </div>
 
+      <ShopSelector />
+      {currentShop && (
+        <p className="text-sm text-gray-600 mb-4">Only stock <strong>allocated to {currentShop.name}</strong> appears in &quot;From Stock&quot;. Unallocated items are not available for sale.</p>
+      )}
+
       {/* Sale Type Selection */}
       <div className="bg-white p-4 rounded shadow mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">Sale Type</label>
@@ -296,6 +305,13 @@ export default function Sales() {
               </label>
             </div>
 
+            {itemSource === 'inventory' && (!currentShop || salesItems.length === 0) && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-4">
+                {!currentShop
+                  ? "Select your shop (top of page) to sell from stock."
+                  : "No stock allocated to your shop. Ask admin to allocate inventory from Stock Allocation / Inventory Management."}
+              </p>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               {itemSource === 'inventory' ? (
                 <select

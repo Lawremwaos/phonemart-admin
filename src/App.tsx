@@ -19,12 +19,15 @@ import CostOfParts from "./pages/CostOfParts";
 import Returns from "./pages/Returns";
 import StockAllocation from "./pages/StockAllocation";
 import AdminCustomerManagement from "./pages/AdminCustomerManagement";
+import Repairs from "./pages/Repairs";
+import ProcurementReview from "./pages/ProcurementReview";
+import StaffPurchases from "./pages/StaffPurchases";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useShop } from "./context/ShopContext";
 
 function AppContent() {
-  const { isAuthenticated, currentUser, logout } = useShop();
+  const { isAuthenticated, currentUser, currentShop, logout } = useShop();
   const navigate = useNavigate();
   const location = useLocation();
   const [repairMenuOpen, setRepairMenuOpen] = useState(true);
@@ -53,6 +56,9 @@ function AppContent() {
           <p className="text-xs text-gray-400">Logged in as</p>
           <p className="text-sm font-semibold">{currentUser?.name}</p>
           <p className="text-xs text-gray-400 capitalize">{currentUser?.roles.join(', ')}</p>
+          {currentShop && (
+            <p className="text-xs text-green-300 mt-1">Shop: {currentShop.name}</p>
+          )}
         </div>
         <ul className="space-y-2 mb-6">
           {/* Dashboard */}
@@ -78,6 +84,16 @@ function AppContent() {
             </button>
             {repairMenuOpen && (
               <ul className="ml-4 mt-1 space-y-1">
+                <li>
+                  <Link 
+                    to="/repairs" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/repairs' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Repairs
+                  </Link>
+                </li>
                 <li>
                   <Link 
                     to="/repair-sales" 
@@ -167,6 +183,28 @@ function AppContent() {
                 )}
                 <li>
                   <Link 
+                    to="/staff-purchases" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/staff-purchases' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Staff Purchases
+                  </Link>
+                </li>
+                {currentUser?.roles.includes('admin') && (
+                  <li>
+                    <Link 
+                      to="/procurement-review" 
+                      className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                        location.pathname === '/procurement-review' ? 'bg-gray-800' : ''
+                      }`}
+                    >
+                      Procurement Review
+                    </Link>
+                  </li>
+                )}
+                <li>
+                  <Link 
                     to="/stock-allocation" 
                     className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
                       location.pathname === '/stock-allocation' ? 'bg-gray-800' : ''
@@ -189,7 +227,7 @@ function AppContent() {
             )}
           </li>
 
-          {/* Other Menu Items */}
+          {/* Other Menu Items - Staff see Suppliers for parts taken only; Admin sees full supplier management */}
           <li>
             <Link 
               to="/suppliers" 
@@ -364,10 +402,34 @@ function AppContent() {
             }
           />
           <Route
+            path="/repairs"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <Repairs />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/repair-sales"
             element={
               <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
                 <RepairSales />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/staff-purchases"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <StaffPurchases />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/procurement-review"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <ProcurementReview />
               </ProtectedRoute>
             }
           />
