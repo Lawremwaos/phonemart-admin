@@ -10,7 +10,9 @@ type PaymentMethod = 'mpesa' | 'bank' | 'cash' | 'other';
 
 type SupplierPayment = {
   id: string;
-  purchaseId: string;
+  purchaseId?: string;
+  repairId?: string;
+  partName?: string;
   supplierName: string;
   amount: number;
   paymentMethod: PaymentMethod;
@@ -33,6 +35,8 @@ export default function SupplierManagement() {
   const [paymentTableError, setPaymentTableError] = useState<string | null>(null);
   const [activePaymentPurchaseId, setActivePaymentPurchaseId] = useState<string | null>(null);
   const [paymentHistoryPurchase, setPaymentHistoryPurchase] = useState<Purchase | null>(null);
+  const [activePaymentRepairKey, setActivePaymentRepairKey] = useState<string | null>(null);
+  const [paymentHistoryRepairKey, setPaymentHistoryRepairKey] = useState<{ repairId: string; partName: string; supplierName: string; cost: number } | null>(null);
   const [paymentForm, setPaymentForm] = useState({
     amount: "",
     method: "mpesa" as PaymentMethod,
@@ -118,7 +122,9 @@ export default function SupplierManagement() {
     setPaymentTableError(null);
     const mapped: SupplierPayment[] = (data || []).map((row: any) => ({
       id: row.id,
-      purchaseId: row.purchase_id,
+      purchaseId: row.purchase_id || undefined,
+      repairId: row.repair_id || undefined,
+      partName: row.part_name || undefined,
       supplierName: row.supplier_name,
       amount: Number(row.amount) || 0,
       paymentMethod: row.payment_method as PaymentMethod,
@@ -187,6 +193,57 @@ export default function SupplierManagement() {
 
     await loadSupplierPayments();
     setActivePaymentPurchaseId(null);
+    resetPaymentForm();
+  };
+
+  const getRepairPartPaymentInfo = useCallback((repairId: string, partName: string, totalCost: number) => {
+    const partPayments = supplierPayments.filter(
+      (p) => p.repairId === repairId && p.partName === partName
+    );
+    const paidAmount = partPayments.reduce((sum, p) => sum + p.amount, 0);
+    const balance = Math.max(0, totalCost - paidAmount);
+    const status: 'pending' | 'partial' | 'fully_paid' =
+      paidAmount <= 0 ? 'pending' : balance > 0 ? 'partial' : 'fully_paid';
+    return { partPayments, paidAmount, balance, status };
+  }, [supplierPayments]);
+
+  const handleRecordRepairPartPayment = async (record: { repairId: string; partName: string; cost: number; staffName: string }, supplierName: string) => {
+    const amount = Number(paymentForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert("Please enter a valid payment amount.");
+      return;
+    }
+
+    const { balance } = getRepairPartPaymentInfo(record.repairId, record.partName, record.cost);
+    if (amount > balance) {
+      alert(`Amount cannot be greater than outstanding balance (KES ${balance.toLocaleString()}).`);
+      return;
+    }
+
+    if (!paymentForm.paymentDate) {
+      alert("Please select the payment date.");
+      return;
+    }
+
+    const { error } = await supabase.from("supplier_payments").insert({
+      repair_id: record.repairId,
+      part_name: record.partName,
+      supplier_name: supplierName,
+      amount,
+      payment_method: paymentForm.method,
+      payment_date: new Date(paymentForm.paymentDate).toISOString(),
+      notes: paymentForm.notes.trim() || null,
+      recorded_by: currentUser?.name || "Admin",
+    });
+
+    if (error) {
+      alert("Failed to save payment. Please try again.");
+      console.error("Error recording repair part payment:", error);
+      return;
+    }
+
+    await loadSupplierPayments();
+    setActivePaymentRepairKey(null);
     resetPaymentForm();
   };
 
@@ -295,7 +352,8 @@ export default function SupplierManagement() {
     const totalOrders = supplierData.reduce((sum, d) => sum + d.supplierPurchases.length, 0);
     const totalPartsTaken = supplierData.reduce((sum, d) => sum + d.partsTaken.length, 0);
     const totalPaidToSuppliers = supplierPayments.reduce((sum, p) => sum + p.amount, 0);
-    const totalOutstandingSupplierBalance = Math.max(0, totalPurchases - totalPaidToSuppliers);
+    const grandTotal = totalPurchases + totalPartsCost;
+    const totalOutstandingSupplierBalance = Math.max(0, grandTotal - totalPaidToSuppliers);
     return {
       totalPurchases,
       totalPartsCost,
@@ -303,7 +361,7 @@ export default function SupplierManagement() {
       totalPartsTaken,
       totalPaidToSuppliers,
       totalOutstandingSupplierBalance,
-      grandTotal: totalPurchases + totalPartsCost,
+      grandTotal,
     };
   }, [supplierData, supplierPayments]);
 
@@ -715,75 +773,196 @@ export default function SupplierManagement() {
                                     <th className="p-2 text-left">Date</th>
                                     <th className="p-2 text-left">Staff</th>
                                     <th className="p-2 text-left">Customer</th>
-                                    <th className="p-2 text-left">Phone</th>
                                     <th className="p-2 text-left">Part Name</th>
-                                    <th className="p-2 text-center">Qty</th>
                                     <th className="p-2 text-right">Cost</th>
-                                    <th className="p-2 text-center">Status</th>
-                                    {currentUser?.roles.includes('admin') && <th className="p-2 text-center">Actions</th>}
+                                    <th className="p-2 text-right">Paid</th>
+                                    <th className="p-2 text-right">Balance</th>
+                                    <th className="p-2 text-center">Payment Status</th>
+                                    {isAdmin && <th className="p-2 text-center">Actions</th>}
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {data.partsTaken.map((record, idx) => (
-                                    <tr key={`${record.repairId}-${record.partName}-${idx}`} className="border-t hover:bg-orange-50/50">
-                                      <td className="p-2">{formatDate(record.date)}</td>
-                                      <td className="p-2">
-                                        <span className="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded font-medium">
-                                          {record.staffName}
-                                        </span>
-                                      </td>
-                                      <td className="p-2">
-                                        <div className="font-medium">{record.customerName}</div>
-                                        {record.ticketNumber && (
-                                          <div className="text-xs text-gray-500 font-mono">{record.ticketNumber}</div>
+                                  {data.partsTaken.map((record, idx) => {
+                                    const repairKey = `${record.repairId}-${record.partName}`;
+                                    const rpInfo = getRepairPartPaymentInfo(record.repairId, record.partName, record.cost);
+                                    const isRepairPaymentOpen = activePaymentRepairKey === repairKey;
+                                    const rpBadgeClass =
+                                      rpInfo.status === 'fully_paid' ? 'bg-green-100 text-green-800' :
+                                      rpInfo.status === 'partial' ? 'bg-orange-100 text-orange-800' :
+                                      'bg-yellow-100 text-yellow-800';
+                                    const rpBadgeText =
+                                      rpInfo.status === 'fully_paid' ? 'Fully Paid' :
+                                      rpInfo.status === 'partial' ? 'Partially Paid' : 'Unpaid';
+
+                                    return (
+                                      <Fragment key={`${repairKey}-${idx}`}>
+                                        <tr className="border-t hover:bg-orange-50/50">
+                                          <td className="p-2">
+                                            {formatDate(record.date)}
+                                          </td>
+                                          <td className="p-2">
+                                            <span className="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded font-medium">
+                                              {record.staffName}
+                                            </span>
+                                          </td>
+                                          <td className="p-2">
+                                            <div className="font-medium">{record.customerName}</div>
+                                            <div className="text-xs text-gray-500">{record.phoneModel}</div>
+                                            {record.ticketNumber && (
+                                              <div className="text-xs text-gray-400 font-mono">{record.ticketNumber}</div>
+                                            )}
+                                          </td>
+                                          <td className="p-2">
+                                            <span className="bg-orange-100 text-orange-800 text-xs px-2 py-0.5 rounded font-medium">
+                                              {record.partName}
+                                            </span>
+                                            <span className="text-xs text-gray-500 ml-1">x{record.qty}</span>
+                                          </td>
+                                          <td className="p-2 text-right font-bold">
+                                            {record.cost > 0
+                                              ? <span className="text-red-600">KES {record.cost.toLocaleString()}</span>
+                                              : <span className="text-yellow-600 text-xs">Pending</span>
+                                            }
+                                          </td>
+                                          <td className="p-2 text-right text-green-700 font-semibold">
+                                            KES {rpInfo.paidAmount.toLocaleString()}
+                                          </td>
+                                          <td className="p-2 text-right text-red-700 font-semibold">
+                                            KES {rpInfo.balance.toLocaleString()}
+                                          </td>
+                                          <td className="p-2 text-center">
+                                            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${rpBadgeClass}`}>
+                                              {rpBadgeText}
+                                            </span>
+                                          </td>
+                                          {isAdmin && (
+                                            <td className="p-2 text-center">
+                                              <div className="flex items-center justify-center gap-2">
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setActivePaymentRepairKey(isRepairPaymentOpen ? null : repairKey);
+                                                    if (isRepairPaymentOpen) resetPaymentForm();
+                                                  }}
+                                                  className="text-green-700 hover:text-green-900 text-xs font-semibold hover:bg-green-50 px-2 py-1 rounded"
+                                                >
+                                                  {isRepairPaymentOpen ? "Cancel" : "Record Payment"}
+                                                </button>
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setPaymentHistoryRepairKey({
+                                                      repairId: record.repairId,
+                                                      partName: record.partName,
+                                                      supplierName: data.supplier.name,
+                                                      cost: record.cost,
+                                                    });
+                                                  }}
+                                                  className="text-blue-700 hover:text-blue-900 text-xs font-semibold hover:bg-blue-50 px-2 py-1 rounded"
+                                                >
+                                                  History ({rpInfo.partPayments.length})
+                                                </button>
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (window.confirm(`Delete repair for ${record.customerName} (${record.phoneModel})?`)) {
+                                                      deleteRepair(record.repairId);
+                                                    }
+                                                  }}
+                                                  className="text-red-600 hover:text-red-800 text-xs font-semibold hover:bg-red-50 px-2 py-1 rounded"
+                                                >
+                                                  Delete
+                                                </button>
+                                              </div>
+                                            </td>
+                                          )}
+                                        </tr>
+                                        {isAdmin && isRepairPaymentOpen && (
+                                          <tr className="bg-green-50/40 border-t">
+                                            <td className="p-3" colSpan={9}>
+                                              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                                                <div>
+                                                  <label className="block text-xs font-medium text-gray-700 mb-1">Amount (KES)</label>
+                                                  <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    aria-label="Payment amount"
+                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    value={paymentForm.amount}
+                                                    onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))}
+                                                    placeholder={`Max ${rpInfo.balance.toLocaleString()}`}
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="block text-xs font-medium text-gray-700 mb-1">Method</label>
+                                                  <select
+                                                    aria-label="Payment method"
+                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    value={paymentForm.method}
+                                                    onChange={(e) => setPaymentForm(f => ({ ...f, method: e.target.value as PaymentMethod }))}
+                                                  >
+                                                    <option value="mpesa">M-Pesa</option>
+                                                    <option value="bank">Bank</option>
+                                                    <option value="cash">Cash</option>
+                                                    <option value="other">Other</option>
+                                                  </select>
+                                                </div>
+                                                <div>
+                                                  <label className="block text-xs font-medium text-gray-700 mb-1">Payment Date</label>
+                                                  <input
+                                                    type="date"
+                                                    aria-label="Payment date"
+                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    value={paymentForm.paymentDate}
+                                                    onChange={(e) => setPaymentForm(f => ({ ...f, paymentDate: e.target.value }))}
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="block text-xs font-medium text-gray-700 mb-1">Notes (Optional)</label>
+                                                  <input
+                                                    type="text"
+                                                    aria-label="Payment notes"
+                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    value={paymentForm.notes}
+                                                    onChange={(e) => setPaymentForm(f => ({ ...f, notes: e.target.value }))}
+                                                    placeholder="Txn code, ref, etc."
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleRecordRepairPartPayment(record, data.supplier.name);
+                                                    }}
+                                                    className="bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 w-full"
+                                                  >
+                                                    Save Payment
+                                                  </button>
+                                                </div>
+                                              </div>
+                                              <div className="mt-2 text-xs text-gray-600">
+                                                Pay later? Leave balance pending and record on the actual payment date.
+                                              </div>
+                                            </td>
+                                          </tr>
                                         )}
-                                      </td>
-                                      <td className="p-2">{record.phoneModel}</td>
-                                      <td className="p-2">
-                                        <span className="bg-orange-100 text-orange-800 text-xs px-2 py-0.5 rounded font-medium">
-                                          {record.partName}
-                                        </span>
-                                      </td>
-                                      <td className="p-2 text-center">{record.qty}</td>
-                                      <td className="p-2 text-right font-bold">
-                                        {record.cost > 0
-                                          ? <span className="text-red-600">KES {record.cost.toLocaleString()}</span>
-                                          : <span className="text-yellow-600 text-xs">Pending</span>
-                                        }
-                                      </td>
-                                      <td className="p-2 text-center">
-                                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                                          record.status === 'COLLECTED' ? 'bg-gray-100 text-gray-800' :
-                                          record.status === 'FULLY_PAID' ? 'bg-green-100 text-green-800' :
-                                          'bg-yellow-100 text-yellow-800'
-                                        }`}>
-                                          {record.status === 'COLLECTED' ? 'Collected' : record.status === 'FULLY_PAID' ? 'Fully Paid' : 'Pending'}
-                                        </span>
-                                      </td>
-                                      {currentUser?.roles.includes('admin') && (
-                                        <td className="p-2 text-center">
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              if (window.confirm(`Delete repair for ${record.customerName} (${record.phoneModel})? This removes the entire repair.`)) {
-                                                deleteRepair(record.repairId);
-                                              }
-                                            }}
-                                            className="text-red-600 hover:text-red-800 text-xs font-semibold hover:bg-red-50 px-2 py-1 rounded"
-                                          >
-                                            Delete
-                                          </button>
-                                        </td>
-                                      )}
-                                    </tr>
-                                  ))}
+                                      </Fragment>
+                                    );
+                                  })}
                                 </tbody>
                                 <tfoot className="bg-orange-50 font-semibold">
                                   <tr>
-                                    <td className="p-2" colSpan={6}>Total Parts Cost</td>
+                                    <td className="p-2" colSpan={4}>Total Parts Cost</td>
                                     <td className="p-2 text-right text-orange-800">KES {data.totalPartsCost.toLocaleString()}</td>
+                                    <td className="p-2 text-right text-green-800">
+                                      KES {data.partsTaken.reduce((s, r) => s + getRepairPartPaymentInfo(r.repairId, r.partName, r.cost).paidAmount, 0).toLocaleString()}
+                                    </td>
+                                    <td className="p-2 text-right text-red-800">
+                                      KES {data.partsTaken.reduce((s, r) => s + getRepairPartPaymentInfo(r.repairId, r.partName, r.cost).balance, 0).toLocaleString()}
+                                    </td>
                                     <td></td>
-                                    {currentUser?.roles.includes('admin') && <td></td>}
+                                    {isAdmin && <td></td>}
                                   </tr>
                                 </tfoot>
                               </table>
@@ -878,6 +1057,64 @@ export default function SupplierManagement() {
           </div>
         )}
       </div>
+
+      {paymentHistoryRepairKey && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-lg shadow-lg">
+            <div className="p-4 border-b flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-lg">Repair Part Payment History</h4>
+                <p className="text-sm text-gray-600">
+                  {paymentHistoryRepairKey.supplierName} &mdash; {paymentHistoryRepairKey.partName} (KES {paymentHistoryRepairKey.cost.toLocaleString()})
+                </p>
+              </div>
+              <button onClick={() => setPaymentHistoryRepairKey(null)} className="text-gray-500 hover:text-gray-700">Close</button>
+            </div>
+            <div className="p-4">
+              {(() => {
+                const rpInfo = getRepairPartPaymentInfo(paymentHistoryRepairKey.repairId, paymentHistoryRepairKey.partName, paymentHistoryRepairKey.cost);
+                const sorted = [...rpInfo.partPayments].sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+                if (sorted.length === 0) {
+                  return <p className="text-sm text-gray-500">No payments recorded yet for this part.</p>;
+                }
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2 text-sm bg-gray-50 p-3 rounded border">
+                      <p><span className="text-gray-600">Total:</span> <span className="font-semibold">KES {paymentHistoryRepairKey.cost.toLocaleString()}</span></p>
+                      <p><span className="text-gray-600">Paid:</span> <span className="font-semibold text-green-700">KES {rpInfo.paidAmount.toLocaleString()}</span></p>
+                      <p><span className="text-gray-600">Balance:</span> <span className="font-semibold text-red-700">KES {rpInfo.balance.toLocaleString()}</span></p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-orange-50">
+                          <tr>
+                            <th className="p-2 text-left">Payment Date</th>
+                            <th className="p-2 text-right">Amount</th>
+                            <th className="p-2 text-left">Method</th>
+                            <th className="p-2 text-left">Recorded By</th>
+                            <th className="p-2 text-left">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sorted.map((payment) => (
+                            <tr key={payment.id} className="border-t">
+                              <td className="p-2">{formatDate(payment.paymentDate)}</td>
+                              <td className="p-2 text-right font-semibold">KES {payment.amount.toLocaleString()}</td>
+                              <td className="p-2">{formatPaymentMethod(payment.paymentMethod)}</td>
+                              <td className="p-2">{payment.recordedBy || "Admin"}</td>
+                              <td className="p-2">{payment.notes || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       {paymentHistoryPurchase && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
