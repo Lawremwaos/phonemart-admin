@@ -93,21 +93,6 @@ export default function AutomatedDailyReport() {
   const retailRevenue = retailSales.reduce((sum, s) => sum + s.total, 0);
   const wholesaleRevenue = wholesaleSales.reduce((sum, s) => sum + s.total, 0);
 
-  // Deposited breakdown
-  const depositedBreakdown = useMemo(() => {
-    const breakdown: Record<string, number> = {};
-    dailySales.forEach(sale => {
-      if (sale.paymentType && sale.total > 0) {
-        const method = sale.paymentType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        breakdown[method] = (breakdown[method] || 0) + sale.total;
-      }
-    });
-    if (cashCollected > 0) breakdown['Cash'] = (breakdown['Cash'] || 0) + cashCollected;
-    if (mpesaCollected > 0) breakdown['MPESA'] = (breakdown['MPESA'] || 0) + mpesaCollected;
-    if (bankDeposits > 0) breakdown['Bank'] = (breakdown['Bank'] || 0) + bankDeposits;
-    return breakdown;
-  }, [dailySales, cashCollected, mpesaCollected, bankDeposits]);
-
   const todayStr = new Date().toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
   });
@@ -285,16 +270,6 @@ export default function AutomatedDailyReport() {
   const handleSendRepairOnly = () => {
     const report = generateRepairReport();
     shareViaWhatsApp(report, currentShop?.phone || undefined);
-  };
-
-  const handleSendToGroupAccessoriesOnly = () => {
-    const encodedText = encodeURIComponent(generateAccessoriesReport());
-    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
-  };
-
-  const handleSendToGroupRepairOnly = () => {
-    const encodedText = encodeURIComponent(generateRepairReport());
-    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
   };
 
   const totalRevenue = dailyRevenue + todayRepairRevenue;
