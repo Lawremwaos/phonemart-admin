@@ -1,5 +1,5 @@
 import { Fragment, useState, useMemo, useEffect, useCallback } from "react";
-import { useSupplier } from "../context/SupplierContext";
+import { useSupplier, type SupplierType } from "../context/SupplierContext";
 import { useInventory } from "../context/InventoryContext";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
@@ -49,12 +49,16 @@ export default function SupplierManagement() {
     email: "",
     address: "",
     categories: ['spare_parts'] as ('accessories' | 'spare_parts')[],
+    supplierType: 'local' as SupplierType,
   });
+
+  // Staff can only see local suppliers; admin sees all (wholesale hidden from staff)
+  const visibleSuppliers = isAdmin ? suppliers : suppliers.filter(s => s.supplierType !== 'wholesale');
 
   const handleAdd = () => {
     setIsAdding(true);
     setEditingId(null);
-    setFormData({ name: "", phone: "", email: "", address: "", categories: ['spare_parts'] });
+    setFormData({ name: "", phone: "", email: "", address: "", categories: ['spare_parts'], supplierType: 'local' });
   };
 
   const handleEdit = (supplier: typeof suppliers[0]) => {
@@ -66,6 +70,7 @@ export default function SupplierManagement() {
       email: supplier.email || "",
       address: supplier.address || "",
       categories: [...supplier.categories],
+      supplierType: supplier.supplierType || 'local',
     });
   };
 
@@ -78,6 +83,10 @@ export default function SupplierManagement() {
       alert("Please select at least one category");
       return;
     }
+    if (!isAdmin && formData.supplierType === 'wholesale') {
+      alert("Only admin can create wholesale suppliers");
+      return;
+    }
 
     if (editingId) {
       updateSupplier(editingId, formData);
@@ -85,7 +94,7 @@ export default function SupplierManagement() {
       addSupplier(formData);
     }
 
-    setFormData({ name: "", phone: "", email: "", address: "", categories: ['spare_parts'] });
+    setFormData({ name: "", phone: "", email: "", address: "", categories: ['spare_parts'], supplierType: 'local' });
     setIsAdding(false);
     setEditingId(null);
   };
@@ -93,7 +102,7 @@ export default function SupplierManagement() {
   const handleCancel = () => {
     setIsAdding(false);
     setEditingId(null);
-    setFormData({ name: "", phone: "", email: "", address: "", categories: ['spare_parts'] });
+    setFormData({ name: "", phone: "", email: "", address: "", categories: ['spare_parts'], supplierType: 'local' });
   };
 
   const handleDelete = (id: string) => {
@@ -248,7 +257,7 @@ export default function SupplierManagement() {
   };
 
   const supplierData = useMemo(() => {
-    return suppliers.map(supplier => {
+    return visibleSuppliers.map(supplier => {
       // Purchases from this supplier
       const supplierPurchases = purchases.filter(p =>
         p.supplier.toLowerCase() === supplier.name.toLowerCase()
@@ -418,6 +427,15 @@ export default function SupplierManagement() {
                 </label>
               </div>
             </div>
+            {isAdmin && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Supplier type</label>
+                <select className="border border-gray-300 rounded-md px-3 py-2 w-full" value={formData.supplierType} onChange={(e) => setFormData({ ...formData, supplierType: e.target.value as SupplierType })} aria-label="Supplier type">
+                  <option value="local">Local (visible to staff)</option>
+                  <option value="wholesale">Wholesale (admin only)</option>
+                </select>
+              </div>
+            )}
           </div>
           <div className="flex gap-4 mt-4">
             <button onClick={handleSave} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Save</button>
@@ -442,10 +460,10 @@ export default function SupplierManagement() {
         </div>
         <div className="bg-white p-4 rounded shadow border-l-4 border-purple-500">
           <p className="text-sm text-gray-600">Active Suppliers</p>
-          <p className="text-2xl font-bold text-purple-700">{suppliers.length}</p>
+          <p className="text-2xl font-bold text-purple-700">{visibleSuppliers.length}</p>
           <p className="text-xs text-gray-500">
-            {suppliers.filter(s => s.categories.includes('spare_parts')).length} spare parts,{' '}
-            {suppliers.filter(s => s.categories.includes('accessories')).length} accessories
+            {visibleSuppliers.filter(s => s.categories.includes('spare_parts')).length} spare parts,{' '}
+            {visibleSuppliers.filter(s => s.categories.includes('accessories')).length} accessories
           </p>
         </div>
         {isAdmin && (
@@ -1039,7 +1057,7 @@ export default function SupplierManagement() {
                 </tr>
               </thead>
               <tbody>
-                {suppliers.map((supplier) => {
+                {visibleSuppliers.map((supplier) => {
                   const data = supplierData.find(d => d.supplier.id === supplier.id);
                   return (
                     <tr key={supplier.id} className="border-t hover:bg-gray-50">

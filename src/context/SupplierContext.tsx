@@ -1,13 +1,16 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 
+export type SupplierType = 'local' | 'wholesale';
+
 export type Supplier = {
   id: string;
   name: string;
   phone?: string;
   email?: string;
   address?: string;
-  categories: ('accessories' | 'spare_parts')[]; // Can be both
+  categories: ('accessories' | 'spare_parts')[];
+  supplierType?: SupplierType; // local = visible to staff; wholesale = admin only; default local
   createdAt: Date;
 };
 
@@ -44,6 +47,7 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
           email: s.email || undefined,
           address: s.address || undefined,
           categories: (s.categories || []) as any,
+          supplierType: (s.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType | undefined,
           createdAt: new Date(s.created_at),
         }));
         setSuppliers(mapped);
@@ -73,6 +77,7 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
                 email: s.email || undefined,
                 address: s.address || undefined,
                 categories: (s.categories || []) as any,
+                supplierType: (s.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType | undefined,
                 createdAt: new Date(s.created_at),
               }));
               setSuppliers(mapped);
@@ -108,6 +113,7 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
         email: supplierData.email || null,
         address: supplierData.address || null,
         categories: supplierData.categories,
+        supplier_type: supplierData.supplierType || 'local',
       };
       const { data, error } = await supabase.from("suppliers").insert(payload).select("*").single();
       if (error) {
@@ -128,6 +134,7 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
               email: existing.email || undefined,
               address: existing.address || undefined,
               categories: (existing.categories || []) as any,
+              supplierType: (existing.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType,
               createdAt: new Date(existing.created_at),
             };
             // Add to state if not already there
@@ -151,6 +158,7 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
         email: data.email || undefined,
         address: data.address || undefined,
         categories: (data.categories || []) as any,
+        supplierType: (data.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType,
         createdAt: new Date(data.created_at),
       };
       setSuppliers((prev) => [newSupplier, ...prev]);
@@ -166,6 +174,7 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
         ...(supplierData.email !== undefined ? { email: supplierData.email } : {}),
         ...(supplierData.address !== undefined ? { address: supplierData.address } : {}),
         ...(supplierData.categories !== undefined ? { categories: supplierData.categories } : {}),
+        ...(supplierData.supplierType !== undefined ? { supplier_type: supplierData.supplierType } : {}),
       };
       const { error } = await supabase.from("suppliers").update(payload).eq("id", id);
       if (error) {

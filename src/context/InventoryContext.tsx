@@ -23,27 +23,30 @@ export type InventoryItem = {
   id: number;
   name: string;
   category: 'Phone' | 'Spare' | 'Accessory';
-  itemType?: string; // Type of item (e.g., "USB-C Charger", "Tempered Glass", "Screen", "Battery")
+  itemType?: string;
   stock: number;
-  price: number; // Amount sold (not fixed price)
-  reorderLevel: number; // when stock <= this, mark low stock
-  initialStock: number; // track initial stock for movement calculation
-  shopId?: string; // which shop owns this inventory
-  supplier?: string; // supplier name
-  costPrice?: number; // purchase cost from supplier (admin only)
-  adminCostPrice?: number; // admin's purchase cost (hidden from staff)
-  pendingAllocation?: boolean; // true if stock needs to be allocated
+  price: number; // selling price (staff can see)
+  reorderLevel: number;
+  initialStock: number;
+  shopId?: string;
+  supplier?: string;
+  costPrice?: number; // legacy / staff-facing cost (if any)
+  adminCostPrice?: number; // admin purchase cost (hidden from staff)
+  actualCost?: number; // real buying price - ADMIN ONLY, never expose to staff; used for profit calculation
+  pendingAllocation?: boolean;
 };
 
 export type Purchase = {
   id: string;
   date: Date;
   supplier: string;
+  supplierType?: 'local' | 'wholesale';
   items: Array<{
     itemId: number;
     itemName: string;
     qty: number;
     costPrice: number;
+    actualCost?: number; // real buying price (admin only), for profit calculation
   }>;
   total: number;
   shopId?: string;
@@ -113,6 +116,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       supplier: item.supplier || undefined,
       costPrice: item.cost_price ? Number(item.cost_price) : undefined,
       adminCostPrice: item.admin_cost_price ? Number(item.admin_cost_price) : undefined,
+      actualCost: item.actual_cost != null ? Number(item.actual_cost) : undefined,
       pendingAllocation: item.pending_allocation || false,
     }));
   }, []);
@@ -190,6 +194,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       id: purchaseData.id,
       date: new Date(purchaseData.date),
       supplier: purchaseData.supplier,
+      supplierType: purchaseData.supplier_type === 'wholesale' ? 'wholesale' : 'local',
       total: Number(purchaseData.total) || 0,
       shopId: purchaseData.shop_id || undefined,
       confirmed: purchaseData.confirmed || false,
@@ -200,6 +205,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         itemName: pi.item_name,
         qty: pi.qty,
         costPrice: Number(pi.cost_price) || 0,
+        actualCost: pi.actual_cost != null ? Number(pi.actual_cost) : undefined,
       })),
     };
   }, []);
@@ -360,6 +366,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         supplier: itemData.supplier || null,
         cost_price: itemData.costPrice || null,
         admin_cost_price: itemData.adminCostPrice || null,
+        actual_cost: itemData.actualCost ?? null,
         pending_allocation: itemData.pendingAllocation || false,
       };
       const { data, error } = await supabase.from("inventory_items").insert(payload).select("*").single();
@@ -380,6 +387,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         supplier: data.supplier || undefined,
         costPrice: data.cost_price ? Number(data.cost_price) : undefined,
         adminCostPrice: data.admin_cost_price ? Number(data.admin_cost_price) : undefined,
+        actualCost: data.actual_cost != null ? Number(data.actual_cost) : undefined,
         pendingAllocation: data.pending_allocation || false,
       };
       lastLocalUpdateRef.current = Date.now();
@@ -401,6 +409,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       if (updates.supplier !== undefined) payload.supplier = updates.supplier || null;
       if (updates.costPrice !== undefined) payload.cost_price = updates.costPrice || null;
       if (updates.adminCostPrice !== undefined) payload.admin_cost_price = updates.adminCostPrice || null;
+      if (updates.actualCost !== undefined) payload.actual_cost = updates.actualCost ?? null;
       if (updates.pendingAllocation !== undefined) payload.pending_allocation = updates.pendingAllocation;
 
       const { error } = await supabase.from("inventory_items").update(payload).eq("id", id);
@@ -450,6 +459,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
           supplier: purchaseData.supplier,
           total: purchaseData.total,
           shop_id: purchaseData.shopId || null,
+          supplier_type: purchaseData.supplierType || 'local',
         })
         .select("*")
         .single();
@@ -458,13 +468,14 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         return;
       }
 
-      // Insert purchase items
+      // Insert purchase items (actual_cost = real buying price, admin only)
       const purchaseItemsPayload = purchaseData.items.map((item) => ({
         purchase_id: purchaseRecord.id,
         item_id: item.itemId,
         item_name: item.itemName,
         qty: item.qty,
         cost_price: item.costPrice,
+        actual_cost: item.actualCost ?? item.costPrice ?? null,
       }));
       const { error: itemsError } = await supabase
         .from("purchase_items")
@@ -477,26 +488,27 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       // Update or create inventory items - mark as pending allocation
       for (const purchaseItem of purchaseData.items) {
         const existingItem = items.find((i) => i.id === purchaseItem.itemId);
+        const actualCost = purchaseItem.actualCost ?? purchaseItem.costPrice;
         if (existingItem) {
-          // Update existing item
           await updateItem(existingItem.id, {
             stock: existingItem.stock + purchaseItem.qty,
             pendingAllocation: true,
             adminCostPrice: purchaseItem.costPrice,
+            actualCost: actualCost,
             supplier: purchaseData.supplier,
           });
         } else {
-          // Create new item (shouldn't happen often, but handle it)
           console.warn("Item not found for purchase, creating new item:", purchaseItem.itemName);
           await addItem({
             name: purchaseItem.itemName,
-            category: "Spare", // Default, should be set properly
+            category: "Spare",
             stock: purchaseItem.qty,
             price: 0,
             reorderLevel: 0,
             initialStock: purchaseItem.qty,
             pendingAllocation: true,
             adminCostPrice: purchaseItem.costPrice,
+            actualCost: actualCost,
             supplier: purchaseData.supplier,
           });
         }
@@ -522,6 +534,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         id: newPurchaseData.id,
         date: new Date(newPurchaseData.date),
         supplier: newPurchaseData.supplier,
+        supplierType: newPurchaseData.supplier_type === 'wholesale' ? 'wholesale' : 'local',
         total: Number(newPurchaseData.total) || 0,
         shopId: newPurchaseData.shop_id || undefined,
         confirmed: newPurchaseData.confirmed || false,
@@ -532,6 +545,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
           itemName: pi.item_name,
           qty: pi.qty,
           costPrice: Number(pi.cost_price) || 0,
+          actualCost: pi.actual_cost != null ? Number(pi.actual_cost) : undefined,
         })),
       };
       lastLocalUpdateRef.current = Date.now();

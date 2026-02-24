@@ -53,6 +53,8 @@ export default function Returns() {
   const { suppliers } = useSupplier();
   const { repairs } = useRepair();
   const { currentShop, currentUser } = useShop();
+  const isAdmin = currentUser?.roles.includes('admin') ?? false;
+  const visibleSuppliers = isAdmin ? suppliers : suppliers.filter(s => s.supplierType !== 'wholesale');
   
   const [returns, setReturns] = useState<ReturnRecord[]>(loadReturnsFromStorage());
   const [isAdding, setIsAdding] = useState(false);
@@ -353,7 +355,7 @@ export default function Returns() {
                 }}
               >
                 <option value="">Select Supplier</option>
-                {suppliers.map(supplier => (
+                {visibleSuppliers.map(supplier => (
                   <option key={supplier.id} value={supplier.id}>
                     {supplier.name}
                   </option>

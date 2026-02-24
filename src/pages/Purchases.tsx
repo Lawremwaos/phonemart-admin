@@ -8,7 +8,7 @@ type PurchaseItem = {
   itemName: string;
   itemCategory: 'Spare' | 'Accessory';
   qty: number;
-  costPrice: number;
+  costPrice: number; // actual cost (real buying price) - admin only, saved as actual_cost
 };
 
 export default function Purchases() {
@@ -181,10 +181,13 @@ export default function Purchases() {
     }
 
     const total = purchaseItems.reduce((sum, item) => sum + (item.qty * item.costPrice), 0);
-    
+    const selectedSupplier = supplierId ? suppliers.find(s => s.id === supplierId) : null;
+    const supplierType = selectedSupplier?.supplierType || 'local';
+
     addPurchase({
       supplier: finalSupplierName,
-      items: processedItems,
+      supplierType: supplierType as 'local' | 'wholesale',
+      items: processedItems.map(p => ({ ...p, actualCost: p.costPrice })),
       total,
       shopId: currentShop?.id,
     });
@@ -324,7 +327,7 @@ export default function Purchases() {
           </div>
           {currentUser?.roles.includes('admin') && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Admin Purchase Cost (KES) *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Actual cost (KES) *</label>
               <input
                 type="number"
                 value={costPrice}

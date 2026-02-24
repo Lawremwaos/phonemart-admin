@@ -1,16 +1,13 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { useShop } from "./ShopContext";
 
 export type Sale = {
   id: string;
   date: Date;
   shopId?: string;
   saleType: 'in-shop' | 'wholesale' | 'retail';
-  items: Array<{
-    name: string;
-    qty: number;
-    price: number;
-  }>;
+  items: Array<{ name: string; qty: number; price: number }>;
   total: number;
   paymentType?: 'cash' | 'mpesa' | 'bank_deposit';
   paymentStatus?: 'pending' | 'partial' | 'fully_paid';
@@ -18,8 +15,9 @@ export type Sale = {
   balance?: number;
   bank?: string;
   depositReference?: string;
-  status?: 'open' | 'closed'; // For wholesale sales that stay open during the day
-  closedAt?: Date; // When wholesale sale was closed
+  status?: 'open' | 'closed';
+  closedAt?: Date;
+  soldBy?: string; // staff name who made the sale (for admin daily report)
 };
 
 type SalesContextType = {
@@ -51,6 +49,7 @@ type SalesContextType = {
 const SalesContext = createContext<SalesContextType | null>(null);
 
 export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
+  const { currentUser } = useShop();
   const [sales, setSales] = useState<Sale[]>([]);
   const [openWholesaleSale, setOpenWholesaleSale] = useState<Sale | null>(null);
   const lastLocalUpdateRef = useRef<number>(0);
@@ -76,6 +75,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
       total: Number(saleData.total) || 0,
       status: saleData.status as 'open' | 'closed',
       closedAt: saleData.closed_at ? new Date(saleData.closed_at) : undefined,
+      soldBy: saleData.sold_by || undefined,
     };
   }, []);
 
@@ -160,7 +160,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
     (async () => {
       const status = saleType === 'wholesale' ? 'open' : 'closed';
       
-      // Insert sale
+      const soldBy = currentUser?.name || undefined;
       const { data: saleRecord, error: saleError } = await supabase
         .from("sales")
         .insert({
@@ -169,6 +169,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
           total: total,
           status: status,
           closed_at: status === 'closed' ? new Date().toISOString() : null,
+          sold_by: soldBy || null,
         })
         .select("*")
         .single();
@@ -201,6 +202,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         total: Number(saleRecord.total) || 0,
         status: saleRecord.status as 'open' | 'closed',
         closedAt: saleRecord.closed_at ? new Date(saleRecord.closed_at) : undefined,
+        soldBy: saleRecord.sold_by || undefined,
       };
       
       lastLocalUpdateRef.current = Date.now();
@@ -210,7 +212,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         setSales((prev) => [newSale, ...prev]);
       }
     })();
-  }, []);
+  }, [currentUser]);
 
   const addItemToWholesaleSale = useCallback((item: { name: string; qty: number; price: number }, shopId?: string) => {
     (async () => {

@@ -45,10 +45,10 @@ export default function StaffPurchases() {
       .order("submitted_date", { ascending: false });
 
     if (error) {
-      const tableMissing = error.code === "42P01";
+      const tableMissing = error.code === "42P01" || error.code === "PGRST205" || (error.message || "").includes("schema cache");
       setTableError(
         tableMissing
-          ? "Staff procurements table is missing. Run supabase/add_staff_procurements.sql in Supabase SQL Editor."
+          ? "The staff_procurements table does not exist yet. In Supabase: go to SQL Editor → New query → paste and run the SQL from supabase/add_staff_procurements.sql (in your project folder). Then reload this page."
           : "Could not load procurements."
       );
       setProcurements([]);
@@ -100,8 +100,18 @@ export default function StaffPurchases() {
     if (error) {
       const msg = error.message || "Unknown error";
       const code = error.code || "";
+      const tableMissing = code === "42P01" || code === "PGRST205" || (msg || "").toLowerCase().includes("schema cache") || (msg || "").includes("could not find the table");
       console.error("Insert procurement error:", { code, message: msg, details: error.details });
-      alert(`Failed to save. Please try again.\n\nDetails: ${msg}${code ? ` (${code})` : ""}`);
+      if (tableMissing) {
+        alert(
+          "The staff_procurements table does not exist.\n\n" +
+          "In Supabase Dashboard: SQL Editor → New query → paste and run the full contents of the file:\n" +
+          "supabase/add_staff_procurements.sql\n\n" +
+          "Then try submitting again."
+        );
+      } else {
+        alert(`Failed to save. Please try again.\n\nDetails: ${msg}${code ? ` (${code})` : ""}`);
+      }
       return;
     }
 

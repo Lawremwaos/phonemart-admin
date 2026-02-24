@@ -7,6 +7,7 @@ import Sales from "./pages/Sales";
 import RepairSales from "./pages/RepairSales";
 import ReceiptView from "./pages/ReceiptView";
 import DailyReport from "./pages/DailyReport";
+import AdminDailyFinancialReport from "./pages/AdminDailyFinancialReport";
 import Purchases from "./pages/Purchases";
 import Exchange from "./pages/Exchange";
 import SupplierManagement from "./pages/SupplierManagement";
@@ -249,16 +250,28 @@ function AppContent() {
             </Link>
           </li>
           {currentUser?.roles.includes('admin') && (
-            <li>
-              <Link 
-                to="/daily-report" 
-                className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
-                  location.pathname === '/daily-report' ? 'bg-gray-800' : ''
-                }`}
-              >
-                Daily Reports
-              </Link>
-            </li>
+            <>
+              <li>
+                <Link 
+                  to="/daily-report" 
+                  className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
+                    location.pathname === '/daily-report' ? 'bg-gray-800' : ''
+                  }`}
+                >
+                  Daily Reports
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  to="/admin-daily-financial" 
+                  className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
+                    location.pathname === '/admin-daily-financial' ? 'bg-gray-800' : ''
+                  }`}
+                >
+                  Daily Financial (Profit)
+                </Link>
+              </li>
+            </>
           )}
           <li>
             <Link 
@@ -446,6 +459,14 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <DailyReport />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin-daily-financial"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminDailyFinancialReport />
               </ProtectedRoute>
             }
           />

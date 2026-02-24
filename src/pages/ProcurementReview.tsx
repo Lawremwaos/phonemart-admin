@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useShop } from "../context/ShopContext";
+import { useInventory } from "../context/InventoryContext";
 import { supabase } from "../lib/supabaseClient";
 
 type StaffProcurement = {
@@ -34,6 +35,7 @@ type ProcurementPayment = {
 
 export default function ProcurementReview() {
   const { currentUser } = useShop();
+  const { items, addItem, addStock } = useInventory();
   const isAdmin = currentUser?.roles.includes("admin") || false;
 
   const [procurements, setProcurements] = useState<StaffProcurement[]>([]);
@@ -59,10 +61,10 @@ export default function ProcurementReview() {
       .order("submitted_date", { ascending: false });
 
     if (error) {
-      const tableMissing = error.code === "42P01";
+      const tableMissing = error.code === "42P01" || error.code === "PGRST205" || (error.message || "").includes("schema cache");
       setTableError(
         tableMissing
-          ? "Staff procurements table is missing. Run supabase/add_staff_procurements.sql in Supabase SQL Editor."
+          ? "The staff_procurements table does not exist yet. In Supabase: SQL Editor → New query → run the SQL from supabase/add_staff_procurements.sql, then reload."
           : "Could not load procurements."
       );
       setProcurements([]);
@@ -122,12 +124,27 @@ export default function ProcurementReview() {
   }, [payments]);
 
   const handleApprove = async (id: string) => {
+    const proc = procurements.find((p) => p.id === id);
     const { error } = await supabase.from("staff_procurements").update({
       status: "approved",
       approved_by: currentUser?.name || "Admin",
       approved_date: new Date().toISOString(),
     }).eq("id", id);
     if (error) { alert("Failed to approve."); return; }
+    if (proc?.category === "future_stock") {
+      const existing = items.find((i) => i.name === proc.itemName && !i.shopId);
+      if (existing) {
+        addStock(existing.id, proc.quantity);
+      } else {
+        addItem({
+          name: proc.itemName,
+          category: "Accessory",
+          stock: proc.quantity,
+          price: 0,
+          reorderLevel: 0,
+        });
+      }
+    }
     await loadProcurements();
   };
 

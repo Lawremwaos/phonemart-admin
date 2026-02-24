@@ -46,6 +46,9 @@ export default function RepairSales() {
   // Payments are recorded after admin approval on the Pending Payment Approval page
   const { currentShop, currentUser } = useShop();
   const { suppliers, addSupplier } = useSupplier();
+  const isAdmin = currentUser?.roles.includes('admin') ?? false;
+  // Staff see only local suppliers; admin sees all
+  const sparePartSuppliers = suppliers.filter(s => s.categories.includes('spare_parts')).filter(s => isAdmin || s.supplierType !== 'wholesale');
   const [customerStatus, setCustomerStatus] = useState<'waiting' | 'coming_back'>('waiting');
   const [isServiceOnly, setIsServiceOnly] = useState(false);
   const [serviceType, setServiceType] = useState("");
@@ -114,7 +117,7 @@ export default function RepairSales() {
       return;
     }
     const supplierName = newSupplierName.trim();
-    addSupplier({ name: supplierName, categories: ['spare_parts'] });
+    addSupplier({ name: supplierName, categories: ['spare_parts'], supplierType: 'local' });
     setPendingSupplierName(supplierName);
     setNewSupplierName("");
     setShowAddSupplier(false);
@@ -813,8 +816,7 @@ export default function RepairSales() {
                 }}
               >
                 <option value="">Select Supplier (spare parts only)</option>
-                {suppliers
-                  .filter(s => s.categories.includes('spare_parts'))
+                {sparePartSuppliers
                   .map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.name}
