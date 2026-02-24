@@ -40,11 +40,12 @@ export default function Sales() {
   const [wholesaleDepositReference, setWholesaleDepositReference] = useState<string>('');
 
   // Only items allocated to current shop (no unallocated items) — aligns with stock allocation
-  const salesItems = items.filter(item =>
-    (item.category === 'Phone' || item.category === 'Accessory') &&
-    item.stock > 0 &&
-    item.shopId === currentShop?.id
-  );
+  const salesItems = items.filter(item => {
+    const cat = (item.category || '').toString().toLowerCase();
+    const isPhoneOrAccessory = cat === 'phone' || cat === 'accessory';
+    const stockQty = Number(item.stock) ?? 0;
+    return isPhoneOrAccessory && stockQty > 0 && item.shopId === currentShop?.id;
+  });
 
   const selectedItem = itemSource === 'inventory' ? salesItems.find(item => item.name === selectedItemName) : null;
 
@@ -320,11 +321,14 @@ export default function Sales() {
                   onChange={(e) => handleItemSelect(e.target.value)}
                 >
                   <option value="">Select Item (in stock)</option>
-                  {salesItems.map((item) => (
-                    <option key={item.id} value={item.name}>
-                      {item.name} ({item.stock} pcs)
-                    </option>
-                  ))}
+                  {salesItems.map((item) => {
+                    const stock = Number(item.stock) ?? 0;
+                    return (
+                      <option key={item.id} value={item.name}>
+                        {item.name} — Stock: {stock} pcs
+                      </option>
+                    );
+                  })}
                 </select>
               ) : (
                 <input
@@ -341,7 +345,7 @@ export default function Sales() {
                 type="number"
                 placeholder="Qty"
                 min="1"
-                max={selectedItem?.stock || 9999}
+                max={selectedItem ? (Number(selectedItem.stock) ?? 0) || 9999 : 9999}
                 value={qty}
                 onChange={(e) => setQty(Number(e.target.value))}
               />
@@ -367,7 +371,7 @@ export default function Sales() {
             </div>
             {selectedItem && (
               <p className="text-sm text-gray-600 mb-2">
-                Available: {selectedItem.stock} pcs
+                Available: {Number(selectedItem.stock) ?? 0} pcs
               </p>
             )}
 

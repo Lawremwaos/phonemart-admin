@@ -27,10 +27,10 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
         {shopPhone && <p className="text-sm text-gray-600">{shopPhone}</p>}
       </div>
 
-      {/* Receipt Info */}
+      {/* Receipt Info - For repair sales the ID is the ticket number */}
       <div className="mb-4 text-sm">
         <div className="flex justify-between mb-2">
-          <span className="text-gray-600">Receipt #:</span>
+          <span className="text-gray-600">{(sale as any).saleType === 'repair' ? 'Ticket #:' : 'Receipt #:'}</span>
           <span className="font-semibold">{sale.id}</span>
         </div>
         <div className="flex justify-between mb-2">
@@ -122,6 +122,14 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
         {/* Deposit and Balance */}
         {(sale as any).depositAmount && Number((sale as any).depositAmount) > 0 && (
           <>
+            {(sale as any).paymentMethod && (
+              <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+                <span className="text-sm text-gray-600">Paid via:</span>
+                <span className="text-sm font-semibold text-gray-800">
+                  {({ cash_to_deposit: 'Cash (to deposit)', mpesa_to_paybill: 'M-Pesa (Paybill)', mpesa_to_mpesa_shop: 'M-Pesa', bank_to_mpesa_shop: 'Bank (to M-Pesa Shop)', bank_to_shop_bank: 'Bank', sacco_to_mpesa: 'Sacco' }[(sale as any).paymentMethod] || (sale as any).paymentMethod?.replace(/_/g, ' ') || '—'}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between items-center pt-2 border-t border-gray-300">
               <span className="text-sm text-gray-600">Paid a deposit of:</span>
               <span className="text-sm font-semibold text-green-600">
@@ -141,30 +149,59 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
         
         {/* Payment Status - Only show if no deposit */}
         {(!(sale as any).depositAmount || Number((sale as any).depositAmount) === 0) && (
-          <div className="flex justify-between items-center pt-2 border-t border-gray-300">
-            <span className="text-sm text-gray-600">Payment Status:</span>
-            <span className={`text-sm font-semibold ${
-              (sale as any).paymentStatus === 'paid' || sale.paymentStatus === 'fully_paid' 
-                ? 'text-green-600' 
-                : 'text-red-600'
-            }`}>
-              {(sale as any).paymentStatus === 'paid' || sale.paymentStatus === 'fully_paid' ? 'PAID' : 'NOT PAID'}
-            </span>
-          </div>
+          <>
+            <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+              <span className="text-sm text-gray-600">Payment Status:</span>
+              <span className={`text-sm font-semibold ${
+                (sale as any).paymentStatus === 'paid' || sale.paymentStatus === 'fully_paid' 
+                  ? 'text-green-600' 
+                  : 'text-red-600'
+              }`}>
+                {(sale as any).paymentStatus === 'paid' || sale.paymentStatus === 'fully_paid' ? 'PAID' : 'NOT PAID'}
+              </span>
+            </div>
+            {/* Single payment: show "Paid via" and amount */}
+            {(sale as any).paymentStatus === 'paid' || sale.paymentStatus === 'fully_paid' ? (
+              (sale as any).splitPayments && Array.isArray((sale as any).splitPayments) && (sale as any).splitPayments.length > 0 ? null : (
+                (sale as any).paymentMethod && (
+                  <div className="pt-2 space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600">Paid via:</span>
+                      <span className="text-sm font-semibold text-gray-800">
+                        {({ cash_to_deposit: 'Cash (to deposit)', mpesa_to_paybill: 'M-Pesa (Paybill)', mpesa_to_mpesa_shop: 'M-Pesa', bank_to_mpesa_shop: 'Bank (to M-Pesa Shop)', bank_to_shop_bank: 'Bank', sacco_to_mpesa: 'Sacco' }[(sale as any).paymentMethod] || (sale as any).paymentMethod?.replace(/_/g, ' ') || '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600">Amount paid:</span>
+                      <span className="text-sm font-semibold text-green-600">
+                        KES {((sale as any).amountPaid != null ? Number((sale as any).amountPaid) : 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                )
+              )
+            ) : null}
+          </>
         )}
 
-        {/* Split / partial payment breakdown */}
+        {/* Partial / split payment: indicate and show each amount separately */}
         {(sale as any).splitPayments && Array.isArray((sale as any).splitPayments) && (sale as any).splitPayments.length > 0 && (
           <div className="pt-2 border-t border-gray-300 mt-2">
-            <div className="text-sm font-medium text-gray-700 mb-1">Payment (partial/split):</div>
-            <ul className="text-sm text-gray-600 space-y-0.5">
+            <div className="text-sm font-medium text-gray-700 mb-1">Paid via: Partial payment</div>
+            <ul className="text-sm text-gray-600 space-y-1">
               {(sale as any).splitPayments.map((p: { method: string; amount: number; transactionCode?: string; bank?: string }, i: number) => (
-                <li key={i}>
-                  {p.method.replace(/_/g, ' ')}: KES {p.amount.toLocaleString()}
-                  {p.bank ? ` (${p.bank})` : ''}
+                <li key={i} className="flex justify-between">
+                  <span>{({ cash_to_deposit: 'Cash', mpesa_to_paybill: 'M-Pesa (Paybill)', mpesa_to_mpesa_shop: 'M-Pesa', bank_to_mpesa_shop: 'Bank (M-Pesa)', bank_to_shop_bank: 'Bank', sacco_to_mpesa: 'Sacco' }[p.method] || p.method.replace(/_/g, ' '))}{p.bank ? ` (${p.bank})` : ''}:</span>
+                  <span className="font-semibold text-green-600">KES {p.amount.toLocaleString()}</span>
                 </li>
               ))}
             </ul>
+            <div className="flex justify-between items-center pt-1 mt-1 border-t border-gray-200">
+              <span className="text-sm font-medium text-gray-700">Total paid:</span>
+              <span className="text-sm font-semibold text-green-600">
+                KES {(sale as any).splitPayments.reduce((s: number, p: { amount: number }) => s + p.amount, 0).toLocaleString()}
+              </span>
+            </div>
           </div>
         )}
       </div>

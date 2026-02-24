@@ -4,6 +4,7 @@ import { useSales } from "../context/SalesContext";
 import { useRepair } from "../context/RepairContext";
 import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
+import { useSupplier } from "../context/SupplierContext";
 import { shareViaWhatsApp, shareViaEmail } from "../utils/receiptUtils";
 
 export default function TodaysSalesReport() {
@@ -11,6 +12,7 @@ export default function TodaysSalesReport() {
   const { repairs } = useRepair();
   const { items: inventoryItems, purchases } = useInventory();
   const { currentShop, currentUser } = useShop();
+  const { suppliers } = useSupplier();
   const [whatsAppNumber, setWhatsAppNumber] = useState("");
   const report = getTodaysSalesReport();
   const todaysSales = getDailySales();
@@ -30,10 +32,12 @@ export default function TodaysSalesReport() {
     ? todayRepairs
     : todayRepairs.filter(r => r.shopId === currentShop?.id);
 
-  // Helper: find supplier for an item (checks stored supplier first, then looks up)
+  // Helper: find supplier for an item. Items allocated to current shop = in-stock (Own Inventory).
   const getSupplierForItem = (itemName: string, storedSupplier?: string): string => {
-    if (storedSupplier) return storedSupplier;
     const inv = inventoryItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
+    // If item is allocated to current shop, it's in-stock (don't show purchase supplier like "Urban Accessories")
+    if (inv?.shopId === currentShop?.id) return 'Own Inventory';
+    if (storedSupplier) return storedSupplier;
     if (inv?.supplier) return inv.supplier;
     for (const p of purchases) {
       if (p.items.some(pi => pi.itemName.toLowerCase() === itemName.toLowerCase())) {
@@ -43,9 +47,20 @@ export default function TodaysSalesReport() {
     return 'Own Inventory';
   };
 
-  // Display: our own = "From the shop", else show supplier name
+  // Display: in-stock = "In-stock accessories (ShopName)", else supplier name
   const getSupplierDisplay = (supplier: string): string =>
-    supplier === 'Own Inventory' ? 'From the shop' : supplier;
+    supplier === 'Own Inventory' ? `In-stock accessories (${currentShop?.name || 'shop'})` : supplier;
+
+  // True if part is an accessory (by inventory category or supplier category)
+  const isAccessoryPart = (itemName: string, supplierName?: string): boolean => {
+    const inv = inventoryItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
+    if (inv?.category?.toLowerCase() === 'accessory') return true;
+    if (supplierName) {
+      const sup = suppliers.find(s => s.name.toLowerCase() === supplierName.toLowerCase());
+      if (sup?.categories?.includes('accessories')) return true;
+    }
+    return false;
+  };
 
   // Helper: find cost price for an inventory item. Staff never see adminCostPrice.
   const getCostPrice = (itemName: string): number => {
@@ -72,11 +87,14 @@ export default function TodaysSalesReport() {
     return filteredRepairs.map(repair => {
       const revenue = repair.totalAgreedAmount || repair.totalCost;
 
-      // All parts with their costs (from repair_parts table)
+      // All parts with their costs (from repair_parts table); tag accessory vs spare
       const partsBreakdown = repair.partsUsed.map(part => {
         const costPerUnit = part.cost > 0 ? part.cost : getCostPrice(part.itemName);
         const supplier = getSupplierForItem(part.itemName, part.supplierName);
         const source = part.source || (part.supplierName ? 'outsourced' : 'in-house');
+        const isAccessory = isAccessoryPart(part.itemName, part.supplierName);
+        const inv = inventoryItems.find(i => i.name.toLowerCase() === part.itemName.toLowerCase());
+        const sellingPrice = inv?.price ?? 0;
         return {
           itemName: part.itemName,
           qty: part.qty,
@@ -84,6 +102,8 @@ export default function TodaysSalesReport() {
           totalCost: costPerUnit * part.qty,
           supplier,
           source: source as 'inventory' | 'outsourced',
+          isAccessory,
+          sellingPrice,
         };
       });
 
@@ -91,14 +111,19 @@ export default function TodaysSalesReport() {
       const outsourcedBreakdown = (repair.additionalItems || [])
         .filter(item => item.source === 'outsourced')
         .filter(item => !repair.partsUsed.some(p => p.itemName === item.itemName))
-        .map(item => ({
-          itemName: item.itemName,
-          qty: 1,
-          costPerUnit: 0,
-          totalCost: 0,
-          supplier: getSupplierForItem(item.itemName, item.supplierName),
-          source: 'outsourced' as const,
-        }));
+        .map(item => {
+          const inv = inventoryItems.find(i => i.name.toLowerCase() === item.itemName.toLowerCase());
+          return {
+            itemName: item.itemName,
+            qty: 1,
+            costPerUnit: 0,
+            totalCost: 0,
+            supplier: getSupplierForItem(item.itemName, item.supplierName),
+            source: 'outsourced' as const,
+            isAccessory: isAccessoryPart(item.itemName, item.supplierName),
+            sellingPrice: inv?.price ?? 0,
+          };
+        });
 
       const allParts = [...partsBreakdown, ...outsourcedBreakdown];
       // Total cost = sum of all parts costs only (no double counting with outsourcedCost)
@@ -114,7 +139,7 @@ export default function TodaysSalesReport() {
         profit,
       };
     });
-  }, [filteredRepairs, inventoryItems, purchases, isAdmin]);
+  }, [filteredRepairs, inventoryItems, purchases, isAdmin, suppliers]);
 
   // --- ACCESSORY ANALYSIS ---
   const accessoryAnalysis = useMemo(() => {
@@ -140,7 +165,31 @@ export default function TodaysSalesReport() {
     });
   }, [todaysSales, inventoryItems, purchases, isAdmin]);
 
-  // --- SUPPLIER SUMMARY (only outsourced suppliers; our own = "From the shop" not listed) ---
+  // --- IN-STOCK ACCESSORIES: total amount sold at (selling price, not cost - staff don't see cost)
+  const inStockAccessorySummary = useMemo(() => {
+    let amountSoldAt = 0;
+    const items: string[] = [];
+    accessoryAnalysis.forEach(aa => {
+      aa.itemsBreakdown.forEach(item => {
+        if (item.supplier !== 'Own Inventory') return;
+        amountSoldAt += item.totalRevenue; // selling price total
+        if (!items.includes(item.itemName)) items.push(item.itemName);
+      });
+    });
+    repairAnalysis.forEach(ra => {
+      ra.allParts.forEach(part => {
+        if (part.supplier !== 'Own Inventory') return;
+        if (!isAccessoryPart(part.itemName, part.supplier)) return;
+        const inv = inventoryItems.find(i => i.name.toLowerCase() === part.itemName.toLowerCase());
+        const price = inv?.price ?? 0;
+        amountSoldAt += price * part.qty;
+        if (!items.includes(part.itemName)) items.push(part.itemName);
+      });
+    });
+    return { amountSoldAt, items };
+  }, [accessoryAnalysis, repairAnalysis, inventoryItems, suppliers]);
+
+  // --- SUPPLIER SUMMARY (outsourced only; in-stock shown separately with "Amount (sold at)")
   const supplierSummary = useMemo(() => {
     const map: Record<string, { name: string; partsCost: number; items: string[]; repairCount: number; accessoryCount: number }> = {};
 
@@ -168,6 +217,26 @@ export default function TodaysSalesReport() {
   }, [repairAnalysis, accessoryAnalysis]);
 
   // --- TOTALS ---
+  // Accessory parts that were used in repairs (to show in Accessories breakdown, not Repair)
+  const accessoryPartsFromRepairs = useMemo(() => {
+    const list: Array<{ itemName: string; qty: number; sellingPrice: number; supplier: string; repairCustomerName: string; repairPhoneModel: string }> = [];
+    repairAnalysis.forEach(ra => {
+      ra.allParts.forEach(part => {
+        if (!(part as { isAccessory?: boolean }).isAccessory) return;
+        const sellingPrice = (part as { sellingPrice?: number }).sellingPrice ?? 0;
+        list.push({
+          itemName: part.itemName,
+          qty: part.qty,
+          sellingPrice,
+          supplier: part.supplier,
+          repairCustomerName: ra.repair.customerName,
+          repairPhoneModel: ra.repair.phoneModel,
+        });
+      });
+    });
+    return list;
+  }, [repairAnalysis]);
+
   const totals = useMemo(() => {
     const repairRevenue = repairAnalysis.reduce((sum, r) => sum + r.revenue, 0);
     const repairCosts = repairAnalysis.reduce((sum, r) => sum + r.totalCost, 0);
@@ -242,10 +311,13 @@ export default function TodaysSalesReport() {
       });
     }
 
-    if (supplierSummary.length > 0) {
-      text += `\n${b('SUPPLIERS')}\n`;
+    if (inStockAccessorySummary.items.length > 0 || supplierSummary.length > 0) {
+      text += `\n${b('SUPPLIERS / IN-STOCK')}\n`;
+      if (inStockAccessorySummary.items.length > 0) {
+        text += `${getSupplierDisplay('Own Inventory')}: KES ${inStockAccessorySummary.amountSoldAt.toLocaleString()} (sold at)\n`;
+      }
       supplierSummary.forEach(s => {
-        text += `${s.name}:KES ${s.partsCost.toLocaleString()}\n`;
+        text += `${s.name}: KES ${s.partsCost.toLocaleString()}\n`;
       });
     }
 
@@ -358,8 +430,8 @@ export default function TodaysSalesReport() {
         </div>
       </div>
 
-      {/* Supplier Costs Summary */}
-      {supplierSummary.length > 0 && (
+      {/* Supplier Costs Summary: in-stock accessories (selling price) + outsourced supplier costs */}
+      {(inStockAccessorySummary.items.length > 0 || supplierSummary.length > 0) && (
         <div className="bg-white p-5 rounded shadow mb-6">
           <h2 className="text-lg font-semibold mb-3">Supplier Costs Today</h2>
           <div className="overflow-x-auto">
@@ -370,10 +442,19 @@ export default function TodaysSalesReport() {
                   <th className="p-2 text-left">Items Supplied</th>
                   <th className="p-2 text-center">Repairs</th>
                   <th className="p-2 text-center">Accessories</th>
-                  <th className="p-2 text-right">Total Cost</th>
+                  <th className="p-2 text-right">Total Cost / Amount (sold at)</th>
                 </tr>
               </thead>
               <tbody>
+                {inStockAccessorySummary.items.length > 0 && (
+                  <tr className="border-t hover:bg-gray-50 bg-green-50/50">
+                    <td className="p-2 font-semibold">{getSupplierDisplay('Own Inventory')}</td>
+                    <td className="p-2 text-gray-600">{inStockAccessorySummary.items.join(', ')}</td>
+                    <td className="p-2 text-center">—</td>
+                    <td className="p-2 text-center">—</td>
+                    <td className="p-2 text-right font-bold text-green-700">KES {inStockAccessorySummary.amountSoldAt.toLocaleString()} (sold at)</td>
+                  </tr>
+                )}
                 {supplierSummary.map(s => (
                   <tr key={s.name} className="border-t hover:bg-gray-50">
                     <td className="p-2 font-semibold">{s.name}</td>
@@ -386,7 +467,7 @@ export default function TodaysSalesReport() {
               </tbody>
               <tfoot className="bg-gray-50 font-semibold">
                 <tr>
-                  <td className="p-2" colSpan={4}>Total Supplier Costs</td>
+                  <td className="p-2" colSpan={4}>Total Supplier Costs (outsourced only)</td>
                   <td className="p-2 text-right text-red-700">KES {totals.totalSupplierCost.toLocaleString()}</td>
                 </tr>
               </tfoot>
@@ -459,11 +540,11 @@ export default function TodaysSalesReport() {
                     </div>
                   </div>
 
-                  {ra.allParts.length > 0 && (
+                  {ra.allParts.filter(p => !(p as { isAccessory?: boolean }).isAccessory).length > 0 && (
                     <div className="bg-gray-50 rounded p-3">
-                      <p className="text-xs font-semibold text-gray-700 mb-2">Parts & Supplier Costs:</p>
+                      <p className="text-xs font-semibold text-gray-700 mb-2">Spare parts & supplier costs:</p>
                       <div className="space-y-1">
-                        {ra.allParts.map((part, pidx) => (
+                        {ra.allParts.filter(p => !(p as { isAccessory?: boolean }).isAccessory).map((part, pidx) => (
                           <div key={pidx} className="flex justify-between items-center text-sm">
                             <div>
                               <span className="font-medium">{part.itemName}</span>
@@ -478,7 +559,6 @@ export default function TodaysSalesReport() {
                             </span>
                           </div>
                         ))}
-                        
                       </div>
                     </div>
                   )}
@@ -489,12 +569,26 @@ export default function TodaysSalesReport() {
         )}
       </div>
 
-      {/* Detailed Accessory Sales */}
+      {/* Detailed Accessory Sales (includes accessories from Sales page + accessories used in repairs) */}
       <div className="bg-white p-5 rounded shadow">
         <h2 className="text-lg font-semibold mb-4">Detailed Accessory Sales</h2>
-        {accessoryAnalysis.length === 0 ? (
+        {accessoryPartsFromRepairs.length > 0 && (
+          <div className="mb-6 border rounded-lg p-4 bg-purple-50/50">
+            <p className="text-sm font-semibold text-purple-800 mb-2">Accessories used in repairs today</p>
+            <div className="space-y-1">
+              {accessoryPartsFromRepairs.map((p, idx) => (
+                <div key={idx} className="flex justify-between items-center text-sm">
+                  <span className="font-medium">{p.itemName} x{p.qty}</span>
+                  <span className="text-green-700 font-semibold">Sold at: KES {(p.sellingPrice * p.qty).toLocaleString()}</span>
+                </div>
+              ))}
+              <p className="text-xs text-gray-600 mt-1">({getSupplierDisplay('Own Inventory')} – amount sold at, not cost)</p>
+            </div>
+          </div>
+        )}
+        {accessoryAnalysis.length === 0 && accessoryPartsFromRepairs.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No accessory sales recorded today.</p>
-        ) : (
+        ) : accessoryAnalysis.length === 0 ? null : (
           <div className="space-y-4">
             {accessoryAnalysis.map((aa, idx) => (
               <div key={aa.sale.id} className="border rounded-lg p-4">

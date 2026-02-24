@@ -126,7 +126,7 @@ export const formatReceiptText = (sale: any, shopName: string, shopAddress?: str
   if (shopAddress) text += `${shopAddress}\n`;
   if (shopPhone) text += `${shopPhone}\n`;
   text += `\n*Receipt - ${customerName}*\n`;
-  text += `#${sale.id} | ${dateTime}\n`;
+  text += (sale.saleType === 'repair' ? 'Ticket' : 'Receipt') + ` #: ${sale.id} | ${dateTime}\n`;
   if (sale.saleType) {
     const t = sale.saleType === 'in-shop' ? 'In-Shop' : sale.saleType === 'wholesale' ? 'Wholesale' : sale.saleType === 'retail' ? 'Accessories Sale' : 'Repair';
     text += `Type: ${t}\n`;
@@ -150,18 +150,30 @@ export const formatReceiptText = (sale: any, shopName: string, shopAddress?: str
   }
   const totalAmount = sale.totalAgreedAmount || sale.total;
   text += `\n*TOTAL: KES ${totalAmount.toLocaleString()}*\n`;
+  const paymentLabels: Record<string, string> = {
+    cash_to_deposit: 'Cash (to deposit)',
+    mpesa_to_paybill: 'M-Pesa (Paybill)',
+    mpesa_to_mpesa_shop: 'M-Pesa',
+    bank_to_mpesa_shop: 'Bank (to M-Pesa Shop)',
+    bank_to_shop_bank: 'Bank',
+    sacco_to_mpesa: 'Sacco',
+  };
   if (sale.amountPaid !== undefined && sale.amountPaid > 0) {
     text += `Paid: KES ${sale.amountPaid.toLocaleString()}`;
     if (sale.balance !== undefined && sale.balance > 0) text += ` | Balance: KES ${sale.balance.toLocaleString()}`;
     text += `\n`;
   }
   if (sale.splitPayments && Array.isArray(sale.splitPayments) && sale.splitPayments.length > 0) {
-    text += `Payment: Partial/Split\n`;
+    text += `Paid via: Partial payment\n`;
     sale.splitPayments.forEach((p: any) => {
-      text += `• ${(p.method || '').replace(/_/g, ' ')}: KES ${(p.amount || 0).toLocaleString()}`;
+      const methodLabel = paymentLabels[p.method] || (p.method || '').replace(/_/g, ' ');
+      text += `• ${methodLabel}: KES ${(p.amount || 0).toLocaleString()}`;
       if (p.bank) text += ` (${p.bank})`;
       text += `\n`;
     });
+  } else if (sale.paymentMethod && (sale.amountPaid !== undefined && sale.amountPaid > 0)) {
+    text += `Paid via: ${paymentLabels[sale.paymentMethod] || (sale.paymentMethod || '').replace(/_/g, ' ')}\n`;
+    text += `Amount paid: KES ${(sale.amountPaid || 0).toLocaleString()}\n`;
   } else if (sale.transactionCodes && Array.isArray(sale.transactionCodes) && sale.transactionCodes.length > 0) {
     sale.transactionCodes.forEach((tc: any) => {
       text += `${tc.method.replace(/_/g, ' ').toUpperCase()}: ${tc.code}`;

@@ -36,3 +36,15 @@ CREATE TABLE IF NOT EXISTS procurement_payments (
 
 CREATE INDEX IF NOT EXISTS procurement_payments_procurement_id_idx ON procurement_payments(procurement_id);
 CREATE INDEX IF NOT EXISTS procurement_payments_payment_date_idx ON procurement_payments(payment_date);
+
+-- RLS: allow app (anon) to read/write staff_procurements so staff can submit and admin can review
+ALTER TABLE staff_procurements ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all staff_procurements" ON staff_procurements;
+CREATE POLICY "Allow anon all staff_procurements" ON staff_procurements
+  FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- RLS for procurement_payments (admin records payments)
+ALTER TABLE procurement_payments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all procurement_payments" ON procurement_payments;
+CREATE POLICY "Allow anon all procurement_payments" ON procurement_payments
+  FOR ALL TO anon USING (true) WITH CHECK (true);

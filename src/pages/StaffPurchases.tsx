@@ -90,14 +90,20 @@ export default function StaffPurchases() {
       item_name: form.itemName.trim(),
       category: form.category,
       quantity: qty,
-      cost,
+      cost: Number(cost),
       supplier_name: form.supplierName.trim() || null,
       reason: form.reason.trim(),
       submitted_by: currentUser?.name || "Staff",
-      submitted_by_shop: shopName,
+      submitted_by_shop: shopName || null,
     });
 
-    if (error) { alert("Failed to save. Please try again."); console.error("Insert procurement error:", error); return; }
+    if (error) {
+      const msg = error.message || "Unknown error";
+      const code = error.code || "";
+      console.error("Insert procurement error:", { code, message: msg, details: error.details });
+      alert(`Failed to save. Please try again.\n\nDetails: ${msg}${code ? ` (${code})` : ""}`);
+      return;
+    }
 
     setForm({ itemName: "", category: "shop_use", quantity: "1", cost: "", supplierName: "", reason: "" });
     setIsAdding(false);
