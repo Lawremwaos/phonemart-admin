@@ -7,6 +7,20 @@ type ReceiptProps = {
   shopPhone?: string;
 };
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash_to_deposit: 'Cash (to deposit)',
+  mpesa_to_paybill: 'M-Pesa (Paybill)',
+  mpesa_to_mpesa_shop: 'M-Pesa',
+  bank_to_mpesa_shop: 'Bank (to M-Pesa Shop)',
+  bank_to_shop_bank: 'Bank',
+  sacco_to_mpesa: 'Sacco',
+};
+
+function paymentMethodLabel(method: string | undefined): string {
+  if (!method) return '—';
+  return PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ') || '—';
+}
+
 export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = "", shopPhone = "" }: ReceiptProps) {
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleString('en-US', {
@@ -126,7 +140,7 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
               <div className="flex justify-between items-center pt-2 border-t border-gray-300">
                 <span className="text-sm text-gray-600">Paid via:</span>
                 <span className="text-sm font-semibold text-gray-800">
-                  {({ cash_to_deposit: 'Cash (to deposit)', mpesa_to_paybill: 'M-Pesa (Paybill)', mpesa_to_mpesa_shop: 'M-Pesa', bank_to_mpesa_shop: 'Bank (to M-Pesa Shop)', bank_to_shop_bank: 'Bank', sacco_to_mpesa: 'Sacco' }[(sale as any).paymentMethod] || (sale as any).paymentMethod?.replace(/_/g, ' ') || '—'}
+                  {paymentMethodLabel((sale as any).paymentMethod)}
                 </span>
               </div>
             )}
@@ -168,7 +182,7 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-600">Paid via:</span>
                       <span className="text-sm font-semibold text-gray-800">
-                        {({ cash_to_deposit: 'Cash (to deposit)', mpesa_to_paybill: 'M-Pesa (Paybill)', mpesa_to_mpesa_shop: 'M-Pesa', bank_to_mpesa_shop: 'Bank (to M-Pesa Shop)', bank_to_shop_bank: 'Bank', sacco_to_mpesa: 'Sacco' }[(sale as any).paymentMethod] || (sale as any).paymentMethod?.replace(/_/g, ' ') || '—'}
+                        {paymentMethodLabel((sale as any).paymentMethod)}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
@@ -191,7 +205,7 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
             <ul className="text-sm text-gray-600 space-y-1">
               {(sale as any).splitPayments.map((p: { method: string; amount: number; transactionCode?: string; bank?: string }, i: number) => (
                 <li key={i} className="flex justify-between">
-                  <span>{({ cash_to_deposit: 'Cash', mpesa_to_paybill: 'M-Pesa (Paybill)', mpesa_to_mpesa_shop: 'M-Pesa', bank_to_mpesa_shop: 'Bank (M-Pesa)', bank_to_shop_bank: 'Bank', sacco_to_mpesa: 'Sacco' }[p.method] || p.method.replace(/_/g, ' '))}{p.bank ? ` (${p.bank})` : ''}:</span>
+                  <span>{paymentMethodLabel(p.method)}{p.bank ? ` (${p.bank})` : ''}:</span>
                   <span className="font-semibold text-green-600">KES {p.amount.toLocaleString()}</span>
                 </li>
               ))}
