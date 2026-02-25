@@ -16,8 +16,8 @@ export type Supplier = {
 
 type SupplierContextType = {
   suppliers: Supplier[];
-  addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt'>) => void;
-  updateSupplier: (id: string, supplier: Partial<Supplier>) => void;
+  addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt'>) => Promise<string | null>;
+  updateSupplier: (id: string, supplier: Partial<Supplier>) => Promise<void>;
   deleteSupplier: (id: string) => void;
   getSupplierById: (id: string) => Supplier | undefined;
 };
@@ -95,96 +95,79 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
     };
   }, []);
 
-  const addSupplier = useCallback((supplierData: Omit<Supplier, 'id' | 'createdAt'>) => {
-    return (async () => {
-      // Check if supplier with same name already exists
-      const existingSupplier = suppliers.find(s => 
-        s.name.toLowerCase() === supplierData.name.toLowerCase()
-      );
-      
-      if (existingSupplier) {
-        console.warn(`Supplier "${supplierData.name}" already exists`);
-        return existingSupplier.id; // Return existing supplier ID
-      }
+  const addSupplier = useCallback(async (supplierData: Omit<Supplier, 'id' | 'createdAt'>): Promise<string | null> => {
+    const existingSupplier = suppliers.find(s =>
+      s.name.toLowerCase() === supplierData.name.toLowerCase()
+    );
+    if (existingSupplier) return existingSupplier.id;
 
-      const payload = {
-        name: supplierData.name,
-        phone: supplierData.phone || null,
-        email: supplierData.email || null,
-        address: supplierData.address || null,
-        categories: supplierData.categories,
-        supplier_type: supplierData.supplierType || 'local',
-      };
-      const { data, error } = await supabase.from("suppliers").insert(payload).select("*").single();
-      if (error) {
-        // Handle duplicate name error gracefully
-        if (error.code === '23505' || error.message.includes('unique')) {
-          console.warn(`Supplier "${supplierData.name}" already exists in database`);
-          // Try to fetch the existing supplier
-          const { data: existing } = await supabase
-            .from("suppliers")
-            .select("*")
-            .eq("name", supplierData.name)
-            .single();
-          if (existing) {
-            const existingSupplier: Supplier = {
-              id: existing.id,
-              name: existing.name,
-              phone: existing.phone || undefined,
-              email: existing.email || undefined,
-              address: existing.address || undefined,
-              categories: (existing.categories || []) as any,
-              supplierType: (existing.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType,
-              createdAt: new Date(existing.created_at),
-            };
-            // Add to state if not already there
-            setSuppliers((prev) => {
-              if (prev.find(s => s.id === existingSupplier.id)) {
-                return prev;
-              }
-              return [existingSupplier, ...prev];
-            });
-            return existingSupplier.id;
-          }
-        } else {
-          console.error("Error adding supplier:", error);
+    const payload: Record<string, unknown> = {
+      name: supplierData.name,
+      phone: supplierData.phone || null,
+      email: supplierData.email || null,
+      address: supplierData.address || null,
+      categories: supplierData.categories,
+    };
+    if (supplierData.supplierType) payload.supplier_type = supplierData.supplierType;
+
+    const { data, error } = await supabase.from("suppliers").insert(payload).select("*").single();
+    if (error) {
+      if (error.code === "23505" || error.message.includes("unique")) {
+        const { data: existing } = await supabase
+          .from("suppliers")
+          .select("*")
+          .eq("name", supplierData.name)
+          .single();
+        if (existing) {
+          const mapped: Supplier = {
+            id: existing.id,
+            name: existing.name,
+            phone: existing.phone || undefined,
+            email: existing.email || undefined,
+            address: existing.address || undefined,
+            categories: (existing.categories || []) as Supplier["categories"],
+            supplierType: (existing.supplier_type === "wholesale" ? "wholesale" : "local") as SupplierType,
+            createdAt: new Date(existing.created_at),
+          };
+          setSuppliers((prev) =>
+            prev.some((s) => s.id === mapped.id) ? prev : [mapped, ...prev]
+          );
+          return mapped.id;
         }
-        return null;
       }
-      const newSupplier: Supplier = {
-        id: data.id,
-        name: data.name,
-        phone: data.phone || undefined,
-        email: data.email || undefined,
-        address: data.address || undefined,
-        categories: (data.categories || []) as any,
-        supplierType: (data.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType,
-        createdAt: new Date(data.created_at),
-      };
-      setSuppliers((prev) => [newSupplier, ...prev]);
-      return newSupplier.id;
-    })();
+      console.error("Error adding supplier:", error);
+      throw error;
+    }
+    const newSupplier: Supplier = {
+      id: data.id,
+      name: data.name,
+      phone: data.phone || undefined,
+      email: data.email || undefined,
+      address: data.address || undefined,
+      categories: (data.categories || []) as Supplier["categories"],
+      supplierType: (data.supplier_type === "wholesale" ? "wholesale" : "local") as SupplierType,
+      createdAt: new Date(data.created_at),
+    };
+    setSuppliers((prev) => [newSupplier, ...prev]);
+    return newSupplier.id;
   }, [suppliers]);
 
-  const updateSupplier = useCallback((id: string, supplierData: Partial<Supplier>) => {
-    (async () => {
-      const payload: any = {
-        ...(supplierData.name !== undefined ? { name: supplierData.name } : {}),
-        ...(supplierData.phone !== undefined ? { phone: supplierData.phone } : {}),
-        ...(supplierData.email !== undefined ? { email: supplierData.email } : {}),
-        ...(supplierData.address !== undefined ? { address: supplierData.address } : {}),
-        ...(supplierData.categories !== undefined ? { categories: supplierData.categories } : {}),
-        ...(supplierData.supplierType !== undefined ? { supplier_type: supplierData.supplierType } : {}),
-      };
-      const { error } = await supabase.from("suppliers").update(payload).eq("id", id);
-      if (error) {
-        console.error("Error updating supplier:", error);
-        return;
-      }
-      setSuppliers((prev) =>
-        prev.map((supplier) => (supplier.id === id ? { ...supplier, ...supplierData } : supplier))
-      );
-    })();
+  const updateSupplier = useCallback(async (id: string, supplierData: Partial<Supplier>): Promise<void> => {
+    const payload: Record<string, unknown> = {};
+    if (supplierData.name !== undefined) payload.name = supplierData.name;
+    if (supplierData.phone !== undefined) payload.phone = supplierData.phone;
+    if (supplierData.email !== undefined) payload.email = supplierData.email;
+    if (supplierData.address !== undefined) payload.address = supplierData.address;
+    if (supplierData.categories !== undefined) payload.categories = supplierData.categories;
+    if (supplierData.supplierType !== undefined) payload.supplier_type = supplierData.supplierType;
+    const { error } = await supabase.from("suppliers").update(payload).eq("id", id);
+    if (error) {
+      console.error("Error updating supplier:", error);
+      throw error;
+    }
+    setSuppliers((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...supplierData } : s))
+    );
   }, []);
 
   const deleteSupplier = useCallback((id: string) => {

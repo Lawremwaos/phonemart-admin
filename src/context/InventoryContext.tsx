@@ -83,7 +83,7 @@ type InventoryContextType = {
   removeItem: (id: number) => void;
   addStock: (itemId: number, qty: number) => void;
   deductStock: (name: string, qty: number, shopId?: string) => void;
-  addPurchase: (purchase: Omit<Purchase, 'id' | 'date'>) => void;
+  addPurchase: (purchase: Omit<Purchase, 'id' | 'date'>) => Promise<void>;
   confirmPurchase: (purchaseId: string) => void;
   deletePurchase: (purchaseId: string) => void;
   addExchange: (exchange: Omit<Exchange, 'id' | 'date'>) => void;
@@ -457,108 +457,154 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     updateItem(item.id, { stock: Math.max(0, item.stock - qty) });
   }, [items, updateItem]);
 
-  const addPurchase = useCallback((purchaseData: Omit<Purchase, 'id' | 'date'>) => {
-    (async () => {
-      // Insert purchase
-      const { data: purchaseRecord, error: purchaseError } = await supabase
-        .from("purchases")
-        .insert({
+  const addPurchase = useCallback(async (purchaseData: Omit<Purchase, 'id' | 'date'>): Promise<void> => {
+    // Resolve new items (negative itemId) to real inventory IDs by creating them first
+    const resolvedItems: Array<{ itemId: number; itemName: string; qty: number; costPrice: number; actualCost?: number }> = [];
+    for (const item of purchaseData.items) {
+      const existingItem = items.find((i) => i.id === item.itemId);
+      if (existingItem && item.itemId > 0) {
+        resolvedItems.push({
+          itemId: item.itemId,
+          itemName: item.itemName,
+          qty: item.qty,
+          costPrice: item.costPrice,
+          actualCost: item.actualCost,
+        });
+      } else {
+        const actualCost = item.actualCost ?? item.costPrice;
+        const payload = {
+          name: item.itemName,
+          category: 'Spare',
+          stock: item.qty,
+          price: 0,
+          reorder_level: 0,
+          initial_stock: item.qty,
+          shop_id: null,
           supplier: purchaseData.supplier,
-          total: purchaseData.total,
-          shop_id: purchaseData.shopId || null,
-          supplier_type: purchaseData.supplierType || 'local',
-        })
-        .select("*")
-        .single();
-      if (purchaseError) {
-        console.error("Error adding purchase:", purchaseError);
-        return;
-      }
-
-      // Insert purchase items (actual_cost = real buying price, admin only)
-      const purchaseItemsPayload = purchaseData.items.map((item) => ({
-        purchase_id: purchaseRecord.id,
-        item_id: item.itemId,
-        item_name: item.itemName,
-        qty: item.qty,
-        cost_price: item.costPrice,
-        actual_cost: item.actualCost ?? item.costPrice ?? null,
-      }));
-      const { error: itemsError } = await supabase
-        .from("purchase_items")
-        .insert(purchaseItemsPayload);
-      if (itemsError) {
-        console.error("Error adding purchase items:", itemsError);
-        return;
-      }
-
-      // Update or create inventory items - mark as pending allocation
-      for (const purchaseItem of purchaseData.items) {
-        const existingItem = items.find((i) => i.id === purchaseItem.itemId);
-        const actualCost = purchaseItem.actualCost ?? purchaseItem.costPrice;
-        if (existingItem) {
-          await updateItem(existingItem.id, {
-            stock: existingItem.stock + purchaseItem.qty,
-            pendingAllocation: true,
-            adminCostPrice: purchaseItem.costPrice,
-            actualCost: actualCost,
-            supplier: purchaseData.supplier,
-          });
-        } else {
-          console.warn("Item not found for purchase, creating new item:", purchaseItem.itemName);
-          await addItem({
-            name: purchaseItem.itemName,
-            category: "Spare",
-            stock: purchaseItem.qty,
+          cost_price: item.costPrice,
+          admin_cost_price: item.costPrice,
+          actual_cost: actualCost,
+          pending_allocation: true,
+        };
+        const { data: newRow, error: insertErr } = await supabase
+          .from('inventory_items')
+          .insert(payload)
+          .select('id')
+          .single();
+        if (insertErr) {
+          console.error('Error creating inventory item:', insertErr);
+          throw insertErr;
+        }
+        const newId = newRow.id;
+        setItems((prev) => [
+          {
+            id: newId,
+            name: item.itemName,
+            category: 'Spare',
+            stock: item.qty,
             price: 0,
             reorderLevel: 0,
-            initialStock: purchaseItem.qty,
+            initialStock: item.qty,
             pendingAllocation: true,
-            adminCostPrice: purchaseItem.costPrice,
+            adminCostPrice: item.costPrice,
             actualCost: actualCost,
             supplier: purchaseData.supplier,
-          });
-        }
+          } as InventoryItem,
+          ...prev,
+        ]);
+        resolvedItems.push({
+          itemId: newId,
+          itemName: item.itemName,
+          qty: item.qty,
+          costPrice: item.costPrice,
+          actualCost: item.actualCost,
+        });
       }
+    }
 
-      // Reload purchases to get the new one
-      const { data: newPurchaseData, error: fetchError } = await supabase
-        .from("purchases")
-        .select("*")
-        .eq("id", purchaseRecord.id)
-        .single();
-      if (fetchError) {
-        console.error("Error fetching new purchase:", fetchError);
-        return;
+    const purchasePayload: Record<string, unknown> = {
+      supplier: purchaseData.supplier,
+      total: purchaseData.total,
+      shop_id: purchaseData.shopId || null,
+    };
+    if (purchaseData.supplierType) purchasePayload.supplier_type = purchaseData.supplierType;
+
+    const { data: purchaseRecord, error: purchaseError } = await supabase
+      .from('purchases')
+      .insert(purchasePayload)
+      .select('*')
+      .single();
+    if (purchaseError) {
+      console.error('Error adding purchase:', purchaseError);
+      throw purchaseError;
+    }
+
+    const purchaseItemsPayload = resolvedItems.map((item) => ({
+      purchase_id: purchaseRecord.id,
+      item_id: item.itemId,
+      item_name: item.itemName,
+      qty: item.qty,
+      cost_price: item.costPrice,
+      ...(item.actualCost != null && { actual_cost: item.actualCost }),
+    }));
+    const { error: itemsError } = await supabase
+      .from('purchase_items')
+      .insert(purchaseItemsPayload);
+    if (itemsError) {
+      console.error('Error adding purchase items:', itemsError);
+      throw itemsError;
+    }
+
+    for (const item of purchaseData.items) {
+      const existingItem = items.find((i) => i.id === item.itemId);
+      if (existingItem && item.itemId > 0) {
+        const actualCost = item.actualCost ?? item.costPrice;
+        updateItem(existingItem.id, {
+          stock: existingItem.stock + item.qty,
+          pendingAllocation: true,
+          adminCostPrice: item.costPrice,
+          actualCost: actualCost,
+          supplier: purchaseData.supplier,
+        });
       }
+    }
 
-      const { data: itemsData } = await supabase
-        .from("purchase_items")
-        .select("*")
-        .eq("purchase_id", purchaseRecord.id);
+    const { data: newPurchaseData, error: fetchError } = await supabase
+      .from('purchases')
+      .select('*')
+      .eq('id', purchaseRecord.id)
+      .single();
+    if (fetchError) {
+      console.error('Error fetching new purchase:', fetchError);
+      return;
+    }
 
-      const newPurchase: Purchase = {
-        id: newPurchaseData.id,
-        date: new Date(newPurchaseData.date),
-        supplier: newPurchaseData.supplier,
-        supplierType: newPurchaseData.supplier_type === 'wholesale' ? 'wholesale' : 'local',
-        total: Number(newPurchaseData.total) || 0,
-        shopId: newPurchaseData.shop_id || undefined,
-        confirmed: newPurchaseData.confirmed || false,
-        confirmedBy: newPurchaseData.confirmed_by || undefined,
-        confirmedDate: newPurchaseData.confirmed_date ? new Date(newPurchaseData.confirmed_date) : undefined,
-        items: (itemsData || []).map((pi: any) => ({
-          itemId: pi.item_id,
-          itemName: pi.item_name,
-          qty: pi.qty,
-          costPrice: Number(pi.cost_price) || 0,
-          actualCost: pi.actual_cost != null ? Number(pi.actual_cost) : undefined,
-        })),
-      };
-      lastLocalUpdateRef.current = Date.now();
-      setPurchases((prev) => [newPurchase, ...prev]);
-    })();
-  }, [items, addItem, updateItem]);
+    const { data: itemsData } = await supabase
+      .from('purchase_items')
+      .select('*')
+      .eq('purchase_id', purchaseRecord.id);
+
+    const newPurchase: Purchase = {
+      id: newPurchaseData.id,
+      date: new Date(newPurchaseData.date),
+      supplier: newPurchaseData.supplier,
+      supplierType: (newPurchaseData.supplier_type === 'wholesale' ? 'wholesale' : 'local') as 'local' | 'wholesale',
+      total: Number(newPurchaseData.total) || 0,
+      shopId: newPurchaseData.shop_id || undefined,
+      confirmed: newPurchaseData.confirmed || false,
+      confirmedBy: newPurchaseData.confirmed_by || undefined,
+      confirmedDate: newPurchaseData.confirmed_date ? new Date(newPurchaseData.confirmed_date) : undefined,
+      items: (itemsData || []).map((pi: any) => ({
+        itemId: pi.item_id,
+        itemName: pi.item_name,
+        qty: pi.qty,
+        costPrice: Number(pi.cost_price) || 0,
+        actualCost: pi.actual_cost != null ? Number(pi.actual_cost) : undefined,
+      })),
+    };
+    lastLocalUpdateRef.current = Date.now();
+    setPurchases((prev) => [newPurchase, ...prev]);
+  }, [items, updateItem]);
 
   const confirmPurchase = useCallback((purchaseId: string) => {
     (async () => {

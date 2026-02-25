@@ -74,7 +74,7 @@ export default function SupplierManagement() {
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name.trim()) {
       alert("Please enter supplier name");
       return;
@@ -88,10 +88,16 @@ export default function SupplierManagement() {
       return;
     }
 
-    if (editingId) {
-      updateSupplier(editingId, formData);
-    } else {
-      addSupplier(formData);
+    try {
+      if (editingId) {
+        await updateSupplier(editingId, formData);
+      } else {
+        await addSupplier(formData);
+      }
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      alert(`Could not save supplier: ${err?.message || "Unknown error"}. Please try again.`);
+      return;
     }
 
     setFormData({ name: "", phone: "", email: "", address: "", categories: ['spare_parts'], supplierType: 'local' });

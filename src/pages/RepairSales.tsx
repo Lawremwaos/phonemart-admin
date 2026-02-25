@@ -113,16 +113,21 @@ export default function RepairSales() {
   // Auto-set technician from logged-in user
   const technician = currentUser?.name || "";
 
-  function addNewSupplier() {
+  async function addNewSupplier() {
     if (!newSupplierName.trim()) {
       alert("Please enter supplier name");
       return;
     }
     const supplierName = newSupplierName.trim();
-    addSupplier({ name: supplierName, categories: ['spare_parts'], supplierType: 'local' });
-    setPendingSupplierName(supplierName);
-    setNewSupplierName("");
-    setShowAddSupplier(false);
+    try {
+      await addSupplier({ name: supplierName, categories: ['spare_parts'], supplierType: 'local' });
+      setPendingSupplierName(supplierName);
+      setNewSupplierName("");
+      setShowAddSupplier(false);
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      alert(`Could not add supplier: ${err?.message || "Unknown error"}. Please try again.`);
+    }
   }
 
   function addPart() {

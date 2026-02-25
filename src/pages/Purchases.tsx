@@ -116,23 +116,24 @@ export default function Purchases() {
       return;
     }
 
-    // Ensure supplier exists in database (should already be saved via onBlur or button click)
     if (!supplierId && supplierName.trim()) {
-      // Check if supplier already exists by name
-      const existingSupplier = suppliers.find(s => 
+      const existingSupplier = suppliers.find(s =>
         s.name.toLowerCase() === supplierName.trim().toLowerCase()
       );
-      
       if (!existingSupplier) {
-        // Add new supplier to database (fallback if not already saved)
-        addSupplier({
-          name: supplierName.trim(),
-          categories: ['spare_parts', 'accessories'],
-        });
-        // Use the name directly for this purchase
-        finalSupplierName = supplierName.trim();
+        try {
+          const newId = await addSupplier({
+            name: supplierName.trim(),
+            categories: ['spare_parts', 'accessories'],
+          });
+          if (newId) setSupplierId(newId);
+          finalSupplierName = supplierName.trim();
+        } catch (e: unknown) {
+          const err = e as { message?: string };
+          alert(`Could not save supplier: ${err?.message || 'Unknown error'}. Please try again or select an existing supplier.`);
+          return;
+        }
       } else {
-        // Use existing supplier
         finalSupplierName = existingSupplier.name;
         setSupplierId(existingSupplier.id);
       }
@@ -184,22 +185,26 @@ export default function Purchases() {
     const selectedSupplier = supplierId ? suppliers.find(s => s.id === supplierId) : null;
     const supplierType = selectedSupplier?.supplierType || 'local';
 
-    addPurchase({
-      supplier: finalSupplierName,
-      supplierType: supplierType as 'local' | 'wholesale',
-      items: processedItems.map(p => ({ ...p, actualCost: p.costPrice })),
-      total,
-      shopId: currentShop?.id,
-    });
+    try {
+      await addPurchase({
+        supplier: finalSupplierName,
+        supplierType: supplierType as 'local' | 'wholesale',
+        items: processedItems.map(p => ({ ...p, actualCost: p.costPrice })),
+        total,
+        shopId: currentShop?.id,
+      });
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      alert(`Could not save purchase: ${err?.message || 'Unknown error'}. Please try again.`);
+      return;
+    }
 
-    // Reset form
     setSupplierId("");
     setSupplierName("");
     setPurchaseItems([]);
     setItemName("");
     setQty(1);
     setCostPrice(0);
-    
     alert(`Purchase recorded! Total: KES ${total.toLocaleString()}`);
   };
 
@@ -240,23 +245,23 @@ export default function Purchases() {
                   setSupplierId("");
                 }}
                 onBlur={async () => {
-                  // Auto-save supplier when user leaves the field
-                  if (supplierName.trim() && !supplierId) {
-                    const existingSupplier = suppliers.find(s => 
-                      s.name.toLowerCase() === supplierName.trim().toLowerCase()
-                    );
-                    if (!existingSupplier) {
-                      // Add new supplier to database
-                      addSupplier({
-                        name: supplierName.trim(),
-                        categories: ['spare_parts', 'accessories'], // Default to both
-                      });
-                      // The supplier will appear in the dropdown after state updates
-                    } else {
-                      // Use existing supplier
-                      setSupplierId(existingSupplier.id);
-                      setSupplierName(existingSupplier.name);
-                    }
+                  if (!supplierName.trim() || supplierId) return;
+                  const existingSupplier = suppliers.find(s =>
+                    s.name.toLowerCase() === supplierName.trim().toLowerCase()
+                  );
+                  if (existingSupplier) {
+                    setSupplierId(existingSupplier.id);
+                    setSupplierName(existingSupplier.name);
+                    return;
+                  }
+                  try {
+                    const newId = await addSupplier({
+                      name: supplierName.trim(),
+                      categories: ['spare_parts', 'accessories'],
+                    });
+                    if (newId) setSupplierId(newId);
+                  } catch {
+                    // Silent on blur; user can retry with Save Supplier button
                   }
                 }}
                 className="flex-1 border border-gray-300 rounded-md px-3 py-2"
@@ -265,18 +270,26 @@ export default function Purchases() {
               {supplierName.trim() && !supplierId && (
                 <button
                   onClick={async () => {
-                    const existingSupplier = suppliers.find(s => 
+                    const existingSupplier = suppliers.find(s =>
                       s.name.toLowerCase() === supplierName.trim().toLowerCase()
                     );
-                    if (!existingSupplier) {
-                      addSupplier({
+                    if (existingSupplier) {
+                      setSupplierId(existingSupplier.id);
+                      setSupplierName(existingSupplier.name);
+                      return;
+                    }
+                    try {
+                      const newId = await addSupplier({
                         name: supplierName.trim(),
                         categories: ['spare_parts', 'accessories'],
                       });
-                      alert(`Supplier "${supplierName.trim()}" added successfully!`);
-                    } else {
-                      setSupplierId(existingSupplier.id);
-                      setSupplierName(existingSupplier.name);
+                      if (newId) {
+                        setSupplierId(newId);
+                        alert(`Supplier "${supplierName.trim()}" added successfully!`);
+                      }
+                    } catch (e: unknown) {
+                      const err = e as { message?: string };
+                      alert(`Could not save supplier: ${err?.message || "Unknown error"}. Please try again.`);
                     }
                   }}
                   className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 whitespace-nowrap"
