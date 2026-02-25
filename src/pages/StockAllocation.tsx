@@ -32,15 +32,17 @@ export default function StockAllocation() {
 
 
 
-  // Get unallocated ACCESSORIES from inventory (for requesting additional stock) - staff can see these
-  const unallocatedAccessories = useMemo(() => {
+  // Get ALL unallocated items from inventory (for requesting additional stock) - staff can see these
+  const unallocatedItems = useMemo(() => {
     return items.filter(item => 
       !item.shopId && 
       item.stock > 0 &&
-      item.category === 'Accessory' &&
       !item.pendingAllocation
     );
   }, [items]);
+
+  // State for showing/hiding request form
+  const [showRequestForm, setShowRequestForm] = useState(false);
 
   // Get pending allocations for current staff's shop
   const pendingAllocationsForMyShop = useMemo(() => {
@@ -108,9 +110,10 @@ export default function StockAllocation() {
     };
 
     setStockRequests(prev => [...prev, newRequest]);
-    alert(`Stock request submitted: ${requestQty} ${item.name}`);
+    alert(`Stock request submitted: ${requestQty} ${item.name}. Waiting for admin approval.`);
     setRequestItemId("");
     setRequestQty(0);
+    setShowRequestForm(false);
   };
 
   // Admin: Approve stock request
@@ -445,7 +448,16 @@ export default function StockAllocation() {
   // Staff view: Accept allocations and request stock
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">My Stock & Requests</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">My Stock & Requests</h2>
+        <button
+          onClick={() => setShowRequestForm(!showRequestForm)}
+          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-semibold shadow-lg flex items-center gap-2"
+        >
+          <span>📦</span>
+          <span>{showRequestForm ? 'Hide' : 'Request'} Stock from Admin Inventory</span>
+        </button>
+      </div>
 
       {/* Accept Pending Allocations */}
       {pendingAllocationsForMyShop.length > 0 && (
@@ -482,70 +494,88 @@ export default function StockAllocation() {
         </div>
       )}
 
-      {/* Request Additional Stock (Unallocated Accessories Only) */}
-      <div className="bg-white p-6 rounded shadow">
-        <h3 className="text-lg font-semibold mb-4">Request Additional Stock</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          Request additional stock from unallocated accessories when you finish your allocated stock.
-        </p>
+      {/* Request Stock from Admin Inventory - Expandable Section */}
+      {showRequestForm && (
+        <div className="bg-white p-6 rounded shadow border-2 border-blue-200">
+          <h3 className="text-lg font-semibold mb-2 text-blue-800">Request Stock from Admin Inventory</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            View unallocated stock available in admin inventory and request what you need.
+          </p>
 
-        {unallocatedAccessories.length === 0 ? (
-          <div className="bg-gray-50 border border-gray-200 rounded p-4">
-            <p className="text-gray-600">No unallocated accessories available.</p>
-          </div>
-        ) : (
-          <>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Accessory *
-              </label>
-              <select
-                value={requestItemId}
-                onChange={(e) => {
-                  setRequestItemId(Number(e.target.value));
-                  setRequestQty(0);
-                }}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-              >
-                <option value="">Select accessory</option>
-                {unallocatedAccessories.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} (Available: {item.stock})
-                  </option>
-                ))}
-              </select>
+          {unallocatedItems.length === 0 ? (
+            <div className="bg-gray-50 border border-gray-200 rounded p-4">
+              <p className="text-gray-600">No unallocated stock available in admin inventory.</p>
             </div>
-
-            {requestItemId && (
+          ) : (
+            <>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Quantity Needed *
+                  Select Item from Unallocated Stock *
                 </label>
-                <input
-                  type="number"
-                  value={requestQty || ""}
-                  onChange={(e) => setRequestQty(Number(e.target.value))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  min="1"
-                  max={unallocatedAccessories.find(i => i.id === requestItemId)?.stock || 0}
-                  placeholder="Enter quantity"
-                />
+                <select
+                  value={requestItemId}
+                  onChange={(e) => {
+                    setRequestItemId(Number(e.target.value));
+                    setRequestQty(0);
+                  }}
+                  className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                >
+                  <option value="">-- Select an item --</option>
+                  {unallocatedItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} ({item.category}) - Available: {item.stock}
+                    </option>
+                  ))}
+                </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Available: {unallocatedAccessories.find(i => i.id === requestItemId)?.stock || 0}
+                  {unallocatedItems.length} unallocated item{unallocatedItems.length !== 1 ? 's' : ''} available
                 </p>
               </div>
-            )}
 
-            <button
-              onClick={handleRequestStock}
-              className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 font-semibold"
-              disabled={!requestItemId || requestQty <= 0}
-            >
-              Request Stock
-            </button>
-          </>
-        )}
-      </div>
+              {requestItemId && (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Quantity Needed *
+                    </label>
+                    <input
+                      type="number"
+                      value={requestQty || ""}
+                      onChange={(e) => setRequestQty(Number(e.target.value))}
+                      className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                      min="1"
+                      max={unallocatedItems.find(i => i.id === requestItemId)?.stock || 0}
+                      placeholder="Enter quantity"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Available: <span className="font-semibold">{unallocatedItems.find(i => i.id === requestItemId)?.stock || 0}</span>
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleRequestStock}
+                      className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      disabled={!requestItemId || requestQty <= 0}
+                    >
+                      Submit Request
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRequestItemId("");
+                        setRequestQty(0);
+                      }}
+                      className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400 font-semibold"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* My Accepted Allocations */}
       <div className="bg-white p-6 rounded shadow">
