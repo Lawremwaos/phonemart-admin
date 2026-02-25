@@ -47,7 +47,7 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
           email: s.email || undefined,
           address: s.address || undefined,
           categories: (s.categories || []) as any,
-          supplierType: (s.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType | undefined,
+          supplierType: (s.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType,
           createdAt: new Date(s.created_at),
         }));
         setSuppliers(mapped);
@@ -77,7 +77,7 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
                 email: s.email || undefined,
                 address: s.address || undefined,
                 categories: (s.categories || []) as any,
-                supplierType: (s.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType | undefined,
+                supplierType: (s.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType,
                 createdAt: new Date(s.created_at),
               }));
               setSuppliers(mapped);
@@ -101,14 +101,13 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
     );
     if (existingSupplier) return existingSupplier.id;
 
-    const payload: Record<string, unknown> = {
+    const payload = {
       name: supplierData.name,
       phone: supplierData.phone || null,
       email: supplierData.email || null,
       address: supplierData.address || null,
       categories: supplierData.categories,
     };
-    if (supplierData.supplierType) payload.supplier_type = supplierData.supplierType;
 
     const { data, error } = await supabase.from("suppliers").insert(payload).select("*").single();
     if (error) {
@@ -159,7 +158,6 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
     if (supplierData.email !== undefined) payload.email = supplierData.email;
     if (supplierData.address !== undefined) payload.address = supplierData.address;
     if (supplierData.categories !== undefined) payload.categories = supplierData.categories;
-    if (supplierData.supplierType !== undefined) payload.supplier_type = supplierData.supplierType;
     const { error } = await supabase.from("suppliers").update(payload).eq("id", id);
     if (error) {
       console.error("Error updating supplier:", error);
