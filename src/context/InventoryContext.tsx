@@ -774,7 +774,10 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
 
         const destItem = items.find((i) => i.name === sourceItem.name && i.shopId === alloc.shopId);
         if (destItem) {
-          await updateItem(destItem.id, { stock: destItem.stock + alloc.qty });
+          await updateItem(destItem.id, { 
+            stock: destItem.stock + alloc.qty,
+            pendingAllocation: false, // Stock is now allocated and confirmed
+          });
         } else {
           await addItem({
             name: sourceItem.name,
@@ -788,6 +791,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
             supplier: sourceItem.supplier,
             costPrice: sourceItem.costPrice,
             adminCostPrice: sourceItem.adminCostPrice,
+            pendingAllocation: false, // Stock is allocated and confirmed
           });
         }
       }

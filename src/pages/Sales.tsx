@@ -40,9 +40,9 @@ export default function Sales() {
   const [wholesaleBank, setWholesaleBank] = useState<string>('');
   const [wholesaleDepositReference, setWholesaleDepositReference] = useState<string>('');
 
-  // Items available for sale: allocated to current shop OR in main warehouse (unallocated)
-  // For staff: show items allocated to their shop OR unallocated items (main warehouse)
-  // For admin: show all items
+  // Items available for sale: ONLY allocated items
+  // For staff: show ONLY items allocated to their shop (not unallocated items)
+  // For admin: show all allocated items (can see all shops)
   const isAdmin = currentUser?.roles.includes('admin') ?? false;
   
   const salesItems = items.filter(item => {
@@ -54,15 +54,18 @@ export default function Sales() {
       return false;
     }
     
-    // Admin can see all items
+    // Only show items that are allocated (have a shopId) and not pending allocation
+    if (item.pendingAllocation || !item.shopId) {
+      return false; // Don't show unallocated or pending items
+    }
+    
+    // Admin can see all allocated items
     if (isAdmin) {
       return true;
     }
     
-    // Staff can see: items allocated to their shop OR unallocated items (main warehouse)
-    const allocatedToCurrentShop = item.shopId === currentShop?.id;
-    const inMainWarehouse = item.shopId == null || item.shopId === undefined;
-    return allocatedToCurrentShop || inMainWarehouse;
+    // Staff can ONLY see items allocated to their shop
+    return item.shopId === currentShop?.id;
   });
 
   const selectedItem = itemSource === 'inventory' && selectedItemId

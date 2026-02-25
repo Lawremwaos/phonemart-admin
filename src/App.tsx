@@ -23,6 +23,8 @@ import AdminCustomerManagement from "./pages/AdminCustomerManagement";
 import Repairs from "./pages/Repairs";
 import ProcurementReview from "./pages/ProcurementReview";
 import StaffPurchases from "./pages/StaffPurchases";
+import RepairSaleProfit from "./pages/RepairSaleProfit";
+import AccessoryProfit from "./pages/AccessoryProfit";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useShop } from "./context/ShopContext";
@@ -145,6 +147,16 @@ function AppContent() {
                     Returns & Warranty
                   </Link>
                 </li>
+                <li>
+                  <Link 
+                    to="/repair-sale-profit" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/repair-sale-profit' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Repair Sale Profit
+                  </Link>
+                </li>
               </ul>
             )}
           </li>
@@ -222,6 +234,16 @@ function AppContent() {
                     }`}
                   >
                     Exchange
+                  </Link>
+                </li>
+                <li>
+                  <Link 
+                    to="/accessory-profit" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/accessory-profit' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Accessory Profit
                   </Link>
                 </li>
               </ul>
@@ -523,6 +545,22 @@ function AppContent() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
                 <CostOfParts />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/repair-sale-profit"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <RepairSaleProfit />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/accessory-profit"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <AccessoryProfit />
               </ProtectedRoute>
             }
           />
