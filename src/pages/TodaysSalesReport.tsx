@@ -62,23 +62,22 @@ export default function TodaysSalesReport() {
     return false;
   };
 
-  // Helper: find cost price for an inventory item. Staff never see adminCostPrice.
+  // Helper: find cost price for an inventory item.
+  // For staff: ALWAYS use costPrice (staff selling price set by admin)
+  // For admin: use actualCost if available, otherwise adminCostPrice
   const getCostPrice = (itemName: string): number => {
     const inv = inventoryItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
     if (!isAdmin) {
+      // Staff: ALWAYS use costPrice (staff selling price) - never fall back to purchase cost
       if (inv?.costPrice != null && inv.costPrice > 0) return inv.costPrice;
-      for (const p of purchases) {
-        const pi = p.items.find(pi => pi.itemName.toLowerCase() === itemName.toLowerCase());
-        if (pi) return pi.costPrice;
-      }
+      // If no inventory item found, return 0 (shouldn't happen for allocated items)
       return 0;
     }
+    // Admin: use actualCost (real wholesale cost) if available, otherwise adminCostPrice
+    if (inv?.actualCost != null && inv.actualCost > 0) return inv.actualCost;
     if (inv?.adminCostPrice != null && inv.adminCostPrice > 0) return inv.adminCostPrice;
+    // Fallback to costPrice for admin (shouldn't normally happen)
     if (inv?.costPrice != null && inv.costPrice > 0) return inv.costPrice;
-    for (const p of purchases) {
-      const pi = p.items.find(pi => pi.itemName.toLowerCase() === itemName.toLowerCase());
-      if (pi) return pi.costPrice;
-    }
     return 0;
   };
 
@@ -151,8 +150,10 @@ export default function TodaysSalesReport() {
     return isAccessoryPart(item.name);
   };
 
-  // --- ACCESSORY ANALYSIS (per-sale; only accessory items; staff_profit = selling_price - admin_base_price, real_profit = selling_price - actual_cost for admin)
-  // IMPORTANT: item.price is the ACTUAL selling price entered when making the sale, NOT admin_base_price
+  // --- ACCESSORY ANALYSIS (per-sale; only accessory items)
+  // Staff profit = selling_price - staff_selling_price (costPrice)
+  // Admin real profit = selling_price - actual_cost
+  // IMPORTANT: item.price is the ACTUAL selling price entered when making the sale
   const accessoryAnalysis = useMemo(() => {
     return todaysSales.map((sale) => {
       const accessoryItems = sale.items.filter((item) => isAccessorySaleItem(sale, item));
@@ -160,24 +161,34 @@ export default function TodaysSalesReport() {
         // item.price is the actual selling price that was entered when making the sale
         const actualSellingPrice = item.price;
         
+        // Find inventory item to get correct cost
+        const invItem = inventoryItems.find(i => 
+          (item.itemId && i.id === item.itemId) || 
+          i.name.toLowerCase() === item.name.toLowerCase()
+        );
+        
         // Cost bases for profit calculation
-        const adminBase = item.adminBasePrice ?? getCostPrice(item.name);
-        const costForStaff = adminBase;
-        const costForAdmin = item.actualCost ?? adminBase;
+        // Staff: ALWAYS use costPrice (staff selling price set by admin)
+        // Admin: use actualCost (real wholesale cost) if available, otherwise adminCostPrice
+        const costForStaff = invItem?.costPrice ?? item.adminBasePrice ?? 0;
+        const costForAdmin = invItem?.actualCost ?? invItem?.adminCostPrice ?? costForStaff;
+        
         const supplier = getSupplierForItem(item.name);
         
-        // Profit calculation: selling_price - cost (NOT admin_base_price - cost)
+        // Profit calculation: selling_price - cost
+        // Staff: profit = selling_price - staff_selling_price (costPrice)
+        // Admin: profit = selling_price - actual_cost
         const staffProfit = item.qty * (actualSellingPrice - costForStaff);
         const realProfit = isAdmin ? item.qty * (actualSellingPrice - costForAdmin) : staffProfit;
         
         return {
           itemName: item.name,
           qty: item.qty,
-          sellingPrice: actualSellingPrice, // This is the actual selling price, not admin_base_price
-          costPrice: isAdmin ? costForAdmin : costForStaff,
+          sellingPrice: actualSellingPrice, // This is the actual selling price entered when making the sale
+          costPrice: isAdmin ? costForAdmin : costForStaff, // Staff sees staff selling price, admin sees actual cost
           totalRevenue: item.qty * actualSellingPrice,
           totalCost: item.qty * (isAdmin ? costForAdmin : costForStaff),
-          profit: realProfit,
+          profit: isAdmin ? realProfit : staffProfit, // Staff always sees staff profit
           staffProfit,
           supplier,
           fromRepair: sale.saleType === 'repair',
@@ -189,7 +200,7 @@ export default function TodaysSalesReport() {
       const profit = itemsBreakdown.reduce((s, i) => s + i.profit, 0);
       return { sale, revenue, itemsBreakdown, totalCost, profit };
     }).filter((aa) => aa.itemsBreakdown.length > 0);
-  }, [todaysSales, inventoryItems, purchases, isAdmin, suppliers]);
+  }, [todaysSales, inventoryItems, isAdmin, suppliers]);
 
   // --- IN-STOCK ACCESSORIES: total amount sold at (selling price)
   const inStockAccessorySummary = useMemo(() => {

@@ -86,13 +86,17 @@ export default function AccessoryProfit() {
 
     const saleDetails = accessorySales.flatMap(sale => {
       return sale.items.map(item => {
-        const inventoryItem = items.find(i => i.id === item.itemId);
+        const inventoryItem = items.find(i => 
+          (item.itemId && i.id === item.itemId) || 
+          i.name.toLowerCase() === item.name.toLowerCase()
+        );
         
-        // Staff selling price (admin_base_price) - what staff sees
-        const staffBasePrice = item.adminBasePrice ?? inventoryItem?.adminCostPrice ?? inventoryItem?.costPrice ?? 0;
+        // Staff selling price (costPrice) - what staff sees and uses for profit calculation
+        // This is the price set by admin when purchasing (staffSellingPrice)
+        const staffBasePrice = inventoryItem?.costPrice ?? item.adminBasePrice ?? 0;
         
         // Actual cost (admin only) - real wholesale purchase cost
-        const actualCost = item.actualCost ?? inventoryItem?.actualCost ?? inventoryItem?.adminCostPrice ?? 0;
+        const actualCost = inventoryItem?.actualCost ?? item.actualCost ?? inventoryItem?.adminCostPrice ?? 0;
         
         // Selling price (what customer paid)
         const sellingPrice = item.price;
