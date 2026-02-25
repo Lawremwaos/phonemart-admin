@@ -151,23 +151,31 @@ export default function TodaysSalesReport() {
     return isAccessoryPart(item.name);
   };
 
-  // --- ACCESSORY ANALYSIS (per-sale; only accessory items; staff_profit = price - admin_base_price, real_profit = price - actual_cost for admin)
+  // --- ACCESSORY ANALYSIS (per-sale; only accessory items; staff_profit = selling_price - admin_base_price, real_profit = selling_price - actual_cost for admin)
+  // IMPORTANT: item.price is the ACTUAL selling price entered when making the sale, NOT admin_base_price
   const accessoryAnalysis = useMemo(() => {
     return todaysSales.map((sale) => {
       const accessoryItems = sale.items.filter((item) => isAccessorySaleItem(sale, item));
       const itemsBreakdown = accessoryItems.map((item) => {
+        // item.price is the actual selling price that was entered when making the sale
+        const actualSellingPrice = item.price;
+        
+        // Cost bases for profit calculation
         const adminBase = item.adminBasePrice ?? getCostPrice(item.name);
         const costForStaff = adminBase;
         const costForAdmin = item.actualCost ?? adminBase;
         const supplier = getSupplierForItem(item.name);
-        const staffProfit = item.qty * (item.price - costForStaff);
-        const realProfit = isAdmin ? item.qty * (item.price - costForAdmin) : staffProfit;
+        
+        // Profit calculation: selling_price - cost (NOT admin_base_price - cost)
+        const staffProfit = item.qty * (actualSellingPrice - costForStaff);
+        const realProfit = isAdmin ? item.qty * (actualSellingPrice - costForAdmin) : staffProfit;
+        
         return {
           itemName: item.name,
           qty: item.qty,
-          sellingPrice: item.price,
+          sellingPrice: actualSellingPrice, // This is the actual selling price, not admin_base_price
           costPrice: isAdmin ? costForAdmin : costForStaff,
-          totalRevenue: item.qty * item.price,
+          totalRevenue: item.qty * actualSellingPrice,
           totalCost: item.qty * (isAdmin ? costForAdmin : costForStaff),
           profit: realProfit,
           staffProfit,
@@ -410,7 +418,7 @@ export default function TodaysSalesReport() {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
-        <h1 className="text-3xl font-bold">Today's Sales Report</h1>
+        <h1 className="text-3xl font-bold">Daily Report - Detailed Repair Sales</h1>
         <div className="flex gap-3 items-center flex-wrap">
           <Link to="/pending-collections/fully-paid" className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 text-sm">
             View Fully Paid ({fullyPaidRepairs})

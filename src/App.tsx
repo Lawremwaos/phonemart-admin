@@ -280,7 +280,7 @@ function AppContent() {
                 location.pathname === '/todays-sales-report' ? 'bg-gray-800' : ''
               }`}
             >
-              Today's Sales Report
+              Daily Report - Detailed Repair Sales
             </Link>
           </li>
           {currentUser?.roles.includes('admin') && (
