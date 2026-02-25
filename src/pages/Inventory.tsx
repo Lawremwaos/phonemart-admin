@@ -7,10 +7,10 @@ export default function Inventory() {
   const { items } = useInventory();
   const { currentShop, currentUser } = useShop();
 
-  // Filter items: Admin sees all, staff sees only their allocated items + previous items
+  // Filter items: Admin sees all, staff sees only their allocated items (items with shopId matching their shop)
   const filteredItems = currentUser?.roles.includes('admin')
     ? items
-    : items.filter(item => !item.shopId || item.shopId === currentShop?.id);
+    : items.filter(item => item.shopId === currentShop?.id); // Staff only see items allocated to their shop
 
   return (
     <div>

@@ -2,17 +2,6 @@ import { useState, useMemo } from "react";
 import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
 
-type StaffAllocation = {
-  id: string;
-  purchaseId: string;
-  itemId: number;
-  itemName: string;
-  qty: number;
-  allocatedDate: Date;
-  staffName: string;
-  shopId: string;
-};
-
 type StockRequest = {
   id: string;
   itemId: number;
@@ -25,18 +14,12 @@ type StockRequest = {
 };
 
 export default function StockAllocation() {
-  const { items, purchases, updateItem, addItem } = useInventory();
+  const { items, purchases, updateItem, addItem, stockAllocations, approveStockAllocation, requestStockAllocation } = useInventory();
   const { currentUser, currentShop, shops } = useShop();
 
-  // Store allocations and requests in state (in production, these would be in Supabase)
-  const [staffAllocations, setStaffAllocations] = useState<StaffAllocation[]>([]);
+  // Store requests in state (in production, these would be in Supabase)
   const [stockRequests, setStockRequests] = useState<StockRequest[]>([]);
 
-  // Form states (for staff)
-  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string>("");
-  const [selectedItemId, setSelectedItemId] = useState<number | "">("");
-  const [allocationQty, setAllocationQty] = useState(0);
-  
   // Request states (for staff)
   const [requestItemId, setRequestItemId] = useState<number | "">("");
   const [requestQty, setRequestQty] = useState(0);
@@ -47,55 +30,27 @@ export default function StockAllocation() {
   const [adminSelectedShopId, setAdminSelectedShopId] = useState<string>("");
   const [adminAllocationQty, setAdminAllocationQty] = useState(0);
 
-  // Get confirmed purchases with items that need allocation
-  const purchasesNeedingAllocation = useMemo(() => {
-    return purchases.filter(p => 
-      p.confirmed && 
-      p.items.some(item => {
-        const inventoryItem = items.find(i => i.id === item.itemId);
-        return inventoryItem && !inventoryItem.shopId && inventoryItem.stock > 0;
-      })
-    );
-  }, [purchases, items]);
 
-  // Get items from selected purchase that are available for allocation
-  const availableItemsFromPurchase = useMemo(() => {
-    if (!selectedPurchaseId) return [];
-    const purchase = purchases.find(p => p.id === selectedPurchaseId);
-    if (!purchase) return [];
-    
-    return purchase.items.map(purchaseItem => {
-      let inventoryItem = items.find(i => i.id === purchaseItem.itemId);
-      if (!inventoryItem) {
-        inventoryItem = items.find(i => i.name === purchaseItem.itemName && !i.shopId);
-      }
-      const alreadyAllocated = staffAllocations
-        .filter(a => a.purchaseId === selectedPurchaseId && a.itemName === purchaseItem.itemName)
-        .reduce((sum, a) => sum + a.qty, 0);
-      const available = (inventoryItem?.stock || purchaseItem.qty) - alreadyAllocated;
-      
-      return {
-        ...purchaseItem,
-        available: Math.max(0, available),
-        inventoryItem,
-      };
-    }).filter(item => item.available > 0);
-  }, [selectedPurchaseId, purchases, items, staffAllocations]);
 
-  // Get unallocated items from inventory (for requesting additional stock)
-  const unallocatedItems = useMemo(() => {
+  // Get unallocated ACCESSORIES from inventory (for requesting additional stock) - staff can see these
+  const unallocatedAccessories = useMemo(() => {
     return items.filter(item => 
       !item.shopId && 
       item.stock > 0 &&
-      !item.pendingAllocation // Not from pending purchases
+      item.category === 'Accessory' &&
+      !item.pendingAllocation
     );
   }, [items]);
 
-  // Get current staff's allocations
-  const myAllocations = useMemo(() => {
-    if (!currentUser) return [];
-    return staffAllocations.filter(a => a.staffName === currentUser.name);
-  }, [staffAllocations, currentUser]);
+  // Get pending allocations for current staff's shop
+  const pendingAllocationsForMyShop = useMemo(() => {
+    if (!currentShop) return [];
+    return stockAllocations.filter(alloc => 
+      alloc.status === 'pending' &&
+      alloc.allocations.some(a => a.shopId === currentShop.id)
+    );
+  }, [stockAllocations, currentShop]);
+
 
   // Get current staff's requests
   const myRequests = useMemo(() => {
@@ -103,76 +58,24 @@ export default function StockAllocation() {
     return stockRequests.filter(r => r.staffName === currentUser.name);
   }, [stockRequests, currentUser]);
 
-  // Handle recording allocation
-  const handleRecordAllocation = () => {
-    if (!selectedPurchaseId || !selectedItemId || allocationQty <= 0) {
-      alert("Please select purchase, item, and enter quantity");
+  // Staff: Accept pending allocation from admin
+  const handleAcceptAllocation = async (allocationId: string) => {
+    const allocation = stockAllocations.find(a => a.id === allocationId);
+    if (!allocation || allocation.status !== 'pending') {
+      alert("Invalid allocation");
       return;
     }
 
-    const purchase = purchases.find(p => p.id === selectedPurchaseId);
-    const purchaseItem = purchase?.items.find(i => i.itemId === selectedItemId);
-    const inventoryItem = items.find(i => i.id === selectedItemId);
-
-    if (!purchase || !purchaseItem || !inventoryItem) {
-      alert("Invalid selection");
+    const myAllocation = allocation.allocations.find(a => a.shopId === currentShop?.id);
+    if (!myAllocation) {
+      alert("This allocation is not for your shop");
       return;
     }
 
-    // Check available quantity
-    const alreadyAllocated = staffAllocations
-      .filter(a => a.purchaseId === selectedPurchaseId && a.itemId === selectedItemId)
-      .reduce((sum, a) => sum + a.qty, 0);
-    const available = inventoryItem.stock - alreadyAllocated;
-
-    if (allocationQty > available) {
-      alert(`Only ${available} items available for allocation`);
-      return;
+    if (window.confirm(`Accept ${myAllocation.qty} ${allocation.itemName} allocated to you?`)) {
+      approveStockAllocation(allocationId);
+      alert(`Accepted: ${myAllocation.qty} ${allocation.itemName} added to your stock`);
     }
-
-    // Record allocation
-    const newAllocation: StaffAllocation = {
-      id: Date.now().toString(),
-      purchaseId: selectedPurchaseId,
-      itemId: selectedItemId,
-      itemName: purchaseItem.itemName,
-      qty: allocationQty,
-      allocatedDate: new Date(),
-      staffName: currentUser?.name || 'Unknown',
-      shopId: currentShop?.id || '',
-    };
-
-    setStaffAllocations(prev => [...prev, newAllocation]);
-
-    // Update inventory: allocate to staff's shop
-    const existingShopItem = items.find(i => 
-      i.name === inventoryItem.name && 
-      i.shopId === currentShop?.id
-    );
-
-    if (existingShopItem) {
-      updateItem(existingShopItem.id, { stock: existingShopItem.stock + allocationQty });
-    } else {
-      addItem({
-        name: inventoryItem.name,
-        category: inventoryItem.category,
-        itemType: inventoryItem.itemType,
-        stock: allocationQty,
-        price: inventoryItem.price,
-        reorderLevel: inventoryItem.reorderLevel,
-        initialStock: allocationQty,
-        shopId: currentShop?.id,
-        supplier: inventoryItem.supplier,
-      });
-    }
-
-    // Deduct from unallocated stock
-    updateItem(inventoryItem.id, { stock: inventoryItem.stock - allocationQty });
-
-    alert(`Allocation recorded: ${allocationQty} ${purchaseItem.itemName} allocated to you`);
-    setSelectedPurchaseId("");
-    setSelectedItemId("");
-    setAllocationQty(0);
   };
 
   // Handle requesting additional stock
@@ -268,8 +171,8 @@ export default function StockAllocation() {
     alert("Request rejected");
   };
 
-  // Admin: Allocate stock from purchase to shop
-  const handleAdminAllocateStock = () => {
+  // Admin: Allocate stock from purchase to shop (creates pending allocation)
+  const handleAdminAllocateStock = async () => {
     if (!adminSelectedPurchaseId || !adminSelectedItemId || !adminSelectedShopId || adminAllocationQty <= 0) {
       alert("Please select purchase, item, shop, and enter quantity");
       return;
@@ -284,66 +187,32 @@ export default function StockAllocation() {
     }
     const targetShop = shops.find(s => s.id === adminSelectedShopId);
 
-    if (!purchase || !purchaseItem || !targetShop) {
+    if (!purchase || !purchaseItem || !targetShop || !inventoryItem) {
       alert("Invalid selection");
       return;
     }
 
     // Check available quantity (unallocated stock)
-    const alreadyAllocated = staffAllocations
-      .filter(a => a.purchaseId === adminSelectedPurchaseId && a.itemName === purchaseItem.itemName)
-      .reduce((sum, a) => sum + a.qty, 0);
-    const currentStock = inventoryItem?.stock || 0;
-    const available = currentStock - alreadyAllocated;
-
-    if (adminAllocationQty > available) {
-      alert(`Only ${available} items available for allocation`);
+    const currentStock = inventoryItem.stock || 0;
+    if (adminAllocationQty > currentStock) {
+      alert(`Only ${currentStock} items available for allocation`);
       return;
     }
 
-    // Record allocation
-    const newAllocation: StaffAllocation = {
-      id: Date.now().toString(),
-      purchaseId: adminSelectedPurchaseId,
-      itemId: adminSelectedItemId,
-      itemName: purchaseItem.itemName,
-      qty: adminAllocationQty,
-      allocatedDate: new Date(),
-      staffName: `Admin Allocation to ${targetShop.name}`,
-      shopId: adminSelectedShopId,
-    };
-
-    setStaffAllocations(prev => [...prev, newAllocation]);
-
-    // Update inventory: allocate to target shop
-    const itemName = inventoryItem?.name || purchaseItem.itemName;
-    const existingShopItem = items.find(i => 
-      i.name === itemName && 
-      i.shopId === adminSelectedShopId
-    );
-
-    if (existingShopItem) {
-      updateItem(existingShopItem.id, { stock: existingShopItem.stock + adminAllocationQty });
-    } else {
-      addItem({
-        name: itemName,
-        category: inventoryItem?.category || 'Spare',
-        itemType: inventoryItem?.itemType,
-        stock: adminAllocationQty,
-        price: inventoryItem?.price || 0,
-        reorderLevel: inventoryItem?.reorderLevel || 0,
-        initialStock: adminAllocationQty,
+    // Create pending stock allocation using requestStockAllocation
+    requestStockAllocation({
+      itemId: inventoryItem.id,
+      itemName: inventoryItem.name,
+      totalQty: adminAllocationQty,
+      allocations: [{
         shopId: adminSelectedShopId,
-        supplier: inventoryItem?.supplier || purchase.supplier,
-      });
-    }
+        shopName: targetShop.name,
+        qty: adminAllocationQty,
+      }],
+      requestedBy: currentUser?.name || 'Admin',
+    });
 
-    // Deduct from unallocated stock
-    if (inventoryItem) {
-      updateItem(inventoryItem.id, { stock: inventoryItem.stock - adminAllocationQty });
-    }
-
-    alert(`Allocation successful: ${adminAllocationQty} ${purchaseItem.itemName} allocated to ${targetShop.name}`);
+    alert(`Allocation created: ${adminAllocationQty} ${purchaseItem.itemName} allocated to ${targetShop.name}. Staff can now accept it.`);
     setAdminSelectedPurchaseId("");
     setAdminSelectedItemId("");
     setAdminSelectedShopId("");
@@ -362,10 +231,7 @@ export default function StockAllocation() {
       if (!inventoryItem) {
         inventoryItem = items.find(i => i.name === purchaseItem.itemName && !i.shopId);
       }
-      const alreadyAllocated = staffAllocations
-        .filter(a => a.purchaseId === adminSelectedPurchaseId && a.itemName === purchaseItem.itemName)
-        .reduce((sum, a) => sum + a.qty, 0);
-      const available = (inventoryItem?.stock || purchaseItem.qty) - alreadyAllocated;
+      const available = inventoryItem?.stock || purchaseItem.qty;
       
       return {
         ...purchaseItem,
@@ -373,7 +239,7 @@ export default function StockAllocation() {
         inventoryItem,
       };
     }).filter(item => item.available > 0);
-  }, [adminSelectedPurchaseId, purchases, items, staffAllocations]);
+  }, [adminSelectedPurchaseId, purchases, items]);
 
   if (currentUser?.roles.includes('admin')) {
     // Admin view: Allocate stock from purchases and approve/reject stock requests
@@ -576,134 +442,62 @@ export default function StockAllocation() {
     );
   }
 
-  // Staff view: Record allocations and request stock
+  // Staff view: Accept allocations and request stock
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">My Stock & Requests</h2>
 
-      {/* Record Allocation from Purchase */}
-      <div className="bg-white p-6 rounded shadow border-2 border-green-200">
-        <h3 className="text-lg font-semibold mb-2 text-green-800">Record My Allocation</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          When admin purchases stock, record what was allocated to you.
-        </p>
-
-        {purchasesNeedingAllocation.length === 0 ? (
-          <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
-            <p className="text-yellow-800 font-semibold">No confirmed purchases available for allocation.</p>
-            <p className="text-sm text-yellow-700 mt-2">
-              Admin needs to confirm purchases first. Once confirmed, you'll be able to record your allocations here.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Step 1: Select Purchase *
-              </label>
-              <select
-                value={selectedPurchaseId}
-                onChange={(e) => {
-                  setSelectedPurchaseId(e.target.value);
-                  setSelectedItemId("");
-                  setAllocationQty(0);
-                }}
-                className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-green-500 focus:ring-2 focus:ring-green-200"
-              >
-                <option value="">-- Select a purchase --</option>
-                {purchasesNeedingAllocation.map((purchase) => (
-                  <option key={purchase.id} value={purchase.id}>
-                    {new Date(purchase.date).toLocaleDateString()} - {purchase.supplier} - {purchase.items.length} items
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {selectedPurchaseId && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Step 2: Select Item *
-                  </label>
-                  <select
-                    value={selectedItemId}
-                    onChange={(e) => {
-                      setSelectedItemId(Number(e.target.value));
-                      setAllocationQty(0);
-                    }}
-                    className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-green-500 focus:ring-2 focus:ring-green-200"
-                  >
-                    <option value="">-- Select item --</option>
-                    {availableItemsFromPurchase.map((item) => (
-                      <option key={item.itemId} value={item.itemId}>
-                        {item.itemName} (Available: {item.available})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {selectedItemId && (
-                  <>
+      {/* Accept Pending Allocations */}
+      {pendingAllocationsForMyShop.length > 0 && (
+        <div className="bg-white p-6 rounded shadow border-2 border-blue-200">
+          <h3 className="text-lg font-semibold mb-2 text-blue-800">Accept Allocated Stock</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Admin has allocated stock to you. Accept it to add it to your inventory.
+          </p>
+          <div className="space-y-3">
+            {pendingAllocationsForMyShop.map((allocation) => {
+              const myAlloc = allocation.allocations.find(a => a.shopId === currentShop?.id);
+              if (!myAlloc) return null;
+              return (
+                <div key={allocation.id} className="border rounded-lg p-4 bg-blue-50">
+                  <div className="flex justify-between items-center">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Step 3: Enter Quantity Allocated to Me *
-                      </label>
-                      <input
-                        type="number"
-                        value={allocationQty || ""}
-                        onChange={(e) => setAllocationQty(Number(e.target.value))}
-                        className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-green-500 focus:ring-2 focus:ring-green-200"
-                        min="1"
-                        max={
-                          availableItemsFromPurchase.find(i => i.itemId === selectedItemId)?.available || 0
-                        }
-                        placeholder="Enter quantity"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Available: <span className="font-semibold">{availableItemsFromPurchase.find(i => i.itemId === selectedItemId)?.available || 0}</span>
+                      <p className="font-semibold text-lg">{allocation.itemName}</p>
+                      <p className="text-sm text-gray-600">Quantity: {myAlloc.qty}</p>
+                      <p className="text-xs text-gray-500">
+                        Allocated on {allocation.requestedDate.toLocaleDateString()}
                       </p>
                     </div>
-
                     <button
-                      onClick={handleRecordAllocation}
-                      className={`w-full px-4 py-3 rounded font-semibold text-lg transition-colors ${
-                        !selectedPurchaseId || !selectedItemId || allocationQty <= 0
-                          ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                          : 'bg-green-600 text-white hover:bg-green-700 shadow-lg'
-                      }`}
-                      disabled={!selectedPurchaseId || !selectedItemId || allocationQty <= 0}
+                      onClick={() => handleAcceptAllocation(allocation.id)}
+                      className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
                     >
-                      ✓ Record My Allocation
+                      Accept Stock
                     </button>
-                    {(!selectedPurchaseId || !selectedItemId || allocationQty <= 0) && (
-                      <p className="text-xs text-gray-500 text-center">
-                        Please complete all steps above to enable the button
-                      </p>
-                    )}
-                  </>
-                )}
-              </>
-            )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Request Additional Stock */}
+      {/* Request Additional Stock (Unallocated Accessories Only) */}
       <div className="bg-white p-6 rounded shadow">
         <h3 className="text-lg font-semibold mb-4">Request Additional Stock</h3>
         <p className="text-sm text-gray-600 mb-4">
-          Request additional stock from unallocated inventory when you finish your allocated stock.
+          Request additional stock from unallocated accessories when you finish your allocated stock.
         </p>
 
-        {unallocatedItems.length === 0 ? (
+        {unallocatedAccessories.length === 0 ? (
           <div className="bg-gray-50 border border-gray-200 rounded p-4">
-            <p className="text-gray-600">No unallocated stock available.</p>
+            <p className="text-gray-600">No unallocated accessories available.</p>
           </div>
         ) : (
           <>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Item *
+                Select Accessory *
               </label>
               <select
                 value={requestItemId}
@@ -713,8 +507,8 @@ export default function StockAllocation() {
                 }}
                 className="w-full border border-gray-300 rounded-md px-3 py-2"
               >
-                <option value="">Select item</option>
-                {unallocatedItems.map((item) => (
+                <option value="">Select accessory</option>
+                {unallocatedAccessories.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name} (Available: {item.stock})
                   </option>
@@ -733,11 +527,11 @@ export default function StockAllocation() {
                   onChange={(e) => setRequestQty(Number(e.target.value))}
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
                   min="1"
-                  max={unallocatedItems.find(i => i.id === requestItemId)?.stock || 0}
+                  max={unallocatedAccessories.find(i => i.id === requestItemId)?.stock || 0}
                   placeholder="Enter quantity"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Available: {unallocatedItems.find(i => i.id === requestItemId)?.stock || 0}
+                  Available: {unallocatedAccessories.find(i => i.id === requestItemId)?.stock || 0}
                 </p>
               </div>
             )}
@@ -753,11 +547,14 @@ export default function StockAllocation() {
         )}
       </div>
 
-      {/* My Allocations */}
+      {/* My Accepted Allocations */}
       <div className="bg-white p-6 rounded shadow">
-        <h3 className="text-lg font-semibold mb-4">My Allocations</h3>
-        {myAllocations.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">No allocations recorded yet.</p>
+        <h3 className="text-lg font-semibold mb-4">My Accepted Allocations</h3>
+        {stockAllocations.filter(a => 
+          a.status === 'approved' && 
+          a.allocations.some(alloc => alloc.shopId === currentShop?.id)
+        ).length === 0 ? (
+          <p className="text-gray-500 text-center py-4">No accepted allocations yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -766,18 +563,32 @@ export default function StockAllocation() {
                   <th className="p-3 text-left">Date</th>
                   <th className="p-3 text-left">Item</th>
                   <th className="p-3 text-right">Quantity</th>
+                  <th className="p-3 text-left">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {myAllocations.map((allocation) => (
-                  <tr key={allocation.id} className="border-t">
-                    <td className="p-3 text-sm">
-                      {new Date(allocation.allocatedDate).toLocaleDateString()}
-                    </td>
-                    <td className="p-3 font-medium">{allocation.itemName}</td>
-                    <td className="p-3 text-right font-semibold">{allocation.qty}</td>
-                  </tr>
-                ))}
+                {stockAllocations
+                  .filter(a => 
+                    a.status === 'approved' && 
+                    a.allocations.some(alloc => alloc.shopId === currentShop?.id)
+                  )
+                  .map((allocation) => {
+                    const myAlloc = allocation.allocations.find(a => a.shopId === currentShop?.id);
+                    return (
+                      <tr key={allocation.id} className="border-t">
+                        <td className="p-3 text-sm">
+                          {allocation.approvedDate?.toLocaleDateString() || allocation.requestedDate.toLocaleDateString()}
+                        </td>
+                        <td className="p-3 font-medium">{allocation.itemName}</td>
+                        <td className="p-3 text-right font-semibold">{myAlloc?.qty || 0}</td>
+                        <td className="p-3">
+                          <span className="px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-800">
+                            Accepted
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
