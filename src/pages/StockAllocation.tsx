@@ -32,12 +32,13 @@ export default function StockAllocation() {
 
 
 
-  // Get ALL unallocated items from inventory (for requesting additional stock) - staff can see these
+  // Get ALL unallocated ACCESSORIES from inventory (for requesting additional stock) - staff can see these
   const unallocatedItems = useMemo(() => {
     return items.filter(item => 
       !item.shopId && 
       item.stock > 0 &&
-      !item.pendingAllocation
+      !item.pendingAllocation &&
+      (item.category?.toString().toLowerCase() === 'accessory' || item.category === 'Accessory')
     );
   }, [items]);
 
@@ -87,14 +88,20 @@ export default function StockAllocation() {
       return;
     }
 
-    const item = items.find(i => i.id === requestItemId);
+    const item = unallocatedItems.find(i => i.id === requestItemId);
     if (!item) {
       alert("Item not found");
       return;
     }
 
-    if (requestQty > item.stock) {
-      alert(`Only ${item.stock} items available`);
+    const availableStock = item.stock || 0;
+    if (requestQty > availableStock) {
+      alert(`Only ${availableStock} items available. Please enter a quantity not exceeding ${availableStock}.`);
+      return;
+    }
+
+    if (requestQty < 1) {
+      alert("Quantity must be at least 1");
       return;
     }
 
@@ -113,7 +120,7 @@ export default function StockAllocation() {
     alert(`Stock request submitted: ${requestQty} ${item.name}. Waiting for admin approval.`);
     setRequestItemId("");
     setRequestQty(0);
-    setShowRequestForm(false);
+    // Keep form open so staff can request more items
   };
 
   // Admin: Approve stock request
@@ -448,14 +455,21 @@ export default function StockAllocation() {
   // Staff view: Accept allocations and request stock
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-4">
         <h2 className="text-2xl font-bold">My Stock & Requests</h2>
         <button
-          onClick={() => setShowRequestForm(!showRequestForm)}
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-semibold shadow-lg flex items-center gap-2"
+          onClick={() => {
+            setShowRequestForm(!showRequestForm);
+            if (!showRequestForm) {
+              // Reset form when opening
+              setRequestItemId("");
+              setRequestQty(0);
+            }
+          }}
+          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-semibold shadow-lg flex items-center gap-2 transition-all"
         >
           <span>📦</span>
-          <span>{showRequestForm ? 'Hide' : 'Request'} Stock from Admin Inventory</span>
+          <span>{showRequestForm ? 'Hide Request Form' : 'Request Additional Stock'}</span>
         </button>
       </div>
 
@@ -497,81 +511,108 @@ export default function StockAllocation() {
       {/* Request Stock from Admin Inventory - Expandable Section */}
       {showRequestForm && (
         <div className="bg-white p-6 rounded shadow border-2 border-blue-200">
-          <h3 className="text-lg font-semibold mb-2 text-blue-800">Request Stock from Admin Inventory</h3>
+          <h3 className="text-lg font-semibold mb-2 text-blue-800">Request Additional Stock (Unallocated Accessories)</h3>
           <p className="text-sm text-gray-600 mb-4">
-            View unallocated stock available in admin inventory and request what you need.
+            View unallocated accessories available in admin inventory and request what you need. Select an item and specify the quantity you need (not exceeding available stock).
           </p>
 
           {unallocatedItems.length === 0 ? (
-            <div className="bg-gray-50 border border-gray-200 rounded p-4">
-              <p className="text-gray-600">No unallocated stock available in admin inventory.</p>
+            <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
+              <p className="text-yellow-800 font-semibold">No unallocated accessories available in admin inventory.</p>
+              <p className="text-sm text-yellow-700 mt-1">All accessories have been allocated or are out of stock.</p>
             </div>
           ) : (
             <>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Item from Unallocated Stock *
+                  Select Unallocated Accessory *
                 </label>
                 <select
                   value={requestItemId}
                   onChange={(e) => {
-                    setRequestItemId(Number(e.target.value));
+                    const selectedId = e.target.value ? Number(e.target.value) : "";
+                    setRequestItemId(selectedId);
                     setRequestQty(0);
                   }}
-                  className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                  className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 bg-white"
                 >
-                  <option value="">-- Select an item --</option>
+                  <option value="">-- Select an accessory --</option>
                   {unallocatedItems.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.name} ({item.category}) - Available: {item.stock}
+                      {item.name} - Available: {item.stock} units
                     </option>
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  {unallocatedItems.length} unallocated item{unallocatedItems.length !== 1 ? 's' : ''} available
+                  {unallocatedItems.length} unallocated accessor{unallocatedItems.length !== 1 ? 'ies' : 'y'} available
                 </p>
               </div>
 
-              {requestItemId && (
-                <>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Quantity Needed *
-                    </label>
-                    <input
-                      type="number"
-                      value={requestQty || ""}
-                      onChange={(e) => setRequestQty(Number(e.target.value))}
-                      className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                      min="1"
-                      max={unallocatedItems.find(i => i.id === requestItemId)?.stock || 0}
-                      placeholder="Enter quantity"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Available: <span className="font-semibold">{unallocatedItems.find(i => i.id === requestItemId)?.stock || 0}</span>
-                    </p>
-                  </div>
+              {requestItemId && (() => {
+                const selectedItem = unallocatedItems.find(i => i.id === requestItemId);
+                const maxQty = selectedItem?.stock || 0;
+                return (
+                  <>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Quantity Needed * (Max: {maxQty})
+                      </label>
+                      <input
+                        type="number"
+                        value={requestQty || ""}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          // Prevent exceeding available stock
+                          if (val > maxQty) {
+                            alert(`Cannot exceed available stock of ${maxQty} units`);
+                            setRequestQty(maxQty);
+                          } else if (val < 0) {
+                            setRequestQty(0);
+                          } else {
+                            setRequestQty(val);
+                          }
+                        }}
+                        className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                        min="1"
+                        max={maxQty}
+                        placeholder={`Enter quantity (1-${maxQty})`}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Available: <span className="font-semibold text-blue-600">{maxQty}</span> units
+                        {requestQty > 0 && requestQty <= maxQty && (
+                          <span className="ml-2 text-green-600">✓ Valid quantity</span>
+                        )}
+                        {requestQty > maxQty && (
+                          <span className="ml-2 text-red-600">✗ Exceeds available stock</span>
+                        )}
+                      </p>
+                    </div>
 
-                  <div className="flex gap-3">
-                    <button
-                      onClick={handleRequestStock}
-                      className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      disabled={!requestItemId || requestQty <= 0}
-                    >
-                      Submit Request
-                    </button>
-                    <button
-                      onClick={() => {
-                        setRequestItemId("");
-                        setRequestQty(0);
-                      }}
-                      className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400 font-semibold"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </>
-              )}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={handleRequestStock}
+                        className={`flex-1 px-4 py-2 rounded font-semibold transition ${
+                          !requestItemId || requestQty <= 0 || requestQty > maxQty
+                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                        disabled={!requestItemId || requestQty <= 0 || requestQty > maxQty}
+                      >
+                        Submit Request
+                      </button>
+                      <button
+                        onClick={() => {
+                          setRequestItemId("");
+                          setRequestQty(0);
+                        }}
+                        className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400 font-semibold"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </>
           )}
         </div>
