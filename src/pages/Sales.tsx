@@ -19,7 +19,7 @@ export default function Sales() {
   const navigate = useNavigate();
   const { deductStock, addStock, items } = useInventory();
   const { addSale, openWholesaleSale, addItemToWholesaleSale, closeWholesaleSale } = useSales();
-  const { currentShop } = useShop();
+  const { currentShop, currentUser } = useShop();
   const { addPayment } = usePayment();
 
   const [saleType, setSaleType] = useState<'retail' | 'wholesale'>('retail');
@@ -41,13 +41,28 @@ export default function Sales() {
   const [wholesaleDepositReference, setWholesaleDepositReference] = useState<string>('');
 
   // Items available for sale: allocated to current shop OR in main warehouse (unallocated)
+  // For staff: show items allocated to their shop OR unallocated items (main warehouse)
+  // For admin: show all items
+  const isAdmin = currentUser?.roles.includes('admin') ?? false;
+  
   const salesItems = items.filter(item => {
     const cat = (item.category || '').toString().toLowerCase();
     const isPhoneOrAccessory = cat === 'phone' || cat === 'accessory';
     const stockQty = Number(item.stock) ?? 0;
+    
+    if (!isPhoneOrAccessory || stockQty <= 0) {
+      return false;
+    }
+    
+    // Admin can see all items
+    if (isAdmin) {
+      return true;
+    }
+    
+    // Staff can see: items allocated to their shop OR unallocated items (main warehouse)
     const allocatedToCurrentShop = item.shopId === currentShop?.id;
     const inMainWarehouse = item.shopId == null || item.shopId === undefined;
-    return isPhoneOrAccessory && stockQty > 0 && (allocatedToCurrentShop || inMainWarehouse);
+    return allocatedToCurrentShop || inMainWarehouse;
   });
 
   const selectedItem = itemSource === 'inventory' && selectedItemId
@@ -321,9 +336,21 @@ export default function Sales() {
             </div>
 
             {itemSource === 'inventory' && salesItems.length === 0 && (
-              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-4">
-                No Phone or Accessory stock in inventory (main warehouse or allocated to your shop). Add stock via Purchases or ask admin to allocate from Stock Allocation.
-              </p>
+              <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-3 mb-4">
+                <p className="font-semibold mb-1">No items available for sale</p>
+                <p className="text-xs mb-2">
+                  {isAdmin 
+                    ? "No Phone or Accessory items with stock found in inventory."
+                    : `No Phone or Accessory stock found in inventory allocated to ${currentShop?.name || 'your shop'} or in main warehouse (unallocated).`
+                  }
+                </p>
+                <p className="text-xs">
+                  {isAdmin 
+                    ? "Add stock via Purchases page."
+                    : "Ask admin to allocate stock to your shop via Stock Allocation page, or add stock via Purchases."
+                  }
+                </p>
+              </div>
             )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               {itemSource === 'inventory' ? (
