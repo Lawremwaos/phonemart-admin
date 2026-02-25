@@ -373,7 +373,8 @@ export default function TodaysSalesReport() {
   };
 
   const handleShareWhatsApp = () => {
-    if (!canSendReport) {
+    // Double-check: prevent execution if report cannot be sent
+    if (!canSendReport || incompleteOutsourced.length > 0) {
       blockSendMessage();
       return;
     }
@@ -383,7 +384,8 @@ export default function TodaysSalesReport() {
   };
 
   const handleShareToGroup = () => {
-    if (!canSendReport) {
+    // Double-check: prevent execution if report cannot be sent
+    if (!canSendReport || incompleteOutsourced.length > 0) {
       blockSendMessage();
       return;
     }
@@ -393,7 +395,8 @@ export default function TodaysSalesReport() {
   };
 
   const handleShareEmail = () => {
-    if (!canSendReport) {
+    // Double-check: prevent execution if report cannot be sent
+    if (!canSendReport || incompleteOutsourced.length > 0) {
       blockSendMessage();
       return;
     }
@@ -416,13 +419,40 @@ export default function TodaysSalesReport() {
             <label className="block text-xs text-gray-600 mb-1">Direct number (optional)</label>
             <input type="tel" placeholder="+254712345678" value={whatsAppNumber} onChange={(e) => setWhatsAppNumber(e.target.value)} className="border border-gray-300 rounded px-3 py-2 text-sm w-40" />
           </div>
-          <button onClick={handleShareWhatsApp} disabled={!canSendReport} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed" title={!canSendReport ? "Enter outsourced part costs first" : undefined}>
+          <button 
+            onClick={handleShareWhatsApp} 
+            disabled={!canSendReport} 
+            className={`px-4 py-2 rounded text-sm transition ${
+              canSendReport 
+                ? 'bg-green-600 text-white hover:bg-green-700 cursor-pointer' 
+                : 'bg-gray-400 text-gray-600 cursor-not-allowed opacity-60'
+            }`}
+            title={!canSendReport ? "Enter outsourced part costs first" : undefined}
+          >
             Send to Number
           </button>
-          <button onClick={handleShareToGroup} disabled={!canSendReport} className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 text-sm disabled:opacity-50 disabled:cursor-not-allowed" title={!canSendReport ? "Enter outsourced part costs first" : undefined}>
+          <button 
+            onClick={handleShareToGroup} 
+            disabled={!canSendReport} 
+            className={`px-4 py-2 rounded text-sm transition ${
+              canSendReport 
+                ? 'bg-green-700 text-white hover:bg-green-800 cursor-pointer' 
+                : 'bg-gray-400 text-gray-600 cursor-not-allowed opacity-60'
+            }`}
+            title={!canSendReport ? "Enter outsourced part costs first" : undefined}
+          >
             Send to WhatsApp Group
           </button>
-          <button onClick={handleShareEmail} disabled={!canSendReport} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed" title={!canSendReport ? "Enter outsourced part costs first" : undefined}>
+          <button 
+            onClick={handleShareEmail} 
+            disabled={!canSendReport} 
+            className={`px-4 py-2 rounded text-sm transition ${
+              canSendReport 
+                ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer' 
+                : 'bg-gray-400 text-gray-600 cursor-not-allowed opacity-60'
+            }`}
+            title={!canSendReport ? "Enter outsourced part costs first" : undefined}
+          >
             Email Report
           </button>
         </div>
