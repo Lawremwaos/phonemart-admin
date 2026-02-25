@@ -12,6 +12,7 @@ type SaleItem = {
   price: number;
   source?: 'inventory' | 'custom';
   supplier?: string;
+  itemId?: number;
 };
 
 export default function Sales() {
@@ -23,7 +24,7 @@ export default function Sales() {
 
   const [saleType, setSaleType] = useState<'retail' | 'wholesale'>('retail');
   
-  const [selectedItemName, setSelectedItemName] = useState("");
+  const [selectedItemId, setSelectedItemId] = useState<string>("");
   const [customItemName, setCustomItemName] = useState("");
   const [customSupplier, setCustomSupplier] = useState("");
   const [itemSource, setItemSource] = useState<'inventory' | 'custom'>('inventory');
@@ -39,41 +40,41 @@ export default function Sales() {
   const [wholesaleBank, setWholesaleBank] = useState<string>('');
   const [wholesaleDepositReference, setWholesaleDepositReference] = useState<string>('');
 
-  // Only items allocated to current shop (no unallocated items) — aligns with stock allocation
+  // Items available for sale: allocated to current shop OR in main warehouse (unallocated)
   const salesItems = items.filter(item => {
     const cat = (item.category || '').toString().toLowerCase();
     const isPhoneOrAccessory = cat === 'phone' || cat === 'accessory';
     const stockQty = Number(item.stock) ?? 0;
-    return isPhoneOrAccessory && stockQty > 0 && item.shopId === currentShop?.id;
+    const allocatedToCurrentShop = item.shopId === currentShop?.id;
+    const inMainWarehouse = item.shopId == null || item.shopId === undefined;
+    return isPhoneOrAccessory && stockQty > 0 && (allocatedToCurrentShop || inMainWarehouse);
   });
 
-  const selectedItem = itemSource === 'inventory' ? salesItems.find(item => item.name === selectedItemName) : null;
+  const selectedItem = itemSource === 'inventory' && selectedItemId
+    ? salesItems.find(item => item.id === Number(selectedItemId))
+    : null;
 
-  const handleItemSelect = (itemName: string) => {
-    setSelectedItemName(itemName);
-    setPrice(0);
+  const handleItemSelect = (itemId: string) => {
+    setSelectedItemId(itemId);
+    const item = salesItems.find(i => i.id === Number(itemId));
+    setPrice(item?.price ?? 0);
   };
 
   function addItemToRetailSale() {
     if (itemSource === 'inventory') {
-      if (!selectedItemName || qty <= 0) {
+      if (!selectedItem || qty <= 0) {
         alert("Please select an item and enter a valid quantity.");
         return;
       }
-      const inventoryItem = salesItems.find(item => item.name === selectedItemName);
-      if (!inventoryItem) {
-        alert("Item not found in inventory!");
-        return;
-      }
-      if (inventoryItem.stock < qty) {
-        alert(`Not enough stock! Available: ${inventoryItem.stock}`);
+      if (selectedItem.stock < qty) {
+        alert(`Not enough stock! Available: ${selectedItem.stock}`);
         return;
       }
       setSaleItems((prev) => [
         ...prev,
-        { name: selectedItemName, qty, price, source: 'inventory' },
+        { name: selectedItem.name, qty, price, source: 'inventory', itemId: selectedItem.id },
       ]);
-      deductStock(selectedItemName, qty, currentShop?.id);
+      deductStock(selectedItem.name, qty, selectedItem.shopId);
     } else {
       if (!customItemName.trim() || qty <= 0) {
         alert("Please enter item name and valid quantity.");
@@ -87,14 +88,14 @@ export default function Sales() {
       setCustomSupplier("");
     }
 
-    setSelectedItemName("");
+    setSelectedItemId("");
     setQty(1);
     setPrice(0);
   }
 
   // Add item to wholesale sale
   function addItemToWholesale() {
-    if (!selectedItemName) {
+    if (!selectedItem) {
       alert("Please select an item");
       return;
     }
@@ -109,30 +110,24 @@ export default function Sales() {
       return;
     }
 
-    const inventoryItem = salesItems.find(item => item.name === selectedItemName);
-    if (!inventoryItem) {
-      alert("Item not found in inventory!");
-      return;
-    }
-
-    if (inventoryItem.stock < qty) {
-      alert(`Not enough stock! Available: ${inventoryItem.stock}`);
+    if (selectedItem.stock < qty) {
+      alert(`Not enough stock! Available: ${selectedItem.stock}`);
       return;
     }
 
     try {
       addItemToWholesaleSale({
-        name: selectedItemName,
+        name: selectedItem.name,
         qty,
         price,
-        itemId: inventoryItem.id,
-        adminBasePrice: inventoryItem.adminCostPrice ?? inventoryItem.costPrice,
-        actualCost: inventoryItem.actualCost,
+        itemId: selectedItem.id,
+        adminBasePrice: selectedItem.adminCostPrice ?? selectedItem.costPrice,
+        actualCost: selectedItem.actualCost,
       }, currentShop?.id);
-      deductStock(selectedItemName, qty, currentShop?.id);
+      deductStock(selectedItem.name, qty, selectedItem.shopId);
 
       // Clear form
-      setSelectedItemName("");
+      setSelectedItemId("");
       setQty(1);
       setPrice(0);
     } catch (error) {
@@ -143,11 +138,12 @@ export default function Sales() {
 
   function removeItemFromRetail(index: number) {
     const itemToRemove = saleItems[index];
-    if (itemToRemove.source !== 'custom') {
+    if (itemToRemove.source === 'inventory' && itemToRemove.itemId != null) {
+      const inventoryItem = items.find(item => item.id === itemToRemove.itemId);
+      if (inventoryItem) addStock(inventoryItem.id, itemToRemove.qty);
+    } else if (itemToRemove.source !== 'custom') {
       const inventoryItem = items.find(item => item.name === itemToRemove.name && item.shopId === currentShop?.id);
-      if (inventoryItem) {
-        addStock(inventoryItem.id, itemToRemove.qty);
-      }
+      if (inventoryItem) addStock(inventoryItem.id, itemToRemove.qty);
     }
     setSaleItems((prev) => prev.filter((_, i) => i !== index));
   }
@@ -275,7 +271,10 @@ export default function Sales() {
 
       <ShopSelector />
       {currentShop && (
-        <p className="text-sm text-gray-600 mb-4">Only stock <strong>allocated to {currentShop.name}</strong> appears in &quot;From Stock&quot;. Unallocated items are not available for sale.</p>
+        <p className="text-sm text-gray-600 mb-4">You can sell from stock <strong>allocated to {currentShop.name}</strong> or from <strong>main warehouse</strong> (unallocated). Select an item and enter qty/price.</p>
+      )}
+      {!currentShop && salesItems.length > 0 && (
+        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-4">Select a shop above to record sales under that shop; main warehouse stock is shown.</p>
       )}
 
       {/* Sale Type Selection */}
@@ -316,31 +315,31 @@ export default function Sales() {
                 From Stock
               </label>
               <label className="flex items-center text-sm">
-                <input type="radio" value="custom" checked={itemSource === 'custom'} onChange={() => { setItemSource('custom'); setSelectedItemName(''); }} className="mr-1" />
+                <input type="radio" value="custom" checked={itemSource === 'custom'} onChange={() => { setItemSource('custom'); setSelectedItemId(''); }} className="mr-1" />
                 Custom / Outsourced
               </label>
             </div>
 
-            {itemSource === 'inventory' && (!currentShop || salesItems.length === 0) && (
+            {itemSource === 'inventory' && salesItems.length === 0 && (
               <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-4">
-                {!currentShop
-                  ? "Select your shop (top of page) to sell from stock."
-                  : "No stock allocated to your shop. Ask admin to allocate inventory from Stock Allocation / Inventory Management."}
+                No Phone or Accessory stock in inventory (main warehouse or allocated to your shop). Add stock via Purchases or ask admin to allocate from Stock Allocation.
               </p>
             )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               {itemSource === 'inventory' ? (
                 <select
                   className="border p-2 rounded"
-                  value={selectedItemName}
+                  value={selectedItemId}
                   onChange={(e) => handleItemSelect(e.target.value)}
+                  aria-label="Select item from stock"
                 >
                   <option value="">Select Item (in stock)</option>
                   {salesItems.map((item) => {
                     const stock = Number(item.stock) ?? 0;
+                    const location = item.shopId ? `Shop` : `Main`;
                     return (
-                      <option key={item.id} value={item.name}>
-                        {item.name} — Stock: {stock} pcs
+                      <option key={item.id} value={String(item.id)}>
+                        {item.name} — Stock: {stock} pcs ({location})
                       </option>
                     );
                   })}
@@ -535,15 +534,20 @@ export default function Sales() {
             <div className="grid grid-cols-3 gap-4 mb-4">
               <select
                 className="border p-2 rounded"
-                value={selectedItemName}
+                value={selectedItemId}
                 onChange={(e) => handleItemSelect(e.target.value)}
+                aria-label="Select item for wholesale"
               >
                 <option value="">Select Item</option>
-                {salesItems.map((item) => (
-                  <option key={item.id} value={item.name}>
-                    {item.name} (Stock: {item.stock})
-                  </option>
-                ))}
+                {salesItems.map((item) => {
+                  const stock = Number(item.stock) ?? 0;
+                  const location = item.shopId ? "Shop" : "Main";
+                  return (
+                    <option key={item.id} value={String(item.id)}>
+                      {item.name} — Stock: {stock} ({location})
+                    </option>
+                  );
+                })}
               </select>
 
               <input

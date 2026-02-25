@@ -118,6 +118,12 @@ export default function SupplierManagement() {
   };
 
   const loadSupplierPayments = useCallback(async () => {
+    // Only load supplier payments for admin users - staff should never see payment information
+    if (!isAdmin) {
+      setSupplierPayments([]);
+      setPaymentTableError(null);
+      return;
+    }
     const { data, error } = await supabase
       .from("supplier_payments")
       .select("*")
@@ -148,7 +154,7 @@ export default function SupplierManagement() {
       recordedBy: row.recorded_by || undefined,
     }));
     setSupplierPayments(mapped);
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     loadSupplierPayments();

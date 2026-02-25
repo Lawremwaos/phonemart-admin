@@ -178,7 +178,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
       } catch (e) {
         console.error("Error polling sales:", e);
       }
-    }, 15000);
+    }, 5000);
 
     return () => {
       cancelled = true;

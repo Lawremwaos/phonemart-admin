@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { useShop, type Shop, type User } from "../context/ShopContext";
+import { supabase } from "../lib/supabaseClient";
 
 export default function AdminSettings() {
   const { shops, users, addShop, updateShop, deleteShop, addUser, updateUser, deleteUser, currentUser } = useShop();
   const [activeTab, setActiveTab] = useState<'shops' | 'staff'>('shops');
+  const [clearing, setClearing] = useState(false);
+  const [clearDone, setClearDone] = useState(false);
   const [showShopForm, setShowShopForm] = useState(false);
   const [showStaffForm, setShowStaffForm] = useState(false);
   const [editingShop, setEditingShop] = useState<Shop | null>(null);
@@ -96,6 +99,48 @@ export default function AdminSettings() {
   const handleDeleteStaff = (userId: string) => {
     if (window.confirm('Are you sure you want to delete this staff member?')) {
       deleteUser(userId);
+    }
+  };
+
+  const handleClearAllData = async () => {
+    if (!window.confirm('⚠️ DELETE ALL DATA?\n\nThis will permanently remove:\n• All repairs, sales, inventory, purchases, suppliers\n• All stock allocations\n• All payments & staff procurements\n• All staff/user accounts\n\nShops will be kept. You will need to log in again after refresh.\n\nThis cannot be undone. Continue?')) return;
+    if (!window.confirm('⚠️ Final confirmation: Erase EVERYTHING including all staff accounts. Proceed?')) return;
+
+    setClearing(true);
+    try {
+      const uuidDummy = '00000000-0000-0000-0000-000000000000';
+      const run = async (table: string, isUuid: boolean) => {
+        const builder = supabase.from(table).delete();
+        const { error } = isUuid
+          ? await builder.neq('id', uuidDummy)
+          : await builder.gte('id', 0);
+        if (error) console.error(`Clear ${table}:`, error.message);
+      };
+
+      await run('procurement_payments', true);
+      await run('staff_procurements', true);
+      await run('repair_parts', false);
+      await run('additional_repair_items', false);
+      await run('stock_allocation_lines', false);
+      await run('sale_items', false);
+      await run('purchase_items', false);
+      await run('payments', true);
+      await run('repairs', true);
+      await run('sales', true);
+      await run('purchases', true);
+      await run('stock_allocations', true);
+      await run('inventory_items', false);
+      await run('suppliers', true);
+      await run('users', true);
+
+      setClearDone(true);
+      alert('All data has been cleared. Refreshing the app…');
+      window.location.reload();
+    } catch (err) {
+      console.error('Clear all error:', err);
+      alert('Something went wrong. Check the console.');
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -498,6 +543,29 @@ export default function AdminSettings() {
           </div>
         </div>
       )}
+
+      {/* Danger Zone: Clear All Data */}
+      <div className="mt-10 border-t pt-8">
+        <h2 className="text-xl font-bold text-red-700 mb-2">Danger Zone</h2>
+        <div className="bg-red-50 border border-red-300 rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="font-semibold text-red-800">Clear All Data</p>
+            <p className="text-sm text-red-700 mt-1">
+              Permanently delete all repairs, sales, inventory, purchases, suppliers, stock allocations, payments, staff procurements, and all staff/user accounts. Shops are kept. You will be logged out and must sign in again after refresh.
+            </p>
+          </div>
+          <button
+            onClick={handleClearAllData}
+            disabled={clearing}
+            className="bg-red-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-red-700 disabled:opacity-50 whitespace-nowrap"
+          >
+            {clearing ? 'Clearing…' : 'Delete All Data'}
+          </button>
+        </div>
+        {clearDone && (
+          <p className="text-sm text-green-700 mt-2">Data cleared. Page will refresh.</p>
+        )}
+      </div>
     </div>
   );
 }

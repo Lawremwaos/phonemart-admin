@@ -259,6 +259,26 @@ export default function TodaysSalesReport() {
     };
   }, [repairAnalysis, accessoryAnalysis, supplierSummary]);
 
+  // Repairs with outsourced parts that have no cost entered — staff cannot send report until these are filled
+  const incompleteOutsourced = useMemo(() => {
+    const list: Array<{ repairId: string; ticket?: string; customerName: string; itemNames: string[] }> = [];
+    repairAnalysis.forEach((ra) => {
+      const missing = ra.allParts
+        .filter((p) => p.source === 'outsourced' && (p.totalCost === 0 || p.costPerUnit === 0))
+        .map((p) => p.itemName);
+      if (missing.length > 0) {
+        list.push({
+          repairId: ra.repair.id,
+          ticket: ra.repair.ticketNumber,
+          customerName: ra.repair.customerName,
+          itemNames: missing,
+        });
+      }
+    });
+    return list;
+  }, [repairAnalysis]);
+
+  const canSendReport = incompleteOutsourced.length === 0;
   const formatDate = (date: Date) =>
     new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -340,19 +360,43 @@ export default function TodaysSalesReport() {
     return text;
   };
 
+  const blockSendMessage = () => {
+    const lines = incompleteOutsourced.map(
+      (r) => `• ${r.customerName}${r.ticket ? ` (${r.ticket})` : ''}: ${r.itemNames.join(', ')} — cost not entered`
+    );
+    alert(
+      "You cannot send the daily report until all outsourced parts have their cost entered.\n\n" +
+      "Repairs with missing outsourced cost:\n\n" +
+      lines.join("\n") +
+      "\n\nGo to Cost of Parts (or the repair ticket) and enter the cost for each outsourced item, then try again."
+    );
+  };
+
   const handleShareWhatsApp = () => {
+    if (!canSendReport) {
+      blockSendMessage();
+      return;
+    }
     const text = buildReportText(true);
     const targetPhone = whatsAppNumber.trim() || undefined;
     shareViaWhatsApp(text, targetPhone);
   };
 
   const handleShareToGroup = () => {
+    if (!canSendReport) {
+      blockSendMessage();
+      return;
+    }
     const text = buildReportText(true);
     const encodedText = encodeURIComponent(text);
     window.open(`https://wa.me/?text=${encodedText}`, '_blank');
   };
 
   const handleShareEmail = () => {
+    if (!canSendReport) {
+      blockSendMessage();
+      return;
+    }
     const subject = `Daily Sales Report - ${formatDate(new Date())}`;
     const body = buildReportText(false);
     shareViaEmail(subject, body);
@@ -372,17 +416,37 @@ export default function TodaysSalesReport() {
             <label className="block text-xs text-gray-600 mb-1">Direct number (optional)</label>
             <input type="tel" placeholder="+254712345678" value={whatsAppNumber} onChange={(e) => setWhatsAppNumber(e.target.value)} className="border border-gray-300 rounded px-3 py-2 text-sm w-40" />
           </div>
-          <button onClick={handleShareWhatsApp} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm">
+          <button onClick={handleShareWhatsApp} disabled={!canSendReport} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed" title={!canSendReport ? "Enter outsourced part costs first" : undefined}>
             Send to Number
           </button>
-          <button onClick={handleShareToGroup} className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 text-sm">
+          <button onClick={handleShareToGroup} disabled={!canSendReport} className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 text-sm disabled:opacity-50 disabled:cursor-not-allowed" title={!canSendReport ? "Enter outsourced part costs first" : undefined}>
             Send to WhatsApp Group
           </button>
-          <button onClick={handleShareEmail} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">
+          <button onClick={handleShareEmail} disabled={!canSendReport} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed" title={!canSendReport ? "Enter outsourced part costs first" : undefined}>
             Email Report
           </button>
         </div>
       </div>
+
+      {/* Block send when outsourced parts have no cost */}
+      {!canSendReport && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-6">
+          <p className="font-semibold text-amber-900">Report cannot be sent yet</p>
+          <p className="text-sm text-amber-800 mt-1">
+            Some repairs today use outsourced parts whose cost has not been entered. Enter the cost for each outsourced item before sending the daily report (WhatsApp or Email).
+          </p>
+          <ul className="text-sm text-amber-800 mt-2 list-disc list-inside">
+            {incompleteOutsourced.map((r) => (
+              <li key={r.repairId}>
+                {r.customerName}{r.ticket ? ` (${r.ticket})` : ""}: {r.itemNames.join(", ")} — cost not entered
+              </li>
+            ))}
+          </ul>
+          <Link to="/cost-of-parts" className="inline-block mt-3 bg-amber-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-amber-700">
+            Go to Cost of Parts →
+          </Link>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">

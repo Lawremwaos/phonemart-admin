@@ -195,7 +195,7 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
       } catch (e) {
         console.error("Error polling repairs:", e);
       }
-    }, 15000);
+    }, 5000);
 
     return () => {
       cancelled = true;

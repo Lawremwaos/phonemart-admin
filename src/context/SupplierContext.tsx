@@ -57,41 +57,44 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
       }
     })();
 
-    // Set up real-time subscription
+    const reloadSuppliers = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("suppliers")
+          .select("*")
+          .order("created_at", { ascending: false });
+        if (!error && data && !cancelled) {
+          const mapped: Supplier[] = data.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            phone: s.phone || undefined,
+            email: s.email || undefined,
+            address: s.address || undefined,
+            categories: (s.categories || []) as any,
+            supplierType: (s.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType,
+            createdAt: new Date(s.created_at),
+          }));
+          setSuppliers(mapped);
+        }
+      } catch (e) {
+        console.error("Error reloading suppliers:", e);
+      }
+    };
+
     const channel = supabase
       .channel('suppliers-changes')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'suppliers' },
-        async () => {
-          if (cancelled) return;
-          try {
-            const { data, error } = await supabase
-              .from("suppliers")
-              .select("*")
-              .order("created_at", { ascending: false });
-            if (!error && data) {
-              const mapped: Supplier[] = data.map((s: any) => ({
-                id: s.id,
-                name: s.name,
-                phone: s.phone || undefined,
-                email: s.email || undefined,
-                address: s.address || undefined,
-                categories: (s.categories || []) as any,
-                supplierType: (s.supplier_type === 'wholesale' ? 'wholesale' : 'local') as SupplierType,
-                createdAt: new Date(s.created_at),
-              }));
-              setSuppliers(mapped);
-            }
-          } catch (e) {
-            console.error("Error reloading suppliers:", e);
-          }
-        }
+        () => { if (!cancelled) reloadSuppliers(); }
       )
       .subscribe();
+
+    const pollInterval = setInterval(() => { if (!cancelled) reloadSuppliers(); }, 5000);
 
     return () => {
       cancelled = true;
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
   }, []);
 

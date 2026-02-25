@@ -4,7 +4,6 @@ import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
 import { useRepair } from "../context/RepairContext";
 import { usePayment } from "../context/PaymentContext";
-import { supabase } from "../lib/supabaseClient";
 import ShopSelector from "../components/ShopSelector";
 import AutomatedDailyReport from "../components/AutomatedDailyReport";
 
@@ -19,34 +18,7 @@ export default function Dashboard() {
   const [period, setPeriod] = useState<Period>('today');
 
   const isAdmin = currentUser?.roles.includes('admin');
-  const [resetting, setResetting] = useState(false);
-  const [resetDone, setResetDone] = useState(false);
-
-  const handleResetAllData = async () => {
-    if (!window.confirm('⚠️ Are you sure you want to DELETE ALL DATA?\n\nThis will remove:\n- All repairs\n- All sales\n- All inventory items\n- All purchases\n- All suppliers\n- All stock allocations\n\nShops and user accounts will be kept.\n\nThis action CANNOT be undone!')) return;
-    if (!window.confirm('⚠️ FINAL WARNING: This will permanently erase ALL business data. Type OK to confirm.')) return;
-
-    setResetting(true);
-    try {
-      const tables = [
-        'repair_parts', 'additional_repair_items', 'sale_items',
-        'purchase_items', 'stock_allocation_lines',
-        'repairs', 'sales', 'purchases',
-        'stock_allocations', 'inventory_items', 'suppliers'
-      ];
-      for (const table of tables) {
-        const { error } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        if (error) console.error(`Error clearing ${table}:`, error.message);
-      }
-      setResetDone(true);
-      alert('All data has been cleared! Refresh the page to see the clean system.');
-    } catch (err) {
-      console.error('Reset error:', err);
-      alert('Something went wrong. Check the console for details.');
-    } finally {
-      setResetting(false);
-    }
-  };
+  const [revenuePeriod, setRevenuePeriod] = useState<Period>('today');
 
   // --- HELPERS ---
   const now = new Date();
@@ -224,28 +196,6 @@ export default function Dashboard() {
       </div>
 
       <ShopSelector />
-
-      {/* Admin: Reset All Data */}
-      {isAdmin && !resetDone && (
-        <div className="bg-red-50 border border-red-300 rounded-lg p-4 flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-red-800">Reset System Data</p>
-            <p className="text-sm text-red-600">Permanently delete all repairs, sales, inventory, purchases, suppliers. Keeps shops & users.</p>
-          </div>
-          <button
-            onClick={handleResetAllData}
-            disabled={resetting}
-            className="bg-red-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-red-700 disabled:opacity-50"
-          >
-            {resetting ? 'Clearing...' : 'Clear All Data'}
-          </button>
-        </div>
-      )}
-      {resetDone && (
-        <div className="bg-green-50 border border-green-300 rounded-lg p-4 text-center">
-          <p className="font-semibold text-green-800">All data has been cleared! Refresh the page to start fresh.</p>
-        </div>
-      )}
 
       {/* Period Selector */}
       <div className="flex gap-2">
@@ -441,58 +391,59 @@ export default function Dashboard() {
 
       {/* 5. REVENUE OVERVIEW */}
       <div className="bg-white p-5 rounded-lg shadow">
-        <h3 className="text-lg font-semibold mb-4">Revenue Overview</h3>
+        <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
+          <h3 className="text-lg font-semibold">Revenue Overview</h3>
+          <div className="flex gap-2">
+            {(['today', 'week', 'month'] as Period[]).map(p => (
+              <button
+                key={p}
+                onClick={() => setRevenuePeriod(p)}
+                className={`px-3 py-1 text-sm rounded transition ${
+                  revenuePeriod === p
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {periodLabel(p)}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-100">
               <tr>
                 <th className="p-3 text-left">Metric</th>
-                <th className="p-3 text-right">Today</th>
-                <th className="p-3 text-right">This Week</th>
-                <th className="p-3 text-right">This Month</th>
+                <th className="p-3 text-right">{periodLabel(revenuePeriod)}</th>
               </tr>
             </thead>
             <tbody>
               <tr className="border-t">
                 <td className="p-3 font-medium">Total Revenue</td>
-                <td className="p-3 text-right font-bold text-green-700">KES {revenueOverview.today.totalRevenue.toLocaleString()}</td>
-                <td className="p-3 text-right font-bold text-green-700">KES {revenueOverview.week.totalRevenue.toLocaleString()}</td>
-                <td className="p-3 text-right font-bold text-green-700">KES {revenueOverview.month.totalRevenue.toLocaleString()}</td>
+                <td className="p-3 text-right font-bold text-green-700">KES {revenueOverview[revenuePeriod].totalRevenue.toLocaleString()}</td>
               </tr>
               <tr className="border-t bg-blue-50/50">
                 <td className="p-3 text-gray-600">Accessory Revenue</td>
-                <td className="p-3 text-right">KES {revenueOverview.today.accessoryRevenue.toLocaleString()}</td>
-                <td className="p-3 text-right">KES {revenueOverview.week.accessoryRevenue.toLocaleString()}</td>
-                <td className="p-3 text-right">KES {revenueOverview.month.accessoryRevenue.toLocaleString()}</td>
+                <td className="p-3 text-right">KES {revenueOverview[revenuePeriod].accessoryRevenue.toLocaleString()}</td>
               </tr>
               <tr className="border-t bg-orange-50/50">
                 <td className="p-3 text-gray-600">Repair Revenue</td>
-                <td className="p-3 text-right">KES {revenueOverview.today.repairRevenue.toLocaleString()}</td>
-                <td className="p-3 text-right">KES {revenueOverview.week.repairRevenue.toLocaleString()}</td>
-                <td className="p-3 text-right">KES {revenueOverview.month.repairRevenue.toLocaleString()}</td>
+                <td className="p-3 text-right">KES {revenueOverview[revenuePeriod].repairRevenue.toLocaleString()}</td>
               </tr>
               <tr className="border-t bg-red-50/50">
                 <td className="p-3 text-gray-600">Parts Cost</td>
-                <td className="p-3 text-right text-red-600">KES {revenueOverview.today.partsCost.toLocaleString()}</td>
-                <td className="p-3 text-right text-red-600">KES {revenueOverview.week.partsCost.toLocaleString()}</td>
-                <td className="p-3 text-right text-red-600">KES {revenueOverview.month.partsCost.toLocaleString()}</td>
+                <td className="p-3 text-right text-red-600">KES {revenueOverview[revenuePeriod].partsCost.toLocaleString()}</td>
               </tr>
-              <tr className="border-t bg-purple-50/50">
-                <td className="p-3 text-gray-600">Supplier Payments</td>
-                <td className="p-3 text-right text-purple-600">KES {revenueOverview.today.supplierPaid.toLocaleString()}</td>
-                <td className="p-3 text-right text-purple-600">KES {revenueOverview.week.supplierPaid.toLocaleString()}</td>
-                <td className="p-3 text-right text-purple-600">KES {revenueOverview.month.supplierPaid.toLocaleString()}</td>
-              </tr>
+              {isAdmin && (
+                <tr className="border-t bg-purple-50/50">
+                  <td className="p-3 text-gray-600">Supplier Payments</td>
+                  <td className="p-3 text-right text-purple-600">KES {revenueOverview[revenuePeriod].supplierPaid.toLocaleString()}</td>
+                </tr>
+              )}
               <tr className="border-t-2 border-gray-300 bg-green-50">
                 <td className="p-3 font-bold">Profit (Revenue - Parts Cost)</td>
-                <td className={`p-3 text-right font-bold ${revenueOverview.today.profit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                  KES {revenueOverview.today.profit.toLocaleString()}
-                </td>
-                <td className={`p-3 text-right font-bold ${revenueOverview.week.profit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                  KES {revenueOverview.week.profit.toLocaleString()}
-                </td>
-                <td className={`p-3 text-right font-bold ${revenueOverview.month.profit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                  KES {revenueOverview.month.profit.toLocaleString()}
+                <td className={`p-3 text-right font-bold ${revenueOverview[revenuePeriod].profit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                  KES {revenueOverview[revenuePeriod].profit.toLocaleString()}
                 </td>
               </tr>
             </tbody>

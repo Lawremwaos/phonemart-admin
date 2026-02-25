@@ -181,7 +181,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       } catch (e) {
         console.error("Error polling inventory:", e);
       }
-    }, 15000);
+    }, 5000);
 
     return () => {
       cancelled = true;
@@ -270,7 +270,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       } catch (e) {
         console.error("Error polling purchases:", e);
       }
-    }, 15000);
+    }, 5000);
 
     return () => {
       cancelled = true;
