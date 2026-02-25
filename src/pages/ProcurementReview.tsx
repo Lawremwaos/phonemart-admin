@@ -140,7 +140,6 @@ export default function ProcurementReview() {
           name: proc.itemName,
           category: "Accessory",
           stock: proc.quantity,
-          initialStock: proc.quantity,
           price: 0,
           reorderLevel: 0,
         });

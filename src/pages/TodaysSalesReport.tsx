@@ -141,53 +141,61 @@ export default function TodaysSalesReport() {
     });
   }, [filteredRepairs, inventoryItems, purchases, isAdmin, suppliers]);
 
-  // --- ACCESSORY ANALYSIS ---
+  // Helper: is this sale item an accessory? (by category or sale type)
+  const isAccessorySaleItem = (sale: { saleType: string }, item: { name: string; itemId?: number }) => {
+    if (sale.saleType === 'repair') return true;
+    if (item.itemId != null) {
+      const inv = inventoryItems.find((i) => i.id === item.itemId);
+      return inv?.category?.toLowerCase() === 'accessory';
+    }
+    return isAccessoryPart(item.name);
+  };
+
+  // --- ACCESSORY ANALYSIS (per-sale; only accessory items; staff_profit = price - admin_base_price, real_profit = price - actual_cost for admin)
   const accessoryAnalysis = useMemo(() => {
-    return todaysSales.map(sale => {
-      const revenue = sale.total;
-      const itemsBreakdown = sale.items.map(item => {
-        const costPrice = getCostPrice(item.name);
+    return todaysSales.map((sale) => {
+      const accessoryItems = sale.items.filter((item) => isAccessorySaleItem(sale, item));
+      const itemsBreakdown = accessoryItems.map((item) => {
+        const adminBase = item.adminBasePrice ?? getCostPrice(item.name);
+        const costForStaff = adminBase;
+        const costForAdmin = item.actualCost ?? adminBase;
         const supplier = getSupplierForItem(item.name);
+        const staffProfit = item.qty * (item.price - costForStaff);
+        const realProfit = isAdmin ? item.qty * (item.price - costForAdmin) : staffProfit;
         return {
           itemName: item.name,
           qty: item.qty,
           sellingPrice: item.price,
-          costPrice,
+          costPrice: isAdmin ? costForAdmin : costForStaff,
           totalRevenue: item.qty * item.price,
-          totalCost: item.qty * costPrice,
-          profit: item.qty * (item.price - costPrice),
+          totalCost: item.qty * (isAdmin ? costForAdmin : costForStaff),
+          profit: realProfit,
+          staffProfit,
           supplier,
+          fromRepair: sale.saleType === 'repair',
+          repairId: sale.repairId,
         };
       });
-      const totalCost = itemsBreakdown.reduce((sum, i) => sum + i.totalCost, 0);
-      const profit = revenue - totalCost;
+      const revenue = itemsBreakdown.reduce((s, i) => s + i.totalRevenue, 0);
+      const totalCost = itemsBreakdown.reduce((s, i) => s + i.totalCost, 0);
+      const profit = itemsBreakdown.reduce((s, i) => s + i.profit, 0);
       return { sale, revenue, itemsBreakdown, totalCost, profit };
-    });
-  }, [todaysSales, inventoryItems, purchases, isAdmin]);
+    }).filter((aa) => aa.itemsBreakdown.length > 0);
+  }, [todaysSales, inventoryItems, purchases, isAdmin, suppliers]);
 
-  // --- IN-STOCK ACCESSORIES: total amount sold at (selling price, not cost - staff don't see cost)
+  // --- IN-STOCK ACCESSORIES: total amount sold at (selling price)
   const inStockAccessorySummary = useMemo(() => {
     let amountSoldAt = 0;
     const items: string[] = [];
-    accessoryAnalysis.forEach(aa => {
-      aa.itemsBreakdown.forEach(item => {
+    accessoryAnalysis.forEach((aa) => {
+      aa.itemsBreakdown.forEach((item) => {
         if (item.supplier !== 'Own Inventory') return;
-        amountSoldAt += item.totalRevenue; // selling price total
+        amountSoldAt += item.totalRevenue;
         if (!items.includes(item.itemName)) items.push(item.itemName);
       });
     });
-    repairAnalysis.forEach(ra => {
-      ra.allParts.forEach(part => {
-        if (part.supplier !== 'Own Inventory') return;
-        if (!isAccessoryPart(part.itemName, part.supplier)) return;
-        const inv = inventoryItems.find(i => i.name.toLowerCase() === part.itemName.toLowerCase());
-        const price = inv?.price ?? 0;
-        amountSoldAt += price * part.qty;
-        if (!items.includes(part.itemName)) items.push(part.itemName);
-      });
-    });
     return { amountSoldAt, items };
-  }, [accessoryAnalysis, repairAnalysis, inventoryItems, suppliers]);
+  }, [accessoryAnalysis]);
 
   // --- SUPPLIER SUMMARY (outsourced only; in-stock shown separately with "Amount (sold at)")
   const supplierSummary = useMemo(() => {
@@ -216,26 +224,22 @@ export default function TodaysSalesReport() {
     return Object.values(map).sort((a, b) => b.partsCost - a.partsCost);
   }, [repairAnalysis, accessoryAnalysis]);
 
-  // --- TOTALS ---
-  // Accessory parts that were used in repairs (to show in Accessories breakdown, not Repair)
+  // Accessory line items from repair invoices (unified: from sales with saleType 'repair')
   const accessoryPartsFromRepairs = useMemo(() => {
-    const list: Array<{ itemName: string; qty: number; sellingPrice: number; supplier: string; repairCustomerName: string; repairPhoneModel: string }> = [];
-    repairAnalysis.forEach(ra => {
-      ra.allParts.forEach(part => {
-        if (!(part as { isAccessory?: boolean }).isAccessory) return;
-        const sellingPrice = (part as { sellingPrice?: number }).sellingPrice ?? 0;
+    const list: Array<{ itemName: string; qty: number; sellingPrice: number; supplier: string; repairId?: string }> = [];
+    todaysSales.filter((s) => s.saleType === 'repair').forEach((sale) => {
+      sale.items.forEach((item) => {
         list.push({
-          itemName: part.itemName,
-          qty: part.qty,
-          sellingPrice,
-          supplier: part.supplier,
-          repairCustomerName: ra.repair.customerName,
-          repairPhoneModel: ra.repair.phoneModel,
+          itemName: item.name,
+          qty: item.qty,
+          sellingPrice: item.price,
+          supplier: getSupplierForItem(item.name),
+          repairId: sale.repairId,
         });
       });
     });
     return list;
-  }, [repairAnalysis]);
+  }, [todaysSales]);
 
   const totals = useMemo(() => {
     const repairRevenue = repairAnalysis.reduce((sum, r) => sum + r.revenue, 0);
@@ -562,6 +566,20 @@ export default function TodaysSalesReport() {
                       </div>
                     </div>
                   )}
+                  {ra.allParts.filter(p => (p as { isAccessory?: boolean }).isAccessory).length > 0 && (
+                    <div className="bg-purple-50 rounded p-3 mt-2">
+                      <p className="text-xs font-semibold text-purple-800 mb-2">Accessories attached (recorded in Detailed Accessory Sale):</p>
+                      <div className="space-y-1">
+                        {ra.allParts.filter(p => (p as { isAccessory?: boolean }).isAccessory).map((part, pidx) => (
+                          <div key={pidx} className="flex justify-between items-center text-sm">
+                            <span className="font-medium">{part.itemName}</span>
+                            <span className="text-gray-500"> x{part.qty}</span>
+                            <span className="text-green-700 font-semibold">KES {((part as { sellingPrice?: number }).sellingPrice ?? 0) * part.qty} (sold at)</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -595,7 +613,7 @@ export default function TodaysSalesReport() {
                 <div className="flex justify-between items-start mb-3 flex-wrap gap-2">
                   <div>
                     <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                      {aa.sale.saleType === 'wholesale' ? 'Wholesale' : 'Retail'} #{idx + 1}
+                      {aa.sale.saleType === 'repair' ? 'From repair' : aa.sale.saleType === 'wholesale' ? 'Wholesale' : 'Retail'} #{idx + 1}
                     </span>
                     <p className="text-sm text-gray-500 mt-1">{new Date(aa.sale.date).toLocaleTimeString()}</p>
                   </div>
@@ -603,33 +621,32 @@ export default function TodaysSalesReport() {
                     <p className="text-sm text-gray-600">Revenue: <span className="font-bold text-green-700">KES {aa.revenue.toLocaleString()}</span></p>
                     <p className="text-sm text-gray-600">Cost: <span className="font-bold text-red-600">KES {aa.totalCost.toLocaleString()}</span></p>
                     <p className={`text-sm font-bold ${aa.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                      Profit: KES {aa.profit.toLocaleString()}
+                      {isAdmin ? 'Real profit' : 'Performance profit'}: KES {aa.profit.toLocaleString()}
                     </p>
+                    <p className="text-xs text-gray-500 mt-0.5">{isAdmin ? 'selling_price − actual_cost' : 'selling_price − admin_base_price'}</p>
                   </div>
                 </div>
 
                 <div className="bg-gray-50 rounded p-3">
                   <div className="space-y-1">
-                    {aa.itemsBreakdown.map((item, iidx) => {
-                      const fromShop = item.supplier === 'Own Inventory';
-                      return (
+                    {aa.itemsBreakdown.map((item, iidx) => (
                         <div key={iidx} className="flex justify-between items-center text-sm">
                           <div>
                             <span className="font-medium">{item.itemName}</span>
                             <span className="text-gray-500"> x{item.qty}</span>
                             <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">{getSupplierDisplay(item.supplier)}</span>
+                            {item.fromRepair && <span className="ml-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 text-xs rounded">Repair</span>}
                           </div>
                           <div className="text-right">
                             <span className="text-green-700 mr-3">Sold: KES {item.sellingPrice.toLocaleString()}</span>
-                            {fromShop ? (
-                              <span className="text-gray-500">Cost: -</span>
-                            ) : (
+                            {item.costPrice != null && item.costPrice > 0 ? (
                               <span className="text-red-600">Cost: KES {item.costPrice.toLocaleString()}</span>
+                            ) : (
+                              <span className="text-gray-500">Cost: —</span>
                             )}
                           </div>
                         </div>
-                      );
-                    })}
+                    ))}
                   </div>
                 </div>
 

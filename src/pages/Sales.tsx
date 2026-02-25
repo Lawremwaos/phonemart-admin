@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useInventory } from "../context/InventoryContext";
-import { useSales } from "../context/SalesContext";
+import { useSales, type SaleItemInput } from "../context/SalesContext";
 import { useShop } from "../context/ShopContext";
 import { usePayment } from "../context/PaymentContext";
 import ShopSelector from "../components/ShopSelector";
@@ -121,10 +121,14 @@ export default function Sales() {
     }
 
     try {
-      // Add to wholesale sale
-      addItemToWholesaleSale({ name: selectedItemName, qty, price }, currentShop?.id);
-      
-      // Deduct inventory (from current shop's allocated stock)
+      addItemToWholesaleSale({
+        name: selectedItemName,
+        qty,
+        price,
+        itemId: inventoryItem.id,
+        adminBasePrice: inventoryItem.adminCostPrice ?? inventoryItem.costPrice,
+        actualCost: inventoryItem.actualCost,
+      }, currentShop?.id);
       deductStock(selectedItemName, qty, currentShop?.id);
 
       // Clear form
@@ -166,7 +170,18 @@ export default function Sales() {
     const paidAmount = typeof amountPaid === 'number' && amountPaid > 0 ? amountPaid : retailTotal;
     const balance = retailTotal - paidAmount;
     const paymentStatus = balance <= 0 ? 'fully_paid' : paidAmount > 0 ? 'partial' : 'pending';
-    
+
+    const itemsForSale: SaleItemInput[] = saleItems.map((s) => {
+      const base = { name: s.name, qty: s.qty, price: s.price };
+      if (s.source === 'inventory') {
+        const inv = items.find((i) => i.name === s.name && i.shopId === currentShop?.id);
+        if (inv) {
+          return { ...base, itemId: inv.id, adminBasePrice: inv.adminCostPrice ?? inv.costPrice, actualCost: inv.actualCost };
+        }
+      }
+      return base;
+    });
+
     const sale = {
       id: Date.now().toString(),
       date: new Date(),
@@ -181,8 +196,8 @@ export default function Sales() {
       bank: paymentType === 'bank_deposit' ? bank : undefined,
       depositReference: paymentType === 'bank_deposit' ? depositReference : undefined,
     };
-    
-    addSale(saleItems, retailTotal, currentShop?.id, 'retail');
+
+    addSale(itemsForSale, retailTotal, currentShop?.id, 'retail');
     
     // Add payment record
     addPayment({

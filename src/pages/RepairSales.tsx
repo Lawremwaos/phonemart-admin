@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useInventory } from "../context/InventoryContext";
 import { useRepair } from "../context/RepairContext";
+import { useSales } from "../context/SalesContext";
 import type { RepairStatus } from "../context/RepairContext";
 // import { usePayment } from "../context/PaymentContext";
 import { useShop } from "../context/ShopContext";
@@ -43,6 +44,7 @@ export default function RepairSales() {
   const navigate = useNavigate();
   const { items, addStock } = useInventory();
   const { addRepair } = useRepair();
+  const { addRepairAccessorySale } = useSales();
   // Payments are recorded after admin approval on the Pending Payment Approval page
   const { currentShop, currentUser } = useShop();
   const { suppliers, addSupplier } = useSupplier();
@@ -493,6 +495,31 @@ export default function RepairSales() {
     if (!repairId) {
       alert("Failed to save repair. Please try again.");
       return;
+    }
+
+    // Record accessory sales for in-house parts that are accessories (unified table, linked to repair)
+    const accessoryParts = selectedParts.filter((p) => {
+      if (p.source !== 'in-house' || !p.itemId) return false;
+      const inv = items.find((i) => i.id === p.itemId);
+      return inv?.category?.toLowerCase() === 'accessory';
+    });
+    if (accessoryParts.length > 0) {
+      const accessorySaleItems = accessoryParts.map((p) => {
+        const inv = items.find((i) => i.id === p.itemId);
+        return {
+          itemId: p.itemId,
+          name: p.itemName,
+          qty: p.qty,
+          sellingPrice: inv?.price ?? 0,
+          adminBasePrice: inv?.adminCostPrice ?? inv?.costPrice ?? p.cost,
+          actualCost: inv?.actualCost ?? undefined,
+        };
+      });
+      try {
+        await addRepairAccessorySale(repairId, currentShop?.id, accessorySaleItems, currentUser?.name);
+      } catch (e) {
+        console.error("Failed to record accessory sale:", e);
+      }
     }
 
     // Outsourced part costs are tracked via repair_parts in Supabase.

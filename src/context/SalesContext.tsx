@@ -2,12 +2,31 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { supabase } from "../lib/supabaseClient";
 import { useShop } from "./ShopContext";
 
+export type SaleItemInput = {
+  name: string;
+  qty: number;
+  price: number;
+  itemId?: number;
+  adminBasePrice?: number;
+  actualCost?: number;
+};
+
+export type SaleItem = {
+  name: string;
+  qty: number;
+  price: number;
+  itemId?: number;
+  adminBasePrice?: number;
+  actualCost?: number; // only present for admin; never returned to staff
+};
+
 export type Sale = {
   id: string;
   date: Date;
   shopId?: string;
-  saleType: 'in-shop' | 'wholesale' | 'retail';
-  items: Array<{ name: string; qty: number; price: number }>;
+  saleType: 'in-shop' | 'wholesale' | 'retail' | 'repair';
+  repairId?: string; // set when sale is from repair invoice (accessories sold in repair)
+  items: SaleItem[];
   total: number;
   paymentType?: 'cash' | 'mpesa' | 'bank_deposit';
   paymentStatus?: 'pending' | 'partial' | 'fully_paid';
@@ -17,14 +36,15 @@ export type Sale = {
   depositReference?: string;
   status?: 'open' | 'closed';
   closedAt?: Date;
-  soldBy?: string; // staff name who made the sale (for admin daily report)
+  soldBy?: string;
 };
 
 type SalesContextType = {
   sales: Sale[];
-  openWholesaleSale: Sale | null; // Current open wholesale sale
-  addSale: (items: Array<{ name: string; qty: number; price: number }>, total: number, shopId?: string, saleType?: 'in-shop' | 'wholesale' | 'retail') => void;
-  addItemToWholesaleSale: (item: { name: string; qty: number; price: number }, shopId?: string) => void;
+  openWholesaleSale: Sale | null;
+  addSale: (items: SaleItemInput[], total: number, shopId?: string, saleType?: 'in-shop' | 'wholesale' | 'retail', repairId?: string) => void;
+  addItemToWholesaleSale: (item: SaleItemInput, shopId?: string) => void;
+  addRepairAccessorySale: (repairId: string, shopId: string | undefined, items: Array<{ itemId?: number; name: string; qty: number; sellingPrice: number; adminBasePrice?: number; actualCost?: number }>, soldBy?: string) => Promise<void>;
   closeWholesaleSale: (paymentType: 'cash' | 'mpesa' | 'bank_deposit', depositReference?: string, bank?: string) => void;
   deleteSale: (saleId: string) => void;
   getDailyRevenue: () => number;
@@ -55,29 +75,40 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
   const lastLocalUpdateRef = useRef<number>(0);
   const DEBOUNCE_MS = 3000;
 
-  // Helper function to load sale with items
+  // Staff must never receive actual_cost. Select columns accordingly.
   const loadSaleWithItems = useCallback(async (saleData: any): Promise<Sale> => {
+    const isAdmin = currentUser?.roles?.includes('admin');
+    const itemCols = isAdmin ? 'id,sale_id,name,qty,price,item_id,admin_base_price,actual_cost' : 'id,sale_id,name,qty,price,item_id,admin_base_price';
     const { data: itemsData } = await supabase
       .from("sale_items")
-      .select("*")
+      .select(itemCols)
       .eq("sale_id", saleData.id);
+
+    const items: SaleItem[] = (itemsData || []).map((i: any) => {
+      const out: SaleItem = {
+        name: i.name,
+        qty: i.qty,
+        price: Number(i.price) || 0,
+      };
+      if (i.item_id != null) out.itemId = i.item_id;
+      if (i.admin_base_price != null) out.adminBasePrice = Number(i.admin_base_price);
+      if (isAdmin && i.actual_cost != null) out.actualCost = Number(i.actual_cost);
+      return out;
+    });
 
     return {
       id: saleData.id,
       date: new Date(saleData.date),
       shopId: saleData.shop_id || undefined,
-      saleType: saleData.sale_type as 'in-shop' | 'wholesale' | 'retail',
-      items: (itemsData || []).map((i: any) => ({
-        name: i.name,
-        qty: i.qty,
-        price: Number(i.price) || 0,
-      })),
+      saleType: (saleData.sale_type || 'in-shop') as Sale['saleType'],
+      repairId: saleData.repair_id || undefined,
+      items,
       total: Number(saleData.total) || 0,
       status: saleData.status as 'open' | 'closed',
       closedAt: saleData.closed_at ? new Date(saleData.closed_at) : undefined,
       soldBy: saleData.sold_by || undefined,
     };
-  }, []);
+  }, [currentUser]);
 
   const loadAllSales = useCallback(async () => {
     const { data: salesData, error: salesError } = await supabase
@@ -85,7 +116,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
       .select("*")
       .order("date", { ascending: false });
     if (salesError) throw salesError;
-    return Promise.all((salesData || []).map(s => loadSaleWithItems(s)));
+    return Promise.all((salesData || []).map((s: any) => loadSaleWithItems(s)));
   }, [loadSaleWithItems]);
 
   const processSalesData = useCallback((salesWithItems: Sale[]) => {
@@ -156,10 +187,9 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [loadAllSales, processSalesData]);
 
-  const addSale = useCallback((items: Array<{ name: string; qty: number; price: number }>, total: number, shopId?: string, saleType: 'in-shop' | 'wholesale' | 'retail' = 'in-shop') => {
+  const addSale = useCallback((items: SaleItemInput[], total: number, shopId?: string, saleType: 'in-shop' | 'wholesale' | 'retail' = 'in-shop', repairId?: string) => {
     (async () => {
       const status = saleType === 'wholesale' ? 'open' : 'closed';
-      
       const soldBy = currentUser?.name || undefined;
       const { data: saleRecord, error: saleError } = await supabase
         .from("sales")
@@ -170,6 +200,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
           status: status,
           closed_at: status === 'closed' ? new Date().toISOString() : null,
           sold_by: soldBy || null,
+          repair_id: repairId || null,
         })
         .select("*")
         .single();
@@ -178,12 +209,14 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
-      // Insert sale items
       const itemsPayload = items.map((item) => ({
         sale_id: saleRecord.id,
         name: item.name,
         qty: item.qty,
         price: item.price,
+        item_id: item.itemId ?? null,
+        admin_base_price: item.adminBasePrice ?? null,
+        actual_cost: item.actualCost ?? null,
       }));
       const { error: itemsError } = await supabase
         .from("sale_items")
@@ -197,14 +230,14 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         id: saleRecord.id,
         date: new Date(saleRecord.date),
         shopId: saleRecord.shop_id || undefined,
-        saleType: saleRecord.sale_type as 'in-shop' | 'wholesale' | 'retail',
-        items: items,
+        saleType: (saleRecord.sale_type || saleType) as Sale['saleType'],
+        repairId: saleRecord.repair_id || undefined,
+        items: items.map((i) => ({ name: i.name, qty: i.qty, price: i.price, itemId: i.itemId, adminBasePrice: i.adminBasePrice, actualCost: i.actualCost })),
         total: Number(saleRecord.total) || 0,
         status: saleRecord.status as 'open' | 'closed',
         closedAt: saleRecord.closed_at ? new Date(saleRecord.closed_at) : undefined,
         soldBy: saleRecord.sold_by || undefined,
       };
-      
       lastLocalUpdateRef.current = Date.now();
       if (saleType === 'wholesale') {
         setOpenWholesaleSale(newSale);
@@ -214,17 +247,65 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
     })();
   }, [currentUser]);
 
-  const addItemToWholesaleSale = useCallback((item: { name: string; qty: number; price: number }, shopId?: string) => {
+  const addRepairAccessorySale = useCallback(async (repairId: string, shopId: string | undefined, items: Array<{ itemId?: number; name: string; qty: number; sellingPrice: number; adminBasePrice?: number; actualCost?: number }>, soldBy?: string): Promise<void> => {
+    if (items.length === 0) return;
+    const total = items.reduce((sum, i) => sum + i.qty * i.sellingPrice, 0);
+    const { data: saleRecord, error: saleError } = await supabase
+      .from("sales")
+      .insert({
+        shop_id: shopId || null,
+        sale_type: 'repair',
+        repair_id: repairId,
+        total,
+        status: 'closed',
+        closed_at: new Date().toISOString(),
+        sold_by: soldBy || null,
+      })
+      .select("*")
+      .single();
+    if (saleError) {
+      console.error("Error adding repair accessory sale:", saleError);
+      throw new Error("Failed to record accessory sale");
+    }
+    const itemsPayload = items.map((i) => ({
+      sale_id: saleRecord.id,
+      name: i.name,
+      qty: i.qty,
+      price: i.sellingPrice,
+      item_id: i.itemId ?? null,
+      admin_base_price: i.adminBasePrice ?? null,
+      actual_cost: i.actualCost ?? null,
+    }));
+    const { error: itemsError } = await supabase.from("sale_items").insert(itemsPayload);
+    if (itemsError) {
+      console.error("Error adding repair accessory sale items:", itemsError);
+      throw new Error("Failed to record accessory sale items");
+    }
+    const newSale: Sale = {
+      id: saleRecord.id,
+      date: new Date(saleRecord.date),
+      shopId: saleRecord.shop_id || undefined,
+      saleType: 'repair',
+      repairId: repairId,
+      items: items.map((i) => ({ name: i.name, qty: i.qty, price: i.sellingPrice, itemId: i.itemId, adminBasePrice: i.adminBasePrice, actualCost: i.actualCost })),
+      total: Number(saleRecord.total) || 0,
+      status: 'closed',
+      closedAt: new Date(saleRecord.closed_at),
+      soldBy: saleRecord.sold_by || undefined,
+    };
+    lastLocalUpdateRef.current = Date.now();
+    setSales((prev) => [newSale, ...prev]);
+  }, []);
+
+  const addItemToWholesaleSale = useCallback((item: SaleItemInput, shopId?: string) => {
     (async () => {
+      const saleItem = { name: item.name, qty: item.qty, price: item.price, itemId: item.itemId, adminBasePrice: item.adminBasePrice, actualCost: item.actualCost };
       if (!openWholesaleSale) {
-        // Create new wholesale sale if none exists
-        await addSale([item], item.qty * item.price, shopId, 'wholesale');
+        await addSale([saleItem], item.qty * item.price, shopId, 'wholesale');
       } else {
-        // Add item to existing sale
-        const updatedItems = [...openWholesaleSale.items, item];
+        const updatedItems = [...openWholesaleSale.items, saleItem];
         const updatedTotal = updatedItems.reduce((sum, i) => sum + (i.qty * i.price), 0);
-        
-        // Update sale total
+
         const { error: updateError } = await supabase
           .from("sales")
           .update({ total: updatedTotal })
@@ -234,7 +315,6 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
           return;
         }
 
-        // Add new item
         const { error: itemError } = await supabase
           .from("sale_items")
           .insert({
@@ -242,6 +322,9 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
             name: item.name,
             qty: item.qty,
             price: item.price,
+            item_id: item.itemId ?? null,
+            admin_base_price: item.adminBasePrice ?? null,
+            actual_cost: item.actualCost ?? null,
           });
         if (itemError) {
           console.error("Error adding item to wholesale sale:", itemError);
@@ -511,6 +594,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         openWholesaleSale,
         addSale,
         addItemToWholesaleSale,
+        addRepairAccessorySale,
         closeWholesaleSale,
         deleteSale,
         getDailyRevenue,

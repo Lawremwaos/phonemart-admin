@@ -36,6 +36,9 @@ export type InventoryItem = {
   pendingAllocation?: boolean;
 };
 
+/** Input for addItem: initialStock is optional and defaults to stock. */
+export type AddInventoryItemInput = Omit<InventoryItem, 'id' | 'initialStock'> & { initialStock?: number };
+
 export type Purchase = {
   id: string;
   date: Date;
@@ -75,7 +78,7 @@ type InventoryContextType = {
   purchases: Purchase[];
   exchanges: Exchange[];
   stockAllocations: StockAllocation[];
-  addItem: (item: Omit<InventoryItem, 'id'>) => void;
+  addItem: (item: AddInventoryItemInput) => void;
   updateItem: (id: number, updates: Partial<InventoryItem>) => void;
   removeItem: (id: number) => void;
   addStock: (itemId: number, qty: number) => void;
@@ -122,13 +125,17 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
   }, []);
 
   const loadAllItems = useCallback(async (): Promise<InventoryItem[]> => {
+    const isAdmin = currentUser?.roles?.includes('admin');
+    const cols = isAdmin
+      ? '*'
+      : 'id,name,category,item_type,stock,price,reorder_level,initial_stock,shop_id,supplier,cost_price,admin_cost_price,pending_allocation';
     const { data, error } = await supabase
       .from("inventory_items")
-      .select("*")
+      .select(cols)
       .order("created_at", { ascending: false });
     if (error) throw error;
     return mapInventoryItems(data || []);
-  }, [mapInventoryItems]);
+  }, [mapInventoryItems, currentUser]);
 
   // Load items from Supabase on mount and set up real-time subscription + polling
   useEffect(() => {
@@ -352,7 +359,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     };
   }, [loadAllocationWithLines]);
 
-  const addItem = useCallback((itemData: Omit<InventoryItem, 'id'>) => {
+  const addItem = useCallback((itemData: AddInventoryItemInput) => {
     (async () => {
       const payload = {
         name: itemData.name,
@@ -361,7 +368,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         stock: itemData.stock || 0,
         price: itemData.price || 0,
         reorder_level: itemData.reorderLevel || 0,
-        initial_stock: itemData.stock || 0,
+        initial_stock: itemData.initialStock ?? itemData.stock ?? 0,
         shop_id: itemData.shopId || null,
         supplier: itemData.supplier || null,
         cost_price: itemData.costPrice || null,
