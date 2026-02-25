@@ -9,6 +9,7 @@ type PurchaseItem = {
   itemCategory: 'Spare' | 'Accessory';
   qty: number;
   costPrice: number; // actual cost (real buying price) - admin only, saved as actual_cost
+  staffSellingPrice: number; // price staff will use when selling - used for profit calculation
 };
 
 export default function Purchases() {
@@ -35,6 +36,7 @@ export default function Purchases() {
   const [itemCategory, setItemCategory] = useState<'Spare' | 'Accessory'>('Spare');
   const [qty, setQty] = useState(1);
   const [costPrice, setCostPrice] = useState(0);
+  const [staffSellingPrice, setStaffSellingPrice] = useState(0);
 
   // Filter purchases by shop
   const filteredPurchases = currentUser?.roles.includes('admin')
@@ -73,6 +75,10 @@ export default function Purchases() {
       alert("Please enter valid cost price");
       return;
     }
+    if (staffSellingPrice <= 0) {
+      alert("Please enter valid staff selling price");
+      return;
+    }
 
     // Check if item already exists in inventory
     const existingItem = items.find(i => i.name.toLowerCase() === itemName.trim().toLowerCase() && i.category === itemCategory);
@@ -94,12 +100,14 @@ export default function Purchases() {
         itemCategory,
         qty,
         costPrice,
+        staffSellingPrice,
       },
     ]);
 
     setItemName("");
     setQty(1);
     setCostPrice(0);
+    setStaffSellingPrice(0);
   };
 
   const handleRemoveItem = (index: number) => {
@@ -140,7 +148,7 @@ export default function Purchases() {
     }
 
     // Process purchase items - create new items if they don't exist
-    const processedItems: Array<{ itemId: number; itemName: string; qty: number; costPrice: number }> = [];
+    const processedItems: Array<{ itemId: number; itemName: string; qty: number; costPrice: number; staffSellingPrice: number; category?: 'Phone' | 'Spare' | 'Accessory' }> = [];
     
     for (const purchaseItem of purchaseItems) {
       // Check if item exists (negative ID means it's new)
@@ -159,6 +167,8 @@ export default function Purchases() {
             itemName: purchaseItem.itemName,
             qty: purchaseItem.qty,
             costPrice: purchaseItem.costPrice,
+            staffSellingPrice: purchaseItem.staffSellingPrice,
+            category: purchaseItem.itemCategory,
           });
         } else {
           // New item - will be created by addPurchase in InventoryContext
@@ -168,6 +178,8 @@ export default function Purchases() {
             itemName: purchaseItem.itemName,
             qty: purchaseItem.qty,
             costPrice: purchaseItem.costPrice,
+            staffSellingPrice: purchaseItem.staffSellingPrice,
+            category: purchaseItem.itemCategory,
           });
         }
       } else {
@@ -177,6 +189,8 @@ export default function Purchases() {
           itemName: purchaseItem.itemName,
           qty: purchaseItem.qty,
           costPrice: purchaseItem.costPrice,
+          staffSellingPrice: purchaseItem.staffSellingPrice,
+          category: purchaseItem.itemCategory,
         });
       }
     }
@@ -189,7 +203,11 @@ export default function Purchases() {
       await addPurchase({
         supplier: finalSupplierName,
         supplierType: supplierType as 'local' | 'wholesale',
-        items: processedItems.map(p => ({ ...p, actualCost: p.costPrice })),
+        items: processedItems.map(p => ({ 
+          ...p, 
+          actualCost: p.costPrice,
+          staffSellingPrice: p.staffSellingPrice,
+        })),
         total,
         shopId: currentShop?.id,
       });
@@ -205,6 +223,7 @@ export default function Purchases() {
     setItemName("");
     setQty(1);
     setCostPrice(0);
+    setStaffSellingPrice(0);
     alert(`Purchase recorded! Total: KES ${total.toLocaleString()}`);
   };
 
@@ -339,18 +358,32 @@ export default function Purchases() {
             />
           </div>
           {currentUser?.roles.includes('admin') && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Actual cost (KES) *</label>
-              <input
-                type="number"
-                value={costPrice}
-                onChange={(e) => setCostPrice(Number(e.target.value))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-                min="0"
-                placeholder="Your purchase cost (hidden from staff)"
-              />
-              <p className="text-xs text-gray-500 mt-1">This cost is only visible to you. Staff will see their own cost.</p>
-            </div>
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Actual cost (KES) *</label>
+                <input
+                  type="number"
+                  value={costPrice}
+                  onChange={(e) => setCostPrice(Number(e.target.value))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  min="0"
+                  placeholder="Your purchase cost (hidden from staff)"
+                />
+                <p className="text-xs text-gray-500 mt-1">This cost is only visible to you. Staff will see their own cost.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Staff selling price (KES) *</label>
+                <input
+                  type="number"
+                  value={staffSellingPrice}
+                  onChange={(e) => setStaffSellingPrice(Number(e.target.value))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  min="0"
+                  placeholder="Price staff will use when selling"
+                />
+                <p className="text-xs text-gray-500 mt-1">This price will be set in inventory. Profit = actual_selling_price - staff_selling_price</p>
+              </div>
+            </>
           )}
           <div className="flex items-end">
             <button
@@ -369,12 +402,15 @@ export default function Purchases() {
             <div className="border rounded p-4">
               {purchaseItems.map((item, index) => (
                 <div key={index} className="flex justify-between items-center py-2 border-b last:border-b-0">
-                  <span>
-                    {item.itemName} x {item.qty}
+                  <div className="flex-1">
+                    <div className="font-medium">{item.itemName} x {item.qty}</div>
                     {currentUser?.roles.includes('admin') && (
-                      <> @ KES {item.costPrice.toLocaleString()}</>
+                      <div className="text-xs text-gray-600 mt-1">
+                        <span>Cost: KES {item.costPrice.toLocaleString()}</span>
+                        <span className="ml-3">Staff Price: KES {item.staffSellingPrice.toLocaleString()}</span>
+                      </div>
                     )}
-                  </span>
+                  </div>
                   <div className="flex gap-2 items-center">
                     {currentUser?.roles.includes('admin') && (
                       <span className="font-semibold">KES {(item.qty * item.costPrice).toLocaleString()}</span>

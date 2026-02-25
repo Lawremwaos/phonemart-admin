@@ -50,6 +50,8 @@ export type Purchase = {
     qty: number;
     costPrice: number;
     actualCost?: number; // real buying price (admin only), for profit calculation
+    staffSellingPrice?: number; // price staff will use when selling - used for profit calculation
+    category?: 'Phone' | 'Spare' | 'Accessory'; // item category for new items
   }>;
   total: number;
   shopId?: string;
@@ -459,7 +461,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
 
   const addPurchase = useCallback(async (purchaseData: Omit<Purchase, 'id' | 'date'>): Promise<void> => {
     // Resolve new items (negative itemId) to real inventory IDs by creating them first
-    const resolvedItems: Array<{ itemId: number; itemName: string; qty: number; costPrice: number; actualCost?: number }> = [];
+    const resolvedItems: Array<{ itemId: number; itemName: string; qty: number; costPrice: number; actualCost?: number; staffSellingPrice?: number }> = [];
     for (const item of purchaseData.items) {
       const existingItem = items.find((i) => i.id === item.itemId);
       if (existingItem && item.itemId > 0) {
@@ -469,19 +471,28 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
           qty: item.qty,
           costPrice: item.costPrice,
           actualCost: item.actualCost,
+          staffSellingPrice: item.staffSellingPrice,
         });
       } else {
         const actualCost = item.actualCost ?? item.costPrice;
+        // staffSellingPrice is the price staff will use when selling - set as price and costPrice for profit calculation
+        const staffPrice = item.staffSellingPrice ?? 0;
+        // Determine category: use provided category, or try to find from existing items, or default to 'Spare'
+        let itemCategory: 'Phone' | 'Spare' | 'Accessory' = item.category || 'Spare';
+        const existingItemByName = items.find(i => i.name.toLowerCase() === item.itemName.toLowerCase());
+        if (existingItemByName && !item.category) {
+          itemCategory = existingItemByName.category;
+        }
         const payload = {
           name: item.itemName,
-          category: 'Spare',
+          category: itemCategory,
           stock: item.qty,
-          price: 0,
+          price: staffPrice, // Staff selling price - this is what staff sees and uses
           reorder_level: 0,
           initial_stock: item.qty,
           shop_id: null,
           supplier: purchaseData.supplier,
-          cost_price: item.costPrice,
+          cost_price: staffPrice, // Also set as costPrice so profit = selling_price - costPrice
           admin_cost_price: item.costPrice,
           actual_cost: actualCost,
           pending_allocation: true,
@@ -500,12 +511,13 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
           {
             id: newId,
             name: item.itemName,
-            category: 'Spare',
+            category: itemCategory,
             stock: item.qty,
-            price: 0,
+            price: staffPrice,
             reorderLevel: 0,
             initialStock: item.qty,
             pendingAllocation: true,
+            costPrice: staffPrice,
             adminCostPrice: item.costPrice,
             actualCost: actualCost,
             supplier: purchaseData.supplier,
@@ -518,6 +530,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
           qty: item.qty,
           costPrice: item.costPrice,
           actualCost: item.actualCost,
+          staffSellingPrice: item.staffSellingPrice,
         });
       }
     }
@@ -559,9 +572,12 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       const existingItem = items.find((i) => i.id === item.itemId);
       if (existingItem && item.itemId > 0) {
         const actualCost = item.actualCost ?? item.costPrice;
+        const staffPrice = item.staffSellingPrice ?? existingItem.price;
         updateItem(existingItem.id, {
           stock: existingItem.stock + item.qty,
           pendingAllocation: true,
+          price: staffPrice, // Update price to staff selling price
+          costPrice: staffPrice, // Update costPrice for profit calculation
           adminCostPrice: item.costPrice,
           actualCost: actualCost,
           supplier: purchaseData.supplier,
