@@ -111,6 +111,25 @@ export default function PendingCollections() {
     return shops.find(s => s.id === shopId)?.name || shopId;
   };
 
+  const repairNeedsOutsourcedCost = (repair: typeof repairs[0]): boolean => {
+    const hasPartNeedingCost = repair.partsUsed.some(p => {
+      const cost = p.cost ?? 0;
+      const isOutsourced = (p as { source?: string }).source === 'outsourced' || !!p.supplierName;
+      return cost === 0 || cost === null || (isOutsourced && cost <= 0);
+    });
+    if (hasPartNeedingCost) return true;
+    if (repair.additionalItems) {
+      return repair.additionalItems.some(item => {
+        if (item.source !== 'outsourced') return false;
+        const hasPartWithCost = repair.partsUsed.some(
+          p => p.itemName === item.itemName && (Number(p.cost) || 0) > 0
+        );
+        return !hasPartWithCost;
+      });
+    }
+    return false;
+  };
+
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',

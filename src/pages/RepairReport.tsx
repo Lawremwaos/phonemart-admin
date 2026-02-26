@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { useRepair } from "../context/RepairContext";
 import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
-import { useSupplier } from "../context/SupplierContext";
 import { shareViaWhatsApp, shareViaEmail } from "../utils/receiptUtils";
 
 type Period = 'daily' | 'weekly' | 'monthly';
@@ -12,7 +11,6 @@ export default function RepairReport() {
   const { repairs } = useRepair();
   const { items: inventoryItems, purchases } = useInventory();
   const { currentShop, currentUser } = useShop();
-  const { suppliers } = useSupplier();
   const [whatsAppNumber, setWhatsAppNumber] = useState("");
   const [period, setPeriod] = useState<Period>('daily');
   const isAdmin = currentUser?.roles.includes('admin') ?? false;
@@ -265,7 +263,7 @@ export default function RepairReport() {
           <p className="text-gray-500 text-center py-8">No repairs in this period.</p>
         ) : (
           <div className="space-y-4">
-            {repairAnalysis.map((ra, idx) => (
+            {repairAnalysis.map((ra) => (
               <div key={ra.repair.id} className="border rounded-lg p-4">
                 <div className="flex justify-between items-start flex-wrap gap-2">
                   <div>

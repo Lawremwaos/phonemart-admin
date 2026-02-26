@@ -179,7 +179,7 @@ export default function AccessoriesReport() {
           <p className="text-gray-500 text-center py-8">No accessory sales in this period.</p>
         ) : (
           <div className="space-y-4">
-            {accessoryAnalysis.map((aa, idx) => (
+            {accessoryAnalysis.map((aa) => (
               <div key={aa.sale.id} className="border rounded-lg p-4">
                 <div className="flex justify-between items-start flex-wrap gap-2">
                   <div>
