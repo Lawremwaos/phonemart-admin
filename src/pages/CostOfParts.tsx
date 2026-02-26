@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
 
@@ -10,6 +11,7 @@ export default function CostOfParts() {
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
 
   // Get outsourced items for a repair that still need cost input
+  // Include: parts with cost 0 or null, parts with source 'outsourced', and additional outsourced items
   function getOutsourcedItemsForRepair(repair: typeof repairs[0]) {
     const items: Array<{
       itemName: string;
@@ -19,15 +21,19 @@ export default function CostOfParts() {
       supplierName?: string;
     }> = [];
 
-    // Parts with zero cost (outsourced, cost not yet entered)
+    // Parts that are outsourced or have zero/null cost (cost not yet entered)
     repair.partsUsed
-      .filter(p => p.cost === 0)
+      .filter(p => {
+        const cost = p.cost ?? 0;
+        const isOutsourced = (p as { source?: string }).source === 'outsourced' || !!p.supplierName;
+        return cost === 0 || cost === null || (isOutsourced && cost <= 0);
+      })
       .forEach(part => {
         items.push({
           itemName: part.itemName,
           qty: part.qty,
           source: 'part',
-          currentCost: 0,
+          currentCost: Number(part.cost) || 0,
           supplierName: part.supplierName,
         });
       });
@@ -39,7 +45,7 @@ export default function CostOfParts() {
         .forEach(item => {
           const alreadyInParts = items.some(i => i.itemName === item.itemName);
           const hasPartWithCost = repair.partsUsed.some(
-            p => p.itemName === item.itemName && p.cost > 0
+            p => p.itemName === item.itemName && (Number(p.cost) || 0) > 0
           );
           if (!alreadyInParts && !hasPartWithCost) {
             items.push({
@@ -145,10 +151,23 @@ export default function CostOfParts() {
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6">Cost of Parts</h1>
+      <h1 className="text-3xl font-bold mb-2">Cost of Parts</h1>
       <p className="text-gray-600 mb-4">
-        Input the actual cost of outsourced spare parts used in repairs. Costs are saved to the database and persist across refreshes.
+        Enter the actual cost of outsourced parts used in repairs. After admin approves payment and the repair is back with staff for collection, fill costs here so profit is calculated and the daily report can be sent.
       </p>
+
+      {/* Repair sale workflow */}
+      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-indigo-900 mb-2">Repair sale workflow</h3>
+        <ol className="list-decimal list-inside text-sm text-indigo-800 space-y-1">
+          <li>Staff fills in customer details and completes repair sale, assigns a ticket.</li>
+          <li>Repair goes to admin for payment approval.</li>
+          <li>After approval, sent back to staff for collection.</li>
+          <li><strong>Here:</strong> Staff fills in the cost of each outsourced item (form below).</li>
+          <li>System records everything and calculates profit.</li>
+          <li>Staff can send the report via WhatsApp / Email from <Link to="/repair-report" className="underline font-semibold">Repair Report</Link> or <Link to="/accessories-report" className="underline font-semibold">Accessories Report</Link>.</li>
+        </ol>
+      </div>
 
       <div className="bg-white p-4 rounded shadow mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">Search Repairs</label>
@@ -167,12 +186,20 @@ export default function CostOfParts() {
         </p>
       </div>
 
-      {/* Repairs needing cost input */}
+      {/* Repairs needing cost input - form is always visible */}
       <div className="space-y-4 mb-8">
+        <h2 className="text-xl font-semibold text-gray-800">Enter cost of outsourced items</h2>
         {repairsNeedingCosts.length === 0 ? (
-          <div className="bg-white p-8 rounded shadow text-center text-gray-500">
-            <p className="text-lg font-medium mb-2">No repairs needing cost input</p>
-            <p className="text-sm">All outsourced part costs have been entered, or there are no repairs with outsourced parts.</p>
+          <div className="bg-white p-8 rounded shadow border border-gray-200 text-center text-gray-600">
+            <p className="text-lg font-medium mb-2">No repairs needing cost input right now</p>
+            <p className="text-sm mb-4">All outsourced part costs have been entered, or there are no repairs with outsourced parts.</p>
+            <p className="text-sm mb-2">When you complete a repair sale with outsourced parts, the repair will appear here so you can enter each part’s cost.</p>
+            <div className="flex flex-wrap justify-center gap-3 mt-4">
+              <Link to="/repair-sales" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium">Repair Sale</Link>
+              <Link to="/pending-collections" className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 text-sm font-medium">Pending Collections</Link>
+              <Link to="/repair-report" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm font-medium">Repair Report</Link>
+              <Link to="/accessories-report" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm font-medium">Accessories Report</Link>
+            </div>
           </div>
         ) : (
           repairsNeedingCosts.map((repair) => {

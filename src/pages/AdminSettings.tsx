@@ -29,6 +29,7 @@ export default function AdminSettings() {
     shopId: '',
     roles: ['technician'] as ('admin' | 'technician' | 'manager')[],
   });
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
 
   // Only admin can access this page
   if (!currentUser || !currentUser.roles.includes('admin')) {
@@ -57,8 +58,15 @@ export default function AdminSettings() {
   const handleStaffSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingUser) {
-      updateUser(editingUser.id, staffForm);
+      // When editing, only send password if user entered a new one
+      const { password, ...rest } = staffForm;
+      const payload = password.trim() ? staffForm : { ...rest };
+      updateUser(editingUser.id, payload);
     } else {
+      if (!staffForm.password.trim()) {
+        alert('Password is required when adding a new staff member.');
+        return;
+      }
       addUser(staffForm);
     }
     setShowStaffForm(false);
@@ -384,14 +392,28 @@ export default function AdminSettings() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Password {!editingUser && <span className="text-red-500">*</span>}
                   </label>
-                  <input
-                    type="password"
-                    required={!editingUser}
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
-                    value={staffForm.password}
-                    onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })}
-                    placeholder={editingUser ? "Leave empty to keep current password" : ""}
-                  />
+                  <div className="relative flex items-center">
+                    <input
+                      type={showStaffPassword ? 'text' : 'password'}
+                      required={!editingUser}
+                      className="border border-gray-300 rounded-md px-3 py-2 w-full pr-10"
+                      value={staffForm.password}
+                      onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })}
+                      placeholder={editingUser ? "Leave empty to keep current password" : ""}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowStaffPassword(!showStaffPassword)}
+                      className="absolute right-2 p-1 rounded text-gray-500 hover:bg-gray-100"
+                      title={showStaffPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showStaffPassword ? (
+                        <span className="text-sm font-medium">Hide</span>
+                      ) : (
+                        <span className="text-sm font-medium">Show</span>
+                      )}
+                    </button>
+                  </div>
                   {editingUser && (
                     <p className="text-xs text-gray-500 mt-1">Leave empty to keep current password</p>
                   )}

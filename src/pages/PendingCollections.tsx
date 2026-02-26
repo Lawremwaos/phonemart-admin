@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
 import { usePayment } from "../context/PaymentContext";
@@ -309,6 +309,14 @@ export default function PendingCollections() {
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      {repairNeedsOutsourcedCost(repair) && (
+                        <Link
+                          to="/cost-of-parts"
+                          className="inline-block mb-1 bg-amber-100 text-amber-800 hover:bg-amber-200 px-3 py-1 rounded text-xs font-semibold"
+                        >
+                          Enter cost of outsourced parts
+                        </Link>
+                      )}
                       {/* Only show "Confirm Payment" button to ADMIN - staff cannot approve payments */}
                       {repair.paymentStatus !== 'fully_paid' && currentUser?.roles.includes('admin') && (
                         <button

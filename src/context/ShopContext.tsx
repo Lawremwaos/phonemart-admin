@@ -378,12 +378,19 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
 
   const addUser = useCallback((userData: Omit<User, 'id'>) => {
     (async () => {
+      // Trim email and password so login comparison works (login trims input)
+      const email = (userData.email || '').trim().toLowerCase();
+      const password = (userData.password || '').trim();
+      if (!password) {
+        console.error("Password is required when adding a user");
+        return;
+      }
       const { data, error } = await supabase
         .from("users")
         .insert({
-          name: userData.name,
-          email: userData.email,
-          password: userData.password,
+          name: (userData.name || '').trim(),
+          email,
+          password,
           shop_id: userData.shopId || null,
           roles: userData.roles,
         })
@@ -408,9 +415,12 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
   const updateUser = useCallback((userId: string, userData: Partial<User>) => {
     (async () => {
       const payload: any = {};
-      if (userData.name !== undefined) payload.name = userData.name;
-      if (userData.email !== undefined) payload.email = userData.email;
-      if (userData.password !== undefined) payload.password = userData.password;
+      if (userData.name !== undefined) payload.name = (userData.name || '').trim();
+      if (userData.email !== undefined) payload.email = (userData.email || '').trim().toLowerCase();
+      // Only update password if a new non-empty one was provided (don't overwrite with empty)
+      if (userData.password !== undefined && (userData.password || '').trim() !== '') {
+        payload.password = (userData.password || '').trim();
+      }
       if (userData.shopId !== undefined) payload.shop_id = userData.shopId || null;
       if (userData.roles !== undefined) payload.roles = userData.roles;
 
@@ -422,8 +432,14 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         console.error("Error updating user:", error);
         return;
       }
+      // Merge updates into local state (keep existing password in state if not updated)
       setUsers((prev) =>
-        prev.map((user) => (user.id === userId ? { ...user, ...userData } : user))
+        prev.map((user) => {
+          if (user.id !== userId) return user;
+          const updated = { ...user, ...userData } as User;
+          if (payload.password === undefined) updated.password = user.password;
+          return updated;
+        })
       );
     })();
   }, []);

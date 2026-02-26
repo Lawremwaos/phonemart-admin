@@ -15,7 +15,8 @@ import AdminSettings from "./pages/AdminSettings";
 import StockExchangeReport from "./pages/StockExchangeReport";
 import PendingCollections from "./pages/PendingCollections";
 import PendingPaymentApproval from "./pages/PendingPaymentApproval";
-import TodaysSalesReport from "./pages/TodaysSalesReport";
+import RepairReport from "./pages/RepairReport";
+import AccessoriesReport from "./pages/AccessoriesReport";
 import CostOfParts from "./pages/CostOfParts";
 import Returns from "./pages/Returns";
 import StockAllocation from "./pages/StockAllocation";
@@ -157,6 +158,16 @@ function AppContent() {
                     Repair Sale Profit
                   </Link>
                 </li>
+                <li>
+                  <Link 
+                    to="/repair-report" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/repair-report' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Repair Report
+                  </Link>
+                </li>
               </ul>
             )}
           </li>
@@ -246,6 +257,16 @@ function AppContent() {
                     Accessory Profit
                   </Link>
                 </li>
+                <li>
+                  <Link 
+                    to="/accessories-report" 
+                    className={`block px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors ${
+                      location.pathname === '/accessories-report' ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    Accessories Report
+                  </Link>
+                </li>
               </ul>
             )}
           </li>
@@ -295,16 +316,6 @@ function AppContent() {
               </li>
             </>
           )}
-          <li>
-            <Link 
-              to="/todays-sales-report" 
-              className={`block px-3 py-2 rounded hover:bg-gray-800 transition-colors ${
-                location.pathname === '/todays-sales-report' ? 'bg-gray-800' : ''
-              }`}
-            >
-              Daily Report - Detailed Repair Sales
-            </Link>
-          </li>
           {currentUser?.roles.includes('admin') && (
             <>
               <li>
@@ -533,10 +544,18 @@ function AppContent() {
             }
           />
           <Route
-            path="/todays-sales-report"
+            path="/repair-report"
             element={
               <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
-                <TodaysSalesReport />
+                <RepairReport />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/accessories-report"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+                <AccessoriesReport />
               </ProtectedRoute>
             }
           />
