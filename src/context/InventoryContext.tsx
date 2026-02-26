@@ -94,6 +94,7 @@ type InventoryContextType = {
   requestStockAllocation: (allocation: Omit<StockAllocation, 'id' | 'requestedDate' | 'status'>) => void;
   approveStockAllocation: (allocationId: string) => void;
   rejectStockAllocation: (allocationId: string) => void;
+  refreshStockAllocations: () => Promise<void>;
 };
 
 const InventoryContext = createContext<InventoryContextType | null>(null);
@@ -306,60 +307,64 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     };
   }, []);
 
+  // Refresh stock allocations function (can be called manually)
+  const refreshStockAllocations = useCallback(async () => {
+    try {
+      const { data: allocsData, error: allocsError } = await supabase
+        .from("stock_allocations")
+        .select("*")
+        .order("requested_date", { ascending: false });
+      if (allocsError) throw allocsError;
+
+      const allocationsWithLines: StockAllocation[] = await Promise.all(
+        (allocsData || []).map(a => loadAllocationWithLines(a))
+      );
+      setStockAllocations(allocationsWithLines);
+    } catch (e) {
+      console.error("Error refreshing stock allocations:", e);
+    }
+  }, [loadAllocationWithLines]);
+
   // Load stock allocations from Supabase and set up real-time subscription
   useEffect(() => {
     let cancelled = false;
     
     // Initial load
-    (async () => {
-      try {
-        const { data: allocsData, error: allocsError } = await supabase
-          .from("stock_allocations")
-          .select("*")
-          .order("requested_date", { ascending: false });
-        if (allocsError) throw allocsError;
-        if (cancelled) return;
+    refreshStockAllocations();
 
-        const allocationsWithLines: StockAllocation[] = await Promise.all(
-          (allocsData || []).map(a => loadAllocationWithLines(a))
-        );
-        setStockAllocations(allocationsWithLines);
-      } catch (e) {
-        console.error("Error loading stock allocations from Supabase:", e);
-        setStockAllocations([]);
-      }
-    })();
-
-    // Set up real-time subscription
+    // Set up real-time subscription for both stock_allocations and stock_allocation_lines
     const channel = supabase
       .channel('stock-allocations-changes')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'stock_allocations' },
         async () => {
           if (cancelled) return;
-          try {
-            const { data: allocsData } = await supabase
-              .from("stock_allocations")
-              .select("*")
-              .order("requested_date", { ascending: false });
-            if (allocsData) {
-              const allocationsWithLines: StockAllocation[] = await Promise.all(
-                allocsData.map(a => loadAllocationWithLines(a))
-              );
-              setStockAllocations(allocationsWithLines);
-            }
-          } catch (e) {
-            console.error("Error reloading stock allocations:", e);
-          }
+          await refreshStockAllocations();
+        }
+      )
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'stock_allocation_lines' },
+        async () => {
+          if (cancelled) return;
+          await refreshStockAllocations();
         }
       )
       .subscribe();
 
+    // Also refresh on window focus (helps catch missed updates)
+    const handleFocus = () => {
+      if (!cancelled) {
+        refreshStockAllocations();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', handleFocus);
       supabase.removeChannel(channel);
     };
-  }, [loadAllocationWithLines]);
+  }, [refreshStockAllocations]);
 
   const addItem = useCallback((itemData: AddInventoryItemInput) => {
     (async () => {
@@ -932,6 +937,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         requestStockAllocation,
         approveStockAllocation,
         rejectStockAllocation,
+        refreshStockAllocations,
       }}
     >
       {children}

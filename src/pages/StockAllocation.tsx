@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
 
@@ -14,8 +14,32 @@ type StockRequest = {
 };
 
 export default function StockAllocation() {
-  const { items, purchases, updateItem, addItem, stockAllocations, approveStockAllocation, requestStockAllocation } = useInventory();
+  const { items, purchases, updateItem, addItem, stockAllocations, approveStockAllocation, requestStockAllocation, refreshStockAllocations } = useInventory();
   const { currentUser, currentShop, shops } = useShop();
+
+  // Refresh allocations when component mounts or becomes visible (for staff to see new allocations)
+  useEffect(() => {
+    // Refresh on mount
+    refreshStockAllocations();
+    
+    // Refresh when page becomes visible (user switches back to tab)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        refreshStockAllocations();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Also refresh periodically (every 10 seconds) as a fallback
+    const interval = setInterval(() => {
+      refreshStockAllocations();
+    }, 10000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(interval);
+    };
+  }, [refreshStockAllocations]);
 
   // Store requests in state (in production, these would be in Supabase)
   const [stockRequests, setStockRequests] = useState<StockRequest[]>([]);
