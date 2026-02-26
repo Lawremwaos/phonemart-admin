@@ -14,8 +14,6 @@ export default function InventoryManagement() {
   const [requestingItemId, setRequestingItemId] = useState<number | null>(null);
   const [requestQty, setRequestQty] = useState(1);
   const [activeTab, setActiveTab] = useState<'inventory' | 'allocations'>('inventory');
-  // Admin: filter inventory by shop to view/delete items per shop
-  const [selectedShopIdForManage, setSelectedShopIdForManage] = useState<string>('');
   const [formData, setFormData] = useState({
     name: "",
     category: "Phone" as 'Phone' | 'Spare' | 'Accessory',
@@ -28,17 +26,16 @@ export default function InventoryManagement() {
     costPrice: 0,
   });
 
-  // Filter items by shop (technicians see only their shop; admin sees all or filtered by selected shop)
+  // Filter items by shop (technicians see only their shop; admin sees all)
   // Staff should NOT see admin unallocated inventory here - they see it in "My Stock & Requests" page
   const filteredItems = useMemo(() => {
     if (!currentUser?.roles.includes('admin')) {
       // Staff only see items allocated to their shop (must have shopId matching their shop)
       return items.filter(item => item.shopId === currentShop?.id);
     }
-    if (!selectedShopIdForManage) return items;
-    if (selectedShopIdForManage === 'unassigned') return items.filter(item => !item.shopId);
-    return items.filter(item => item.shopId === selectedShopIdForManage);
-  }, [items, currentShop, currentUser, selectedShopIdForManage]);
+    // Admin sees all items (categorized by shop in the UI)
+    return items;
+  }, [items, currentShop, currentUser]);
 
   // Categorize items for admin view: Shop 1, Shop 2, Other shops, Unallocated
   const categorizedItems = useMemo(() => {
@@ -835,9 +832,10 @@ export default function InventoryManagement() {
             </thead>
             <tbody>
               {filteredItems.map((item) => renderItemRow(item))}
-          </tbody>
-        </table>
-      </div>
+            </tbody>
+          </table>
+        </div>
+      )}
       </>}
 
       {/* Stock Allocations Tab */}
