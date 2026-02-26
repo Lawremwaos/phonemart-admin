@@ -33,12 +33,18 @@ export default function StockAllocation() {
 
 
   // Get ALL unallocated ACCESSORIES from inventory (for requesting additional stock) - staff can see these
+  // Only show items that are truly unallocated (no shopId, no pendingAllocation)
+  // Items with pendingAllocation=true are from purchases being allocated by admin - staff should wait for admin allocation
   const unallocatedItems = useMemo(() => {
+    const isAccessory = (cat: string | undefined) => {
+      const c = cat?.toString().toLowerCase() ?? '';
+      return c === 'accessory' || c === 'accessories';
+    };
     return items.filter(item => 
       !item.shopId && 
       item.stock > 0 &&
-      !item.pendingAllocation &&
-      (item.category?.toString().toLowerCase() === 'accessory' || item.category === 'Accessory')
+      !item.pendingAllocation && // Exclude items being allocated by admin
+      isAccessory(item.category)
     );
   }, [items]);
 

@@ -29,9 +29,11 @@ export default function InventoryManagement() {
   });
 
   // Filter items by shop (technicians see only their shop; admin sees all or filtered by selected shop)
+  // Staff should NOT see admin unallocated inventory here - they see it in "My Stock & Requests" page
   const filteredItems = useMemo(() => {
     if (!currentUser?.roles.includes('admin')) {
-      return items.filter(item => !item.shopId || item.shopId === currentShop?.id);
+      // Staff only see items allocated to their shop (must have shopId matching their shop)
+      return items.filter(item => item.shopId === currentShop?.id);
     }
     if (!selectedShopIdForManage) return items;
     if (selectedShopIdForManage === 'unassigned') return items.filter(item => !item.shopId);
