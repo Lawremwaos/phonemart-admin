@@ -101,25 +101,59 @@ export default function Dashboard() {
   }, [shopRepairs]);
 
   // --- 4. SUPPLIER PAYMENTS (Day / Week / Month) ---
+  // Staff: Only local suppliers | Admin: Both local and wholesale separately
   const supplierData = useMemo(() => {
     const calc = (p: Period) => {
-      const periodPurchases = purchases.filter(pu => inPeriod(pu.date, p));
+      // Filter purchases based on user role
+      let periodPurchases = purchases.filter(pu => inPeriod(pu.date, p));
+      
+      // Staff only see local suppliers
+      if (!isAdmin) {
+        periodPurchases = periodPurchases.filter(pu => pu.supplierType === 'local' || !pu.supplierType);
+      }
+
       const totalPaid = periodPurchases.reduce((sum, pu) => sum + pu.total, 0);
       const orderCount = periodPurchases.length;
 
       // Per-supplier breakdown
-      const supplierMap: Record<string, { name: string; amount: number; orders: number }> = {};
+      const supplierMap: Record<string, { name: string; amount: number; orders: number; type?: 'local' | 'wholesale' }> = {};
       periodPurchases.forEach(pu => {
-        if (!supplierMap[pu.supplier]) supplierMap[pu.supplier] = { name: pu.supplier, amount: 0, orders: 0 };
+        if (!supplierMap[pu.supplier]) {
+          supplierMap[pu.supplier] = { 
+            name: pu.supplier, 
+            amount: 0, 
+            orders: 0,
+            type: pu.supplierType || 'local'
+          };
+        }
         supplierMap[pu.supplier].amount += pu.total;
         supplierMap[pu.supplier].orders++;
       });
       const suppliers = Object.values(supplierMap).sort((a, b) => b.amount - a.amount);
 
+      // For admin: separate local and wholesale
+      if (isAdmin) {
+        const allPeriodPurchases = purchases.filter(pu => inPeriod(pu.date, p));
+        const localPurchases = allPeriodPurchases.filter(pu => pu.supplierType === 'local' || !pu.supplierType);
+        const wholesalePurchases = allPeriodPurchases.filter(pu => pu.supplierType === 'wholesale');
+        const localTotal = localPurchases.reduce((sum, pu) => sum + pu.total, 0);
+        const wholesaleTotal = wholesalePurchases.reduce((sum, pu) => sum + pu.total, 0);
+        
+        return { 
+          totalPaid, 
+          orderCount, 
+          suppliers,
+          localTotal,
+          wholesaleTotal,
+          localOrders: localPurchases.length,
+          wholesaleOrders: wholesalePurchases.length
+        };
+      }
+
       return { totalPaid, orderCount, suppliers };
     };
     return { today: calc('today'), week: calc('week'), month: calc('month') };
-  }, [purchases]);
+  }, [purchases, isAdmin]);
 
   // --- 5. REVENUE OVERVIEW (Day / Week / Month) ---
   const revenueOverview = useMemo(() => {
@@ -361,18 +395,73 @@ export default function Dashboard() {
 
       {/* 4. TOTAL PAID TO SUPPLIERS */}
       <div className="bg-white p-5 rounded-lg shadow">
-        <h3 className="text-lg font-semibold mb-4">Supplier Payments</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          {(['today', 'week', 'month'] as Period[]).map(p => (
-            <div key={p} className={`rounded-lg p-4 border ${p === period ? 'bg-purple-50 border-purple-300' : 'bg-gray-50 border-gray-200'}`}>
-              <p className="text-xs text-gray-600 font-medium">{periodLabel(p)}</p>
-              <p className="text-2xl font-bold text-purple-700">KES {supplierData[p].totalPaid.toLocaleString()}</p>
-              <p className="text-xs text-gray-500">{supplierData[p].orderCount} purchase orders</p>
+        <h3 className="text-lg font-semibold mb-4">
+          {isAdmin ? 'Supplier Payments' : 'Local Supplier Payments'}
+        </h3>
+        {isAdmin ? (
+          <>
+            {/* Admin: Show Local and Wholesale separately */}
+            <div className="mb-4">
+              <p className="text-sm font-medium text-gray-700 mb-2">Local Suppliers - {periodLabel(period)}:</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                {(['today', 'week', 'month'] as Period[]).map(p => (
+                  <div key={p} className={`rounded-lg p-4 border ${p === period ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
+                    <p className="text-xs text-gray-600 font-medium">{periodLabel(p)}</p>
+                    <p className="text-2xl font-bold text-green-700">
+                      KES {((supplierData[p] as any).localTotal || 0).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {((supplierData[p] as any).localOrders || 0)} orders
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
+            <div className="mb-4">
+              <p className="text-sm font-medium text-gray-700 mb-2">Wholesale Suppliers - {periodLabel(period)}:</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                {(['today', 'week', 'month'] as Period[]).map(p => (
+                  <div key={p} className={`rounded-lg p-4 border ${p === period ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200'}`}>
+                    <p className="text-xs text-gray-600 font-medium">{periodLabel(p)}</p>
+                    <p className="text-2xl font-bold text-blue-700">
+                      KES {((supplierData[p] as any).wholesaleTotal || 0).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {((supplierData[p] as any).wholesaleOrders || 0)} orders
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="border-t pt-4">
+              <p className="text-sm font-medium text-gray-700 mb-2">Total Supplier Payments - {periodLabel(period)}:</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {(['today', 'week', 'month'] as Period[]).map(p => (
+                  <div key={p} className={`rounded-lg p-4 border ${p === period ? 'bg-purple-50 border-purple-300' : 'bg-gray-50 border-gray-200'}`}>
+                    <p className="text-xs text-gray-600 font-medium">{periodLabel(p)}</p>
+                    <p className="text-2xl font-bold text-purple-700">KES {supplierData[p].totalPaid.toLocaleString()}</p>
+                    <p className="text-xs text-gray-500">{supplierData[p].orderCount} purchase orders</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Staff: Only show local suppliers */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              {(['today', 'week', 'month'] as Period[]).map(p => (
+                <div key={p} className={`rounded-lg p-4 border ${p === period ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
+                  <p className="text-xs text-gray-600 font-medium">{periodLabel(p)}</p>
+                  <p className="text-2xl font-bold text-green-700">KES {supplierData[p].totalPaid.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500">{supplierData[p].orderCount} purchase orders</p>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
         {currentSupplier.suppliers.length > 0 && (
-          <div>
+          <div className="border-t pt-4">
             <p className="text-sm font-medium text-gray-700 mb-2">Breakdown - {periodLabel(period)}:</p>
             <div className="space-y-2">
               {currentSupplier.suppliers.map(s => (
