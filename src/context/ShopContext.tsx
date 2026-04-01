@@ -25,7 +25,8 @@ type ShopContextType = {
   shops: Shop[];
   users: User[];
   isAuthenticated: boolean;
-  login: (email: string, password: string) => boolean;
+  isLoadingAuth: boolean;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   setCurrentShop: (shop: Shop | null) => void;
   setCurrentUser: (user: User | null) => void;
@@ -126,6 +127,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
   const [currentShop, setCurrentShop] = useState<Shop | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(false);
 
   // Load shops and users from Supabase on mount, with real-time subscriptions
   useEffect(() => {
@@ -273,37 +275,57 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
-  const login = useCallback((email: string, password: string): boolean => {
-    // Normalize email (trim and lowercase for comparison)
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPassword = password.trim();
-    
-    // Debug logging
-    console.log("Login attempt:", { email: normalizedEmail, usersCount: users.length });
-    console.log("Available users:", users.map(u => ({ email: u.email, name: u.name })));
-    
-    const user = users.find(u => 
-      u.email.toLowerCase() === normalizedEmail && 
-      u.password === normalizedPassword
-    );
-    
-    if (user) {
-      console.log("Login successful:", user.name);
-      setCurrentUser(user);
-      // Set user's shop as current shop
-      const userShop = shops.find(s => s.id === user.shopId);
-      if (userShop) {
-        setCurrentShop(userShop);
+
+    setIsLoadingAuth(true);
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("*, shops(*)")
+        .eq("email", normalizedEmail)
+        .eq("password", normalizedPassword)
+        .single();
+
+      if (error || !data) {
+        return false;
       }
+
+      const user: User = {
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        shopId: data.shop_id || '',
+        roles: (data.roles || []) as ('admin' | 'technician' | 'manager')[],
+      };
+
+      setCurrentUser(user);
+
+      if (data.shops) {
+        const shop: Shop = {
+          id: data.shops.id,
+          name: data.shops.name,
+          address: data.shops.address,
+          phone: data.shops.phone,
+          email: data.shops.email || undefined,
+          whatsappGroup: data.shops.whatsapp_group || undefined,
+        };
+        setCurrentShop(shop);
+      } else {
+        const userShop = shops.find(s => s.id === user.shopId);
+        if (userShop) setCurrentShop(userShop);
+      }
+
       setIsAuthenticated(true);
       return true;
-    } else {
-      console.error("Login failed - user not found or password incorrect");
-      console.log("Searched for:", { email: normalizedEmail });
-      console.log("Available emails:", users.map(u => u.email));
+    } catch {
+      return false;
+    } finally {
+      setIsLoadingAuth(false);
     }
-    return false;
-  }, [users, shops]);
+  }, [shops]);
 
   const logout = useCallback(() => {
     setCurrentUser(null);
@@ -483,6 +505,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         shops,
         users,
         isAuthenticated,
+        isLoadingAuth,
         login,
         logout,
         setCurrentShop,
