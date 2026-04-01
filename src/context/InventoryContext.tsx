@@ -85,6 +85,8 @@ type InventoryContextType = {
   removeItem: (id: number) => void;
   addStock: (itemId: number, qty: number) => void;
   deductStock: (name: string, qty: number, shopId?: string) => void;
+  /** Deduct stock by inventory row id (preferred for sales — avoids name/shop mismatches). */
+  deductStockById: (itemId: number, qty: number) => void;
   addPurchase: (purchase: Omit<Purchase, 'id' | 'date'>) => Promise<void>;
   confirmPurchase: (purchaseId: string) => void;
   deletePurchase: (purchaseId: string) => void;
@@ -463,6 +465,15 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     if (!item) return;
     updateItem(item.id, { stock: Math.max(0, item.stock - qty) });
   }, [items, updateItem]);
+
+  const deductStockById = useCallback(
+    (itemId: number, qty: number) => {
+      const item = items.find((i) => i.id === itemId);
+      if (!item || qty <= 0) return;
+      updateItem(itemId, { stock: Math.max(0, item.stock - qty) });
+    },
+    [items, updateItem]
+  );
 
   const addPurchase = useCallback(async (purchaseData: Omit<Purchase, 'id' | 'date'>): Promise<void> => {
     // Resolve new items (negative itemId) to real inventory IDs by creating them first
@@ -928,6 +939,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         removeItem,
         addStock,
         deductStock,
+        deductStockById,
         addPurchase,
         confirmPurchase,
         deletePurchase,

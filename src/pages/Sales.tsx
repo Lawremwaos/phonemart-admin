@@ -17,7 +17,7 @@ type SaleItem = {
 
 export default function Sales() {
   const navigate = useNavigate();
-  const { deductStock, addStock, items } = useInventory();
+  const { deductStockById, addStock, items } = useInventory();
   const { addSale, openWholesaleSale, addItemToWholesaleSale, closeWholesaleSale } = useSales();
   const { currentShop, currentUser } = useShop();
   const { addPayment } = usePayment();
@@ -35,6 +35,14 @@ export default function Sales() {
   const [amountPaid, setAmountPaid] = useState<number | ''>('');
   const [bank, setBank] = useState<string>('');
   const [depositReference, setDepositReference] = useState<string>('');
+
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [saleNotes, setSaleNotes] = useState('');
+
+  const [wholesaleCustomerName, setWholesaleCustomerName] = useState('');
+  const [wholesaleCustomerPhone, setWholesaleCustomerPhone] = useState('');
+  const [wholesaleSaleNotes, setWholesaleSaleNotes] = useState('');
 
   const [wholesalePaymentType, setWholesalePaymentType] = useState<'cash' | 'mpesa' | 'bank_deposit'>('mpesa');
   const [wholesaleBank, setWholesaleBank] = useState<string>('');
@@ -70,6 +78,11 @@ export default function Sales() {
     return item.shopId === currentShop?.id;
   });
 
+  const qtyInCartForItemId = (itemId: number) =>
+    saleItems
+      .filter((s) => s.source === 'inventory' && s.itemId === itemId)
+      .reduce((sum, s) => sum + s.qty, 0);
+
   const selectedItem = itemSource === 'inventory' && selectedItemId
     ? salesItems.find(item => item.id === Number(selectedItemId))
     : null;
@@ -86,15 +99,15 @@ export default function Sales() {
         alert("Please select an item and enter a valid quantity.");
         return;
       }
-      if (selectedItem.stock < qty) {
-        alert(`Not enough stock! Available: ${selectedItem.stock}`);
+      const alreadyInCart = qtyInCartForItemId(selectedItem.id);
+      if (selectedItem.stock < alreadyInCart + qty) {
+        alert(`Not enough stock! Available: ${selectedItem.stock} (${alreadyInCart} already in this sale)`);
         return;
       }
       setSaleItems((prev) => [
         ...prev,
         { name: selectedItem.name, qty, price, source: 'inventory', itemId: selectedItem.id },
       ]);
-      deductStock(selectedItem.name, qty, selectedItem.shopId);
     } else {
       if (!customItemName.trim() || qty <= 0) {
         alert("Please enter item name and valid quantity.");
@@ -144,7 +157,7 @@ export default function Sales() {
         adminBasePrice: selectedItem.adminCostPrice ?? selectedItem.costPrice,
         actualCost: selectedItem.actualCost,
       }, currentShop?.id);
-      deductStock(selectedItem.name, qty, selectedItem.shopId);
+      deductStockById(selectedItem.id, qty);
 
       // Clear form
       setSelectedItemId("");
@@ -157,14 +170,7 @@ export default function Sales() {
   }
 
   function removeItemFromRetail(index: number) {
-    const itemToRemove = saleItems[index];
-    if (itemToRemove.source === 'inventory' && itemToRemove.itemId != null) {
-      const inventoryItem = items.find(item => item.id === itemToRemove.itemId);
-      if (inventoryItem) addStock(inventoryItem.id, itemToRemove.qty);
-    } else if (itemToRemove.source !== 'custom') {
-      const inventoryItem = items.find(item => item.name === itemToRemove.name && item.shopId === currentShop?.id);
-      if (inventoryItem) addStock(inventoryItem.id, itemToRemove.qty);
-    }
+    // Stock is only deducted when the sale is completed — removing a line just updates the cart.
     setSaleItems((prev) => prev.filter((_, i) => i !== index));
   }
 
@@ -193,8 +199,8 @@ export default function Sales() {
 
       const itemsForSale: SaleItemInput[] = saleItems.map((s) => {
         const base = { name: s.name, qty: s.qty, price: s.price };
-        if (s.source === 'inventory') {
-          const inv = items.find((i) => i.name === s.name && i.shopId === currentShop?.id);
+        if (s.source === 'inventory' && s.itemId != null) {
+          const inv = items.find((i) => i.id === s.itemId);
           if (inv) {
             return { ...base, itemId: inv.id, adminBasePrice: inv.adminCostPrice ?? inv.costPrice, actualCost: inv.actualCost };
           }
@@ -202,9 +208,38 @@ export default function Sales() {
         return base;
       });
 
-      const saleId = await addSale(itemsForSale, retailTotal, currentShop?.id, 'retail');
+      const qtyByInventoryId = new Map<number, number>();
+      for (const s of saleItems) {
+        if (s.source === 'inventory' && s.itemId != null) {
+          qtyByInventoryId.set(s.itemId, (qtyByInventoryId.get(s.itemId) ?? 0) + s.qty);
+        }
+      }
+      for (const [itemId, need] of qtyByInventoryId) {
+        const inv = items.find((i) => i.id === itemId);
+        if (!inv || inv.stock < need) {
+          alert(
+            inv
+              ? `Not enough stock for ${inv.name}. Need ${need}, available ${inv.stock}. Adjust the sale and try again.`
+              : "An inventory line is invalid. Refresh the page and try again."
+          );
+          return;
+        }
+      }
+
+      for (const [itemId, need] of qtyByInventoryId) {
+        deductStockById(itemId, need);
+      }
+
+      const saleId = await addSale(itemsForSale, retailTotal, currentShop?.id, 'retail', undefined, {
+        customerName: customerName.trim() || undefined,
+        customerPhone: customerPhone.trim() || undefined,
+        saleNotes: saleNotes.trim() || undefined,
+      });
       if (!saleId) {
-        alert("Failed to save sale. Please try again.");
+        for (const [itemId, need] of qtyByInventoryId) {
+          addStock(itemId, need);
+        }
+        alert("Failed to save sale. Inventory was restored. Please try again.");
         return;
       }
 
@@ -221,6 +256,9 @@ export default function Sales() {
         balance,
         bank: paymentType === 'bank_deposit' ? bank : undefined,
         depositReference: paymentType === 'bank_deposit' ? depositReference : undefined,
+        customerName: customerName.trim() || undefined,
+        customerPhone: customerPhone.trim() || undefined,
+        saleNotes: saleNotes.trim() || undefined,
       };
 
       addPayment({
@@ -239,6 +277,9 @@ export default function Sales() {
       setAmountPaid('');
       setBank('');
       setDepositReference('');
+      setCustomerName('');
+      setCustomerPhone('');
+      setSaleNotes('');
 
       navigate('/receipt', { state: { sale } });
     } finally {
@@ -264,8 +305,12 @@ export default function Sales() {
       return;
     }
 
-    // Close the wholesale sale
-    closeWholesaleSale(wholesalePaymentType, wholesaleDepositReference, wholesaleBank);
+    // Close the wholesale sale (persists customer details if columns exist in DB)
+    closeWholesaleSale(wholesalePaymentType, wholesaleDepositReference, wholesaleBank, {
+      customerName: wholesaleCustomerName.trim() || undefined,
+      customerPhone: wholesaleCustomerPhone.trim() || undefined,
+      saleNotes: wholesaleSaleNotes.trim() || undefined,
+    });
 
     // Add payment record
     addPayment({
@@ -286,6 +331,9 @@ export default function Sales() {
     setWholesalePaymentType('mpesa');
     setWholesaleBank('');
     setWholesaleDepositReference('');
+    setWholesaleCustomerName('');
+    setWholesaleCustomerPhone('');
+    setWholesaleSaleNotes('');
   }
 
   return (
@@ -489,6 +537,45 @@ export default function Sales() {
 
               <div className="p-4 border-t">
                 <div className="space-y-4">
+                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    <h4 className="font-semibold text-gray-800 mb-2">Customer &amp; sale detail</h4>
+                    <p className="text-xs text-gray-600 mb-3">
+                      Optional but recommended: record who bought and what was sold. Line items above list products; use notes for extra detail.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Customer name</label>
+                        <input
+                          type="text"
+                          className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                          placeholder="Walk-in customer name"
+                          value={customerName}
+                          onChange={(e) => setCustomerName(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Customer phone</label>
+                        <input
+                          type="tel"
+                          className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                          placeholder="+254…"
+                          value={customerPhone}
+                          onChange={(e) => setCustomerPhone(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Notes (accessories / items sold)</label>
+                      <textarea
+                        className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                        rows={2}
+                        placeholder="e.g. 2x screen protector, USB cable — or any extra detail"
+                        value={saleNotes}
+                        onChange={(e) => setSaleNotes(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
                     <select
@@ -721,6 +808,40 @@ export default function Sales() {
                         className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
                         placeholder="Enter transaction code"
                       />
+                    </div>
+
+                    <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                      <h5 className="font-semibold text-gray-800 mb-2">Customer &amp; sale detail</h5>
+                      <p className="text-xs text-gray-600 mb-3">Optional: partner / customer for this wholesale ticket.</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Customer / partner name</label>
+                          <input
+                            type="text"
+                            className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                            value={wholesaleCustomerName}
+                            onChange={(e) => setWholesaleCustomerName(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Phone</label>
+                          <input
+                            type="tel"
+                            className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                            value={wholesaleCustomerPhone}
+                            onChange={(e) => setWholesaleCustomerPhone(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Notes (items sold)</label>
+                        <textarea
+                          className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                          rows={2}
+                          value={wholesaleSaleNotes}
+                          onChange={(e) => setWholesaleSaleNotes(e.target.value)}
+                        />
+                      </div>
                     </div>
 
                     <button

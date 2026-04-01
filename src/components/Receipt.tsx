@@ -59,8 +59,33 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
             </span>
           </div>
         )}
+        {/* Retail / wholesale walk-in customer */}
+        {((sale as any).saleType === 'retail' || (sale as any).saleType === 'wholesale') &&
+          ((sale as any).customerName || (sale as any).customerPhone || (sale as any).saleNotes) && (
+            <div className="mb-3 pb-3 border-b border-gray-200">
+              {(sale as any).customerName && (
+                <div className="flex justify-between mb-2">
+                  <span className="text-gray-600">Customer:</span>
+                  <span className="font-semibold">{(sale as any).customerName}</span>
+                </div>
+              )}
+              {(sale as any).customerPhone && (
+                <div className="flex justify-between mb-2">
+                  <span className="text-gray-600">Phone:</span>
+                  <span className="font-semibold">{(sale as any).customerPhone}</span>
+                </div>
+              )}
+              {(sale as any).saleNotes && (
+                <div className="mb-0">
+                  <span className="text-gray-600">Notes / items:</span>
+                  <p className="font-semibold whitespace-pre-wrap mt-0.5">{(sale as any).saleNotes}</p>
+                </div>
+              )}
+            </div>
+          )}
+
         {/* Repair-specific customer info */}
-        {(sale as any).customerName && (
+        {(sale as any).saleType === 'repair' && (sale as any).customerName && (
           <>
             <div className="flex justify-between mb-2">
               <span className="text-gray-600">Customer:</span>
@@ -107,10 +132,12 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
         </div>
       )}
 
-      {/* Parts, accessories & services */}
+      {/* Line items */}
       {sale.items && sale.items.length > 0 && (
         <div className="border-t border-b border-gray-300 py-4 mb-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Parts & services:</h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">
+            {(sale as any).saleType === 'repair' ? 'Parts & services:' : 'Items sold:'}
+          </h3>
           <div className="space-y-2">
             {sale.items.map((item, index) => {
               const ext = item as typeof item & {

@@ -37,15 +37,31 @@ export type Sale = {
   status?: 'open' | 'closed';
   closedAt?: Date;
   soldBy?: string;
+  /** Walk-in customer for retail/wholesale (requires DB columns — see supabase/add_sales_customer_columns.sql) */
+  customerName?: string;
+  customerPhone?: string;
+  saleNotes?: string;
 };
 
 type SalesContextType = {
   sales: Sale[];
   openWholesaleSale: Sale | null;
-  addSale: (items: SaleItemInput[], total: number, shopId?: string, saleType?: 'in-shop' | 'wholesale' | 'retail', repairId?: string) => Promise<string | null>;
+  addSale: (
+    items: SaleItemInput[],
+    total: number,
+    shopId?: string,
+    saleType?: 'in-shop' | 'wholesale' | 'retail',
+    repairId?: string,
+    options?: { customerName?: string; customerPhone?: string; saleNotes?: string }
+  ) => Promise<string | null>;
   addItemToWholesaleSale: (item: SaleItemInput, shopId?: string) => void;
   addRepairAccessorySale: (repairId: string, shopId: string | undefined, items: Array<{ itemId?: number; name: string; qty: number; sellingPrice: number; adminBasePrice?: number; actualCost?: number }>, soldBy?: string) => Promise<void>;
-  closeWholesaleSale: (paymentType: 'cash' | 'mpesa' | 'bank_deposit', depositReference?: string, bank?: string) => void;
+  closeWholesaleSale: (
+    paymentType: 'cash' | 'mpesa' | 'bank_deposit',
+    depositReference?: string,
+    bank?: string,
+    customer?: { customerName?: string; customerPhone?: string; saleNotes?: string }
+  ) => void;
   deleteSale: (saleId: string) => void;
   getDailyRevenue: () => number;
   getWeeklyRevenue: () => number;
@@ -107,6 +123,9 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
       status: saleData.status as 'open' | 'closed',
       closedAt: saleData.closed_at ? new Date(saleData.closed_at) : undefined,
       soldBy: saleData.sold_by || undefined,
+      customerName: saleData.customer_name || undefined,
+      customerPhone: saleData.customer_phone || undefined,
+      saleNotes: saleData.sale_notes || undefined,
     };
   }, [currentUser]);
 
@@ -187,20 +206,32 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [loadAllSales, processSalesData]);
 
-  const addSale = useCallback(async (items: SaleItemInput[], total: number, shopId?: string, saleType: 'in-shop' | 'wholesale' | 'retail' = 'in-shop', repairId?: string): Promise<string | null> => {
+  const addSale = useCallback(async (
+    items: SaleItemInput[],
+    total: number,
+    shopId?: string,
+    saleType: 'in-shop' | 'wholesale' | 'retail' = 'in-shop',
+    repairId?: string,
+    options?: { customerName?: string; customerPhone?: string; saleNotes?: string }
+  ): Promise<string | null> => {
     const status = saleType === 'wholesale' ? 'open' : 'closed';
     const soldBy = currentUser?.name || undefined;
+    const insertPayload: Record<string, unknown> = {
+      shop_id: shopId || null,
+      sale_type: saleType,
+      total: total,
+      status: status,
+      closed_at: status === 'closed' ? new Date().toISOString() : null,
+      sold_by: soldBy || null,
+      repair_id: repairId || null,
+    };
+    if (options?.customerName?.trim()) insertPayload.customer_name = options.customerName.trim();
+    if (options?.customerPhone?.trim()) insertPayload.customer_phone = options.customerPhone.trim();
+    if (options?.saleNotes?.trim()) insertPayload.sale_notes = options.saleNotes.trim();
+
     const { data: saleRecord, error: saleError } = await supabase
       .from("sales")
-      .insert({
-        shop_id: shopId || null,
-        sale_type: saleType,
-        total: total,
-        status: status,
-        closed_at: status === 'closed' ? new Date().toISOString() : null,
-        sold_by: soldBy || null,
-        repair_id: repairId || null,
-      })
+      .insert(insertPayload)
       .select("*")
       .single();
     if (saleError) {
@@ -225,6 +256,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
       return null;
     }
 
+    const rec = saleRecord as Record<string, unknown>;
     const newSale: Sale = {
       id: saleRecord.id,
       date: new Date(saleRecord.date),
@@ -236,6 +268,9 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
       status: saleRecord.status as 'open' | 'closed',
       closedAt: saleRecord.closed_at ? new Date(saleRecord.closed_at) : undefined,
       soldBy: saleRecord.sold_by || undefined,
+      customerName: typeof rec.customer_name === 'string' ? rec.customer_name : undefined,
+      customerPhone: typeof rec.customer_phone === 'string' ? rec.customer_phone : undefined,
+      saleNotes: typeof rec.sale_notes === 'string' ? rec.sale_notes : undefined,
     };
     lastLocalUpdateRef.current = Date.now();
     if (saleType === 'wholesale') {
@@ -340,16 +375,26 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
     })();
   }, [openWholesaleSale, addSale]);
 
-  const closeWholesaleSale = useCallback((paymentType: 'cash' | 'mpesa' | 'bank_deposit', depositReference?: string, bank?: string) => {
+  const closeWholesaleSale = useCallback((
+    paymentType: 'cash' | 'mpesa' | 'bank_deposit',
+    depositReference?: string,
+    bank?: string,
+    customer?: { customerName?: string; customerPhone?: string; saleNotes?: string }
+  ) => {
     (async () => {
       if (!openWholesaleSale) return;
-      
+
+      const updatePayload: Record<string, unknown> = {
+        status: 'closed',
+        closed_at: new Date().toISOString(),
+      };
+      if (customer?.customerName?.trim()) updatePayload.customer_name = customer.customerName.trim();
+      if (customer?.customerPhone?.trim()) updatePayload.customer_phone = customer.customerPhone.trim();
+      if (customer?.saleNotes?.trim()) updatePayload.sale_notes = customer.saleNotes.trim();
+
       const { error } = await supabase
         .from("sales")
-        .update({
-          status: 'closed',
-          closed_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq("id", openWholesaleSale.id);
       if (error) {
         console.error("Error closing wholesale sale:", error);
@@ -366,6 +411,9 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         balance: 0,
         depositReference,
         bank,
+        customerName: customer?.customerName?.trim() || openWholesaleSale.customerName,
+        customerPhone: customer?.customerPhone?.trim() || openWholesaleSale.customerPhone,
+        saleNotes: customer?.saleNotes?.trim() || openWholesaleSale.saleNotes,
       };
       
       lastLocalUpdateRef.current = Date.now();
