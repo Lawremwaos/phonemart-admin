@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useInventory } from "../context/InventoryContext";
 import { useSales, type SaleItemInput } from "../context/SalesContext";
@@ -39,6 +39,8 @@ export default function Sales() {
   const [wholesalePaymentType, setWholesalePaymentType] = useState<'cash' | 'mpesa' | 'bank_deposit'>('mpesa');
   const [wholesaleBank, setWholesaleBank] = useState<string>('');
   const [wholesaleDepositReference, setWholesaleDepositReference] = useState<string>('');
+  const [isCompletingRetailSale, setIsCompletingRetailSale] = useState(false);
+  const retailSaleSubmitLock = useRef(false);
 
   // Items available for sale: ONLY allocated items
   // For staff: show ONLY items allocated to their shop (not unallocated items)
@@ -174,64 +176,75 @@ export default function Sales() {
   const wholesaleTotal = openWholesaleSale?.total || 0;
   const wholesaleItems = openWholesaleSale?.items || [];
 
-  // Handle retail sale completion
-  function completeRetailSale() {
+  // Handle retail sale completion (guarded against double-submit / duplicate DB rows)
+  async function completeRetailSale() {
     if (saleItems.length === 0) {
       alert("Please add at least one item");
       return;
     }
+    if (retailSaleSubmitLock.current || isCompletingRetailSale) return;
+    retailSaleSubmitLock.current = true;
+    setIsCompletingRetailSale(true);
 
-    const paidAmount = typeof amountPaid === 'number' && amountPaid > 0 ? amountPaid : retailTotal;
-    const balance = retailTotal - paidAmount;
-    const paymentStatus = balance <= 0 ? 'fully_paid' : paidAmount > 0 ? 'partial' : 'pending';
+    try {
+      const paidAmount = typeof amountPaid === 'number' && amountPaid > 0 ? amountPaid : retailTotal;
+      const balance = retailTotal - paidAmount;
+      const paymentStatus = balance <= 0 ? 'fully_paid' : paidAmount > 0 ? 'partial' : 'pending';
 
-    const itemsForSale: SaleItemInput[] = saleItems.map((s) => {
-      const base = { name: s.name, qty: s.qty, price: s.price };
-      if (s.source === 'inventory') {
-        const inv = items.find((i) => i.name === s.name && i.shopId === currentShop?.id);
-        if (inv) {
-          return { ...base, itemId: inv.id, adminBasePrice: inv.adminCostPrice ?? inv.costPrice, actualCost: inv.actualCost };
+      const itemsForSale: SaleItemInput[] = saleItems.map((s) => {
+        const base = { name: s.name, qty: s.qty, price: s.price };
+        if (s.source === 'inventory') {
+          const inv = items.find((i) => i.name === s.name && i.shopId === currentShop?.id);
+          if (inv) {
+            return { ...base, itemId: inv.id, adminBasePrice: inv.adminCostPrice ?? inv.costPrice, actualCost: inv.actualCost };
+          }
         }
+        return base;
+      });
+
+      const saleId = await addSale(itemsForSale, retailTotal, currentShop?.id, 'retail');
+      if (!saleId) {
+        alert("Failed to save sale. Please try again.");
+        return;
       }
-      return base;
-    });
 
-    const sale = {
-      id: Date.now().toString(),
-      date: new Date(),
-      shopId: currentShop?.id,
-      saleType: 'retail' as const,
-      items: saleItems,
-      total: retailTotal,
-      paymentType,
-      paymentStatus,
-      amountPaid: paidAmount,
-      balance,
-      bank: paymentType === 'bank_deposit' ? bank : undefined,
-      depositReference: paymentType === 'bank_deposit' ? depositReference : undefined,
-    };
+      const sale = {
+        id: saleId,
+        date: new Date(),
+        shopId: currentShop?.id,
+        saleType: 'retail' as const,
+        items: saleItems,
+        total: retailTotal,
+        paymentType,
+        paymentStatus,
+        amountPaid: paidAmount,
+        balance,
+        bank: paymentType === 'bank_deposit' ? bank : undefined,
+        depositReference: paymentType === 'bank_deposit' ? depositReference : undefined,
+      };
 
-    addSale(itemsForSale, retailTotal, currentShop?.id, 'retail');
-    
-    // Add payment record
-    addPayment({
-      type: paymentType,
-      amount: paidAmount,
-      state: paymentStatus === 'fully_paid' ? 'fully_paid' : 'partial',
-      bank: bank as any,
-      depositReference: depositReference || undefined,
-      shopId: currentShop?.id,
-      relatedTo: 'sale',
-      relatedId: sale.id,
-      deposited: paymentType === 'cash' ? false : true,
-    });
-    
-    setSaleItems([]);
-    setAmountPaid('');
-    setBank('');
-    setDepositReference('');
-    
-    navigate('/receipt', { state: { sale } });
+      addPayment({
+        type: paymentType,
+        amount: paidAmount,
+        state: paymentStatus === 'fully_paid' ? 'fully_paid' : 'partial',
+        bank: bank as any,
+        depositReference: depositReference || undefined,
+        shopId: currentShop?.id,
+        relatedTo: 'sale',
+        relatedId: saleId,
+        deposited: paymentType === 'cash' ? false : true,
+      });
+
+      setSaleItems([]);
+      setAmountPaid('');
+      setBank('');
+      setDepositReference('');
+
+      navigate('/receipt', { state: { sale } });
+    } finally {
+      retailSaleSubmitLock.current = false;
+      setIsCompletingRetailSale(false);
+    }
   }
 
   // Handle wholesale sale closure
@@ -541,10 +554,12 @@ export default function Sales() {
                   </div>
 
                   <button
-                    onClick={completeRetailSale}
-                    className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
+                    type="button"
+                    onClick={() => void completeRetailSale()}
+                    disabled={isCompletingRetailSale}
+                    className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    Complete Sale & Generate Receipt
+                    {isCompletingRetailSale ? "Saving…" : "Complete Sale & Generate Receipt"}
                   </button>
                 </div>
               </div>

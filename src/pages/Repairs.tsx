@@ -1,12 +1,14 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { useRepair } from "../context/RepairContext";
+import { useRepair, type Repair } from "../context/RepairContext";
 import { usePayment } from "../context/PaymentContext";
 import { useShop } from "../context/ShopContext";
+import { canMarkRepairCollected, repairToReceiptState } from "../utils/repairReceiptHelpers";
 
 export default function Repairs() {
   const navigate = useNavigate();
-  const { repairs, updateRepairPayment } = useRepair();
+  const { repairs, updateRepairPayment, confirmCollection } = useRepair();
+  const [repairRowAction, setRepairRowAction] = useState<Repair | null>(null);
   const { addPayment } = usePayment();
   const { currentUser, shops } = useShop();
   const isAdmin = currentUser?.roles.includes('admin') ?? false;
@@ -165,7 +167,11 @@ export default function Repairs() {
               </tr>
             ) : (
               filteredRepairs.map((repair) => (
-                <tr key={repair.id} className="border-t hover:bg-gray-50">
+                <tr
+                  key={repair.id}
+                  className="border-t hover:bg-gray-50 cursor-pointer"
+                  onClick={() => setRepairRowAction(repair)}
+                >
                   {isAdmin && (
                     <td className="p-3">
                       <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-medium">
@@ -195,7 +201,9 @@ export default function Repairs() {
                   <td className="p-3 text-center">
                     {repair.balance > 0 && (
                       <button
-                        onClick={() => {
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           const amount = prompt(`Enter payment amount (Balance: KES ${repair.balance}):`);
                           if (amount) {
                             const paymentType = prompt("Payment type (cash/mpesa/bank_deposit):") as 'cash' | 'mpesa' | 'bank_deposit';
@@ -219,6 +227,74 @@ export default function Repairs() {
           </tbody>
         </table>
       </div>
+
+      {repairRowAction && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setRepairRowAction(null)}
+          role="presentation"
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="repair-action-title"
+          >
+            <h3 id="repair-action-title" className="text-lg font-bold text-gray-900">
+              Repair: {repairRowAction.customerName}
+            </h3>
+            <p className="text-sm text-gray-600 mt-1">
+              {repairRowAction.phoneModel} · KES {(repairRowAction.totalAgreedAmount || repairRowAction.totalCost).toLocaleString()}
+            </p>
+            <p className="text-sm text-gray-700 mt-4">What do you want to do?</p>
+            <div className="flex flex-col gap-3 mt-4">
+              <button
+                type="button"
+                disabled={!canMarkRepairCollected(repairRowAction)}
+                title={
+                  !canMarkRepairCollected(repairRowAction)
+                    ? "Requires full payment, admin approval, and zero balance"
+                    : undefined
+                }
+                className="w-full bg-green-600 text-white px-4 py-2 rounded font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => {
+                  if (!canMarkRepairCollected(repairRowAction)) return;
+                  if (
+                    !window.confirm(
+                      `Confirm that ${repairRowAction.customerName} has collected their phone? This completes the repair sale and opens the receipt.`
+                    )
+                  ) {
+                    return;
+                  }
+                  confirmCollection(repairRowAction.id);
+                  navigate("/receipt", { state: { sale: repairToReceiptState(repairRowAction) } });
+                  setRepairRowAction(null);
+                }}
+              >
+                Collection — customer collected phone
+              </button>
+              <button
+                type="button"
+                className="w-full bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700"
+                onClick={() => {
+                  setRepairRowAction(null);
+                  navigate("/pending-collections");
+                }}
+              >
+                Confirmation — payment / approvals (Pending Collections)
+              </button>
+              <button
+                type="button"
+                className="w-full border border-gray-300 text-gray-800 px-4 py-2 rounded font-medium hover:bg-gray-50"
+                onClick={() => setRepairRowAction(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

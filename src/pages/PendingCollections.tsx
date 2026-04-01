@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { useRepair } from "../context/RepairContext";
+import { useRepair, type Repair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
 import { usePayment } from "../context/PaymentContext";
+import { canMarkRepairCollected, repairToReceiptState } from "../utils/repairReceiptHelpers";
 
 type FilterType = 'all' | 'pending_collection' | 'pending_payment' | 'fully_paid';
 
@@ -37,6 +38,7 @@ export default function PendingCollections() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedRepair, setSelectedRepair] = useState<typeof repairs[0] | null>(null);
+  const [repairRowMenu, setRepairRowMenu] = useState<Repair | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'cash_to_mpesa' | 'mpesa_to_paybill' | 'bank_to_paybill' | 'split_payment'>('mpesa_to_paybill');
   const [transactionCodes, setTransactionCodes] = useState({
     cash_to_mpesa: "",
@@ -292,7 +294,11 @@ export default function PendingCollections() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredRepairs.map((repair) => (
-                  <tr key={repair.id} className="hover:bg-gray-50">
+                  <tr
+                    key={repair.id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => setRepairRowMenu(repair)}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {formatDate(repair.date)}
                     </td>
@@ -331,6 +337,7 @@ export default function PendingCollections() {
                       {repairNeedsOutsourcedCost(repair) && (
                         <Link
                           to="/cost-of-parts"
+                          onClick={(e) => e.stopPropagation()}
                           className="inline-block mb-1 bg-amber-100 text-amber-800 hover:bg-amber-200 px-3 py-1 rounded text-xs font-semibold"
                         >
                           Enter cost of outsourced parts
@@ -339,7 +346,9 @@ export default function PendingCollections() {
                       {/* Only show "Confirm Payment" button to ADMIN - staff cannot approve payments */}
                       {repair.paymentStatus !== 'fully_paid' && currentUser?.roles.includes('admin') && (
                         <button
-                          onClick={() => {
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setSelectedRepair(repair);
                             setShowPaymentModal(true);
                             // Pre-fill payment method if stored
@@ -355,7 +364,9 @@ export default function PendingCollections() {
                       {/* Admin approval button for fully paid repairs awaiting approval */}
                       {repair.paymentStatus === 'fully_paid' && !repair.paymentApproved && currentUser?.roles.includes('admin') && filter === 'fully_paid' && (
                         <button
-                          onClick={() => {
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
                             if (window.confirm(`Approve payment for ${repair.customerName}? This will allow the phone to be released for collection.`)) {
                               approvePayment(repair.id);
                               alert("Payment approved! Phone can now be released for collection.");
@@ -375,48 +386,12 @@ export default function PendingCollections() {
                           {/* For fully paid repairs (no balance) - can confirm collection */}
                           {repair.paymentStatus === 'fully_paid' && repair.paymentApproved && repair.balance === 0 && (
                             <button
-                              onClick={() => {
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 if (window.confirm(`Confirm that ${repair.customerName} has collected their phone? This will complete the repair sale and generate the receipt.`)) {
                                   confirmCollection(repair.id);
-                                  
-                                  // Generate receipt after collection
-                                  const receiptData = {
-                                    id: repair.id,
-                                    date: repair.date,
-                                    shopId: repair.shopId,
-                                    saleType: 'repair' as const,
-                                    items: [
-                                      ...repair.partsUsed.map(p => ({
-                                        name: p.itemName,
-                                        qty: p.qty,
-                                        price: 0, // Cost not shown on receipt
-                                      })),
-                                      ...(repair.additionalItems || []).map(item => ({
-                                        name: item.itemName,
-                                        qty: 1,
-                                        price: 0, // Cost not shown on receipt
-                                      })),
-                                    ],
-                                    total: repair.totalAgreedAmount || repair.totalCost,
-                                    totalAgreedAmount: repair.totalAgreedAmount || repair.totalCost,
-                                    paymentMethod: repair.pendingTransactionCodes?.paymentMethod || 'unknown',
-                                    paymentStatus: 'paid',
-                                    amountPaid: repair.amountPaid,
-                                    balance: 0,
-                                    customerName: repair.customerName,
-                                    customerPhone: repair.phoneNumber,
-                                    phoneModel: repair.phoneModel,
-                                    issue: repair.issue,
-                                    technician: repair.technician,
-                                    customerStatus: repair.customerStatus,
-                                    paymentApproved: true,
-                                    depositAmount: repair.depositAmount || 0,
-                                    ticketNumber: repair.ticketNumber,
-                                    serviceType: repair.serviceType,
-                                  };
-                                  
-                                  // Navigate to receipt
-                                  navigate('/receipt', { state: { sale: receiptData } });
+                                  navigate('/receipt', { state: { sale: repairToReceiptState(repair) } });
                                 }
                               }}
                               className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"
@@ -451,45 +426,19 @@ export default function PendingCollections() {
                           {/* Admin can reprint receipt */}
                           {currentUser?.roles.includes('admin') && (
                             <button
-                              onClick={() => {
-                                // Generate receipt data for reprint
-                                const receiptData = {
-                                  id: repair.id,
-                                  date: repair.date,
-                                  shopId: repair.shopId,
-                                  saleType: 'repair' as const,
-                                  items: [
-                                    ...repair.partsUsed.map(p => ({
-                                      name: p.itemName,
-                                      qty: p.qty,
-                                      price: 0,
-                                    })),
-                                    ...(repair.additionalItems || []).map(item => ({
-                                      name: item.itemName,
-                                      qty: 1,
-                                      price: 0,
-                                    })),
-                                  ],
-                                  total: repair.totalAgreedAmount || repair.totalCost,
-                                  totalAgreedAmount: repair.totalAgreedAmount || repair.totalCost,
-                                  paymentMethod: repair.pendingTransactionCodes?.paymentMethod || 'unknown',
-                                  paymentStatus: repair.balance === 0 ? 'paid' : 'partial',
-                                  amountPaid: repair.amountPaid,
-                                  balance: repair.balance,
-                                  customerName: repair.customerName,
-                                  customerPhone: repair.phoneNumber,
-                                  phoneModel: repair.phoneModel,
-                                  issue: repair.issue,
-                                  technician: repair.technician,
-                                  customerStatus: repair.customerStatus,
-                                  paymentApproved: true,
-                                  depositAmount: repair.depositAmount || 0,
-                                  ticketNumber: repair.ticketNumber,
-                                  serviceType: repair.serviceType,
-                                };
-                                
-                                // Navigate to receipt
-                                navigate('/receipt', { state: { sale: receiptData } });
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const base = repairToReceiptState(repair);
+                                navigate('/receipt', {
+                                  state: {
+                                    sale: {
+                                      ...base,
+                                      paymentStatus: repair.balance === 0 ? 'paid' : 'partial',
+                                      balance: repair.balance,
+                                    },
+                                  },
+                                });
                               }}
                               className="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700"
                             >
@@ -506,6 +455,103 @@ export default function PendingCollections() {
           </div>
         )}
       </div>
+
+      {/* Row-click: choose Collection vs Confirmation (payment / admin steps) */}
+      {repairRowMenu && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setRepairRowMenu(null)}
+          role="presentation"
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pending-repair-action-title"
+          >
+            <h3 id="pending-repair-action-title" className="text-lg font-bold text-gray-900">
+              Repair: {repairRowMenu.customerName}
+            </h3>
+            <p className="text-sm text-gray-600 mt-1">
+              {repairRowMenu.phoneModel} · KES {(repairRowMenu.totalAgreedAmount || repairRowMenu.totalCost).toLocaleString()}
+            </p>
+            <p className="text-sm text-gray-700 mt-4">Choose an action:</p>
+            <div className="flex flex-col gap-3 mt-4">
+              <button
+                type="button"
+                disabled={!canMarkRepairCollected(repairRowMenu)}
+                title={
+                  !canMarkRepairCollected(repairRowMenu)
+                    ? "Requires full payment, admin approval, and zero balance"
+                    : undefined
+                }
+                className="w-full bg-green-600 text-white px-4 py-2 rounded font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => {
+                  if (!canMarkRepairCollected(repairRowMenu)) return;
+                  if (
+                    !window.confirm(
+                      `Confirm that ${repairRowMenu.customerName} has collected their phone? This completes the repair sale and opens the receipt.`
+                    )
+                  ) {
+                    return;
+                  }
+                  confirmCollection(repairRowMenu.id);
+                  navigate("/receipt", { state: { sale: repairToReceiptState(repairRowMenu) } });
+                  setRepairRowMenu(null);
+                }}
+              >
+                Collection — customer collected phone
+              </button>
+              <button
+                type="button"
+                className="w-full bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700"
+                onClick={() => {
+                  const r = repairRowMenu;
+                  if (!r) return;
+                  if (currentUser?.roles.includes("admin") && r.paymentStatus !== "fully_paid") {
+                    setSelectedRepair(r);
+                    setShowPaymentModal(true);
+                    if ((r as any).pendingTransactionCodes) {
+                      setPaymentMethod((r as any).pendingTransactionCodes.paymentMethod);
+                    }
+                    setRepairRowMenu(null);
+                    return;
+                  }
+                  if (
+                    currentUser?.roles.includes("admin") &&
+                    r.paymentStatus === "fully_paid" &&
+                    !r.paymentApproved
+                  ) {
+                    if (
+                      window.confirm(
+                        `Approve payment for ${r.customerName}? This allows the phone to be released for collection.`
+                      )
+                    ) {
+                      approvePayment(r.id);
+                    }
+                    setRepairRowMenu(null);
+                    return;
+                  }
+                  alert(
+                    "Nothing to confirm here. Staff: wait for admin approval. Admin: use the buttons in the row if you still need to confirm payment or approve."
+                  );
+                  setRepairRowMenu(null);
+                }}
+              >
+                Confirmation — payment / approve (admin)
+              </button>
+              <button
+                type="button"
+                className="w-full border border-gray-300 text-gray-800 px-4 py-2 rounded font-medium hover:bg-gray-50"
+                onClick={() => setRepairRowMenu(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Payment Confirmation Modal - ADMIN ONLY */}
       {showPaymentModal && selectedRepair && currentUser?.roles.includes('admin') && (

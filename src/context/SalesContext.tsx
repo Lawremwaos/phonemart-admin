@@ -42,7 +42,7 @@ export type Sale = {
 type SalesContextType = {
   sales: Sale[];
   openWholesaleSale: Sale | null;
-  addSale: (items: SaleItemInput[], total: number, shopId?: string, saleType?: 'in-shop' | 'wholesale' | 'retail', repairId?: string) => void;
+  addSale: (items: SaleItemInput[], total: number, shopId?: string, saleType?: 'in-shop' | 'wholesale' | 'retail', repairId?: string) => Promise<string | null>;
   addItemToWholesaleSale: (item: SaleItemInput, shopId?: string) => void;
   addRepairAccessorySale: (repairId: string, shopId: string | undefined, items: Array<{ itemId?: number; name: string; qty: number; sellingPrice: number; adminBasePrice?: number; actualCost?: number }>, soldBy?: string) => Promise<void>;
   closeWholesaleSale: (paymentType: 'cash' | 'mpesa' | 'bank_deposit', depositReference?: string, bank?: string) => void;
@@ -187,64 +187,63 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [loadAllSales, processSalesData]);
 
-  const addSale = useCallback((items: SaleItemInput[], total: number, shopId?: string, saleType: 'in-shop' | 'wholesale' | 'retail' = 'in-shop', repairId?: string) => {
-    (async () => {
-      const status = saleType === 'wholesale' ? 'open' : 'closed';
-      const soldBy = currentUser?.name || undefined;
-      const { data: saleRecord, error: saleError } = await supabase
-        .from("sales")
-        .insert({
-          shop_id: shopId || null,
-          sale_type: saleType,
-          total: total,
-          status: status,
-          closed_at: status === 'closed' ? new Date().toISOString() : null,
-          sold_by: soldBy || null,
-          repair_id: repairId || null,
-        })
-        .select("*")
-        .single();
-      if (saleError) {
-        console.error("Error adding sale:", saleError);
-        return;
-      }
+  const addSale = useCallback(async (items: SaleItemInput[], total: number, shopId?: string, saleType: 'in-shop' | 'wholesale' | 'retail' = 'in-shop', repairId?: string): Promise<string | null> => {
+    const status = saleType === 'wholesale' ? 'open' : 'closed';
+    const soldBy = currentUser?.name || undefined;
+    const { data: saleRecord, error: saleError } = await supabase
+      .from("sales")
+      .insert({
+        shop_id: shopId || null,
+        sale_type: saleType,
+        total: total,
+        status: status,
+        closed_at: status === 'closed' ? new Date().toISOString() : null,
+        sold_by: soldBy || null,
+        repair_id: repairId || null,
+      })
+      .select("*")
+      .single();
+    if (saleError) {
+      console.error("Error adding sale:", saleError);
+      return null;
+    }
 
-      const itemsPayload = items.map((item) => ({
-        sale_id: saleRecord.id,
-        name: item.name,
-        qty: item.qty,
-        price: item.price,
-        item_id: item.itemId ?? null,
-        admin_base_price: item.adminBasePrice ?? null,
-        actual_cost: item.actualCost ?? null,
-      }));
-      const { error: itemsError } = await supabase
-        .from("sale_items")
-        .insert(itemsPayload);
-      if (itemsError) {
-        console.error("Error adding sale items:", itemsError);
-        return;
-      }
+    const itemsPayload = items.map((item) => ({
+      sale_id: saleRecord.id,
+      name: item.name,
+      qty: item.qty,
+      price: item.price,
+      item_id: item.itemId ?? null,
+      admin_base_price: item.adminBasePrice ?? null,
+      actual_cost: item.actualCost ?? null,
+    }));
+    const { error: itemsError } = await supabase
+      .from("sale_items")
+      .insert(itemsPayload);
+    if (itemsError) {
+      console.error("Error adding sale items:", itemsError);
+      return null;
+    }
 
-      const newSale: Sale = {
-        id: saleRecord.id,
-        date: new Date(saleRecord.date),
-        shopId: saleRecord.shop_id || undefined,
-        saleType: (saleRecord.sale_type || saleType) as Sale['saleType'],
-        repairId: saleRecord.repair_id || undefined,
-        items: items.map((i) => ({ name: i.name, qty: i.qty, price: i.price, itemId: i.itemId, adminBasePrice: i.adminBasePrice, actualCost: i.actualCost })),
-        total: Number(saleRecord.total) || 0,
-        status: saleRecord.status as 'open' | 'closed',
-        closedAt: saleRecord.closed_at ? new Date(saleRecord.closed_at) : undefined,
-        soldBy: saleRecord.sold_by || undefined,
-      };
-      lastLocalUpdateRef.current = Date.now();
-      if (saleType === 'wholesale') {
-        setOpenWholesaleSale(newSale);
-      } else {
-        setSales((prev) => [newSale, ...prev]);
-      }
-    })();
+    const newSale: Sale = {
+      id: saleRecord.id,
+      date: new Date(saleRecord.date),
+      shopId: saleRecord.shop_id || undefined,
+      saleType: (saleRecord.sale_type || saleType) as Sale['saleType'],
+      repairId: saleRecord.repair_id || undefined,
+      items: items.map((i) => ({ name: i.name, qty: i.qty, price: i.price, itemId: i.itemId, adminBasePrice: i.adminBasePrice, actualCost: i.actualCost })),
+      total: Number(saleRecord.total) || 0,
+      status: saleRecord.status as 'open' | 'closed',
+      closedAt: saleRecord.closed_at ? new Date(saleRecord.closed_at) : undefined,
+      soldBy: saleRecord.sold_by || undefined,
+    };
+    lastLocalUpdateRef.current = Date.now();
+    if (saleType === 'wholesale') {
+      setOpenWholesaleSale(newSale);
+    } else {
+      setSales((prev) => [newSale, ...prev]);
+    }
+    return saleRecord.id as string;
   }, [currentUser]);
 
   const addRepairAccessorySale = useCallback(async (repairId: string, shopId: string | undefined, items: Array<{ itemId?: number; name: string; qty: number; sellingPrice: number; adminBasePrice?: number; actualCost?: number }>, soldBy?: string): Promise<void> => {

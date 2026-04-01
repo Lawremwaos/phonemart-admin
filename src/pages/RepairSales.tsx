@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useInventory } from "../context/InventoryContext";
 import { useRepair } from "../context/RepairContext";
@@ -109,6 +109,8 @@ export default function RepairSales() {
   const [splitPaymentBank, setSplitPaymentBank] = useState("");
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<number | null>(null);
   const [outsourcedItemSupplier, setOutsourcedItemSupplier] = useState("");
+  const [isSubmittingRepairSale, setIsSubmittingRepairSale] = useState(false);
+  const repairSaleSubmitLock = useRef(false);
 
   // Auto-set technician from logged-in user
   const technician = currentUser?.name || "";
@@ -415,6 +417,8 @@ export default function RepairSales() {
   }
 
   async function handleCompleteRepairSale() {
+    if (repairSaleSubmitLock.current || isSubmittingRepairSale) return;
+
     if (!form.customerName || !form.customerPhone || !form.phoneModel || !form.issue || !form.totalAgreedAmount) {
       alert("Please fill in all required fields (Customer Name, Phone, Model, Issue, Total Agreed Amount)");
       return;
@@ -429,6 +433,10 @@ export default function RepairSales() {
       return;
     }
 
+    repairSaleSubmitLock.current = true;
+    setIsSubmittingRepairSale(true);
+
+    try {
     const finalTotal = Number(form.totalAgreedAmount);
     const depositAmount = Number(form.depositAmount || 0);
     const paidAmount = getAmountPaid();
@@ -501,6 +509,7 @@ export default function RepairSales() {
       alert("Failed to save repair. Please try again.");
       return;
     }
+
 
     // Record accessory sales for in-house parts that are accessories (unified table, linked to repair)
     const accessoryParts = selectedParts.filter((p) => {
@@ -614,6 +623,10 @@ export default function RepairSales() {
     } else {
       alert(`Repair sale completed! Ticket Number: ${ticketNumber}\n\nRepair will be sent to admin for payment approval.`);
       navigate('/pending-collections');
+    }
+    } finally {
+      repairSaleSubmitLock.current = false;
+      setIsSubmittingRepairSale(false);
     }
   }
 
@@ -1438,10 +1451,14 @@ export default function RepairSales() {
         </div>
 
         <button
-          onClick={handleCompleteRepairSale}
-          className="w-full mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
+          type="button"
+          onClick={() => void handleCompleteRepairSale()}
+          disabled={isSubmittingRepairSale}
+          className="w-full mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {form.depositAmount && Number(form.depositAmount) > 0 
+          {isSubmittingRepairSale
+            ? "Saving…"
+            : form.depositAmount && Number(form.depositAmount) > 0 
             ? 'Complete Repair Sale & Generate Receipt' 
             : 'Complete Repair Sale & Assign Ticket'}
         </button>
