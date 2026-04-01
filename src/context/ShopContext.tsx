@@ -278,43 +278,78 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPassword = password.trim();
+    const emailVariants = [...new Set([normalizedEmail, email.trim()])];
 
     setIsLoadingAuth(true);
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("*, shops(*)")
-        .eq("email", normalizedEmail)
-        .eq("password", normalizedPassword)
-        .single();
+      type DbUserRow = {
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+        shop_id: string | null;
+        roles: string[] | null;
+      };
+      let userRow: DbUserRow | null = null;
 
-      if (error || !data) {
+      for (const em of emailVariants) {
+        const { data, error } = await supabase
+          .from("users")
+          .select("*")
+          .eq("email", em)
+          .eq("password", normalizedPassword)
+          .maybeSingle();
+
+        if (error) {
+          if (import.meta.env.DEV) {
+            console.error("Login query failed:", error.code, error.message);
+          }
+          return false;
+        }
+        if (data) {
+          userRow = data as DbUserRow;
+          break;
+        }
+      }
+
+      if (!userRow) {
         return false;
       }
 
       const user: User = {
-        id: data.id,
-        name: data.name,
-        email: data.email,
-        password: data.password,
-        shopId: data.shop_id || '',
-        roles: (data.roles || []) as ('admin' | 'technician' | 'manager')[],
+        id: userRow.id,
+        name: userRow.name,
+        email: userRow.email,
+        password: userRow.password,
+        shopId: userRow.shop_id || '',
+        roles: (userRow.roles || []) as ('admin' | 'technician' | 'manager')[],
       };
 
       setCurrentUser(user);
 
-      if (data.shops) {
-        const shop: Shop = {
-          id: data.shops.id,
-          name: data.shops.name,
-          address: data.shops.address,
-          phone: data.shops.phone,
-          email: data.shops.email || undefined,
-          whatsappGroup: data.shops.whatsapp_group || undefined,
-        };
-        setCurrentShop(shop);
+      if (userRow.shop_id) {
+        const { data: shopData, error: shopErr } = await supabase
+          .from("shops")
+          .select("*")
+          .eq("id", userRow.shop_id)
+          .maybeSingle();
+
+        if (!shopErr && shopData) {
+          const s = shopData as Record<string, unknown>;
+          setCurrentShop({
+            id: String(s.id),
+            name: String(s.name),
+            address: String(s.address),
+            phone: String(s.phone),
+            email: s.email ? String(s.email) : undefined,
+            whatsappGroup: s.whatsapp_group ? String(s.whatsapp_group) : undefined,
+          });
+        } else {
+          const userShop = shops.find((x) => x.id === user.shopId);
+          if (userShop) setCurrentShop(userShop);
+        }
       } else {
-        const userShop = shops.find(s => s.id === user.shopId);
+        const userShop = shops.find((x) => x.id === user.shopId);
         if (userShop) setCurrentShop(userShop);
       }
 
