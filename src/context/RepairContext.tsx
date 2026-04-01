@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
+import {
+  decodeRepairPartSource,
+  encodeRepairPartSource,
+  type RepairLineKind,
+} from "../utils/repairPartSource";
 
 export type RepairStatus = 
   | 'RECEIVED' 
@@ -25,7 +30,9 @@ export type Repair = {
     qty: number;
     cost: number;
     supplierName?: string;
+    /** Legacy + encoded: in-house | outsourced | spare_inhouse | … */
     source?: string;
+    lineKind?: RepairLineKind;
   }>;
   additionalItems?: Array<{
     itemName: string;
@@ -102,14 +109,18 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
       phoneModel: repairData.phone_model,
       issue: repairData.issue,
       technician: repairData.technician || "",
-      partsUsed: (partsData || []).map((p: any) => ({
-        itemId: p.item_id || 0,
-        itemName: p.item_name,
-        qty: p.qty,
-        cost: Number(p.cost) || 0,
-        supplierName: p.supplier_name || undefined,
-        source: p.source || undefined,
-      })),
+      partsUsed: (partsData || []).map((p: any) => {
+        const decoded = decodeRepairPartSource(p.source);
+        return {
+          itemId: p.item_id || 0,
+          itemName: p.item_name,
+          qty: p.qty,
+          cost: Number(p.cost) || 0,
+          supplierName: p.supplier_name || undefined,
+          source: decoded.source,
+          lineKind: decoded.lineKind,
+        };
+      }),
       additionalItems: (additionalData || []).map((a: any) => ({
         itemName: a.item_name,
         source: a.source as 'inventory' | 'outsourced',
@@ -252,15 +263,29 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
 
       // Insert repair parts (try with supplier columns, fallback without)
       if (repairData.partsUsed.length > 0) {
-        const partsWithSupplier = repairData.partsUsed.map((part) => ({
-          repair_id: repairRecord.id,
-          item_id: part.itemId || null,
-          item_name: part.itemName,
-          qty: part.qty,
-          cost: part.cost,
-          supplier_name: (part as any).supplierName || null,
-          source: (part as any).source || 'in-house',
-        }));
+        const partsWithSupplier = repairData.partsUsed.map((part) => {
+          const p = part as {
+            lineKind?: RepairLineKind;
+            source?: string;
+            supplierName?: string;
+            itemId: number;
+            itemName: string;
+            qty: number;
+            cost: number;
+          };
+          const lineKind = p.lineKind ?? "spare_part";
+          const invSrc: "in-house" | "outsourced" =
+            p.source === "outsourced" ? "outsourced" : "in-house";
+          return {
+            repair_id: repairRecord.id,
+            item_id: p.itemId || null,
+            item_name: p.itemName,
+            qty: p.qty,
+            cost: p.cost,
+            supplier_name: p.supplierName || null,
+            source: encodeRepairPartSource({ lineKind, source: invSrc }),
+          };
+        });
         const { error: partsError } = await supabase
           .from("repair_parts")
           .insert(partsWithSupplier);
@@ -331,14 +356,18 @@ export const RepairProvider = ({ children }: { children: React.ReactNode }) => {
         phoneModel: newRepairData.phone_model,
         issue: newRepairData.issue,
         technician: newRepairData.technician || "",
-        partsUsed: (partsData || []).map((p: any) => ({
-          itemId: p.item_id || 0,
-          itemName: p.item_name,
-          qty: p.qty,
-          cost: Number(p.cost) || 0,
-          supplierName: p.supplier_name || undefined,
-          source: p.source || undefined,
-        })),
+        partsUsed: (partsData || []).map((p: any) => {
+          const decoded = decodeRepairPartSource(p.source);
+          return {
+            itemId: p.item_id || 0,
+            itemName: p.item_name,
+            qty: p.qty,
+            cost: Number(p.cost) || 0,
+            supplierName: p.supplier_name || undefined,
+            source: decoded.source,
+            lineKind: decoded.lineKind,
+          };
+        }),
         additionalItems: (additionalData || []).map((a: any) => ({
           itemName: a.item_name,
           source: a.source as 'inventory' | 'outsourced',

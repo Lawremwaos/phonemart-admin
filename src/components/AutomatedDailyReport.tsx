@@ -148,13 +148,18 @@ export default function AutomatedDailyReport() {
       r.partsUsed.forEach((p) => {
         const supplier = getSupplierForItem(p.itemName, p.supplierName);
         const lineCost = p.cost * p.qty;
-        const isOutsource = (p.source === 'outsourced' || p.supplierName || (supplier && supplier !== 'Own Inventory'));
+        const lk = p.lineKind ?? "spare_part";
+        const isService = lk === "service";
+        const isOutsource = isService
+          ? Boolean(p.supplierName?.trim())
+          : p.source === "outsourced" || Boolean(p.supplierName) || (supplier && supplier !== "Own Inventory");
         if (isOutsource) {
-          const existing = usedInRepairOutsource.find((x) => x.name === p.itemName && x.supplier === supplier);
+          const supLabel = isService ? p.supplierName?.trim() || supplier : supplier;
+          const existing = usedInRepairOutsource.find((x) => x.name === p.itemName && x.supplier === supLabel);
           if (existing) {
             existing.qty += p.qty;
             existing.totalCost += lineCost;
-          } else usedInRepairOutsource.push({ name: p.itemName, qty: p.qty, supplier, totalCost: lineCost });
+          } else usedInRepairOutsource.push({ name: p.itemName, qty: p.qty, supplier: supLabel, totalCost: lineCost });
         } else {
           const existing = usedInRepairOurOwn.find((x) => x.name === p.itemName);
           if (existing) {
@@ -236,9 +241,20 @@ export default function AutomatedDailyReport() {
         const partsList: string[] = r.partsUsed.map((p) => {
           const lineCost = p.cost * p.qty;
           const supplier = getSupplierForItem(p.itemName, p.supplierName);
+          const lk = p.lineKind ?? "spare_part";
+          if (lk === "service") {
+            const sup = p.supplierName?.trim();
+            const src = sup
+              ? `service — supplier: ${getSupplierDisplay(sup)}`
+              : "service (in-house / no supplier)";
+            return `${p.itemName} [${src}] cost KES ${lineCost.toLocaleString()}`;
+          }
           const isOut =
             p.source === "outsourced" || p.supplierName || (supplier && supplier !== "Own Inventory");
-          const src = isOut ? `outsourced (${getSupplierDisplay(supplier)})` : "our inventory";
+          const kindTag = lk === "accessory" ? "accessory" : "spare";
+          const src = isOut
+            ? `outsourced ${kindTag} (${getSupplierDisplay(supplier)})`
+            : `${kindTag} — our inventory`;
           return `${p.itemName} [${src}] cost KES ${lineCost.toLocaleString()}`;
         });
         (r.additionalItems || []).forEach((a) => {
@@ -270,8 +286,14 @@ export default function AutomatedDailyReport() {
     todayRepairs.forEach((r) => {
       r.partsUsed.forEach((p) => {
         const supplier = getSupplierForItem(p.itemName, p.supplierName);
-        if (supplier && supplier !== 'Own Inventory') {
-          const key = supplier;
+        const lk = p.lineKind ?? "spare_part";
+        const key =
+          lk === "service"
+            ? p.supplierName?.trim() || (supplier && supplier !== "Own Inventory" ? supplier : null)
+            : supplier && supplier !== "Own Inventory"
+              ? supplier
+              : null;
+        if (key) {
           if (!bySupplier.has(key)) bySupplier.set(key, []);
           const arr = bySupplier.get(key)!;
           const total = p.cost * p.qty;

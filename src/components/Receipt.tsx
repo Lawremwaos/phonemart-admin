@@ -107,19 +107,39 @@ export default function Receipt({ sale, shopName = "PHONEMART", shopAddress = ""
         </div>
       )}
 
-      {/* Parts Used */}
+      {/* Parts, accessories & services */}
       {sale.items && sale.items.length > 0 && (
         <div className="border-t border-b border-gray-300 py-4 mb-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Parts Used:</h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Parts & services:</h3>
           <div className="space-y-2">
-            {sale.items.map((item, index) => (
-              <div key={index} className="flex justify-between items-center">
-                <span className="text-sm font-medium">{item.name}</span>
-                {item.qty > 1 && (
-                  <span className="text-sm text-gray-600">Qty: {item.qty}</span>
-                )}
-              </div>
-            ))}
+            {sale.items.map((item, index) => {
+              const ext = item as typeof item & {
+                kindLabel?: string;
+                sourceLabel?: string;
+                supplierName?: string;
+                lineKind?: string;
+              };
+              return (
+                <div key={index} className="text-sm border-b border-gray-100 pb-2 last:border-0">
+                  <div className="flex justify-between gap-2">
+                    <span className="font-medium">{item.name}</span>
+                    {item.qty > 1 && (
+                      <span className="text-gray-600 shrink-0">Qty: {item.qty}</span>
+                    )}
+                  </div>
+                  {(ext.kindLabel || ext.sourceLabel) && (
+                    <div className="text-xs text-gray-600 mt-0.5">
+                      {ext.kindLabel && <span>{ext.kindLabel}</span>}
+                      {ext.kindLabel && ext.sourceLabel && <span> · </span>}
+                      {ext.sourceLabel && <span>{ext.sourceLabel}</span>}
+                    </div>
+                  )}
+                  {ext.supplierName?.trim() && (
+                    <div className="text-xs text-gray-500 mt-0.5">Supplier: {ext.supplierName}</div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

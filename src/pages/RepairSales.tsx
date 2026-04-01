@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useInventory } from "../context/InventoryContext";
 import { useRepair } from "../context/RepairContext";
@@ -8,17 +8,10 @@ import type { RepairStatus } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
 import { useSupplier } from "../context/SupplierContext";
 import ShopSelector from "../components/ShopSelector";
+import type { RepairLineKind } from "../utils/repairPartSource";
+import { lineKindLabel, sourceLabelForReceipt } from "../utils/repairPartSource";
 
-type PartSource = 'in-house' | 'outsourced';
-
-type AdditionalLaborItem = {
-  id: string;
-  itemName: string;
-  source: 'inventory' | 'outsourced';
-  itemId?: number; // For inventory items
-  supplierId?: string; // For outsourced items
-  supplierName?: string; // For outsourced items
-};
+type PartSource = "in-house" | "outsourced";
 
 type RepairPart = {
   itemId: number;
@@ -26,9 +19,9 @@ type RepairPart = {
   qty: number;
   cost: number;
   source: PartSource;
+  lineKind: RepairLineKind;
   supplierId?: string;
   supplierName?: string;
-  additionalLaborCost?: number;
 };
 
 type PaymentMethod = 'cash_to_deposit' | 'mpesa_to_paybill' | 'mpesa_to_mpesa_shop' | 'bank_to_mpesa_shop' | 'bank_to_shop_bank' | 'sacco_to_mpesa';
@@ -51,12 +44,36 @@ export default function RepairSales() {
   const isAdmin = currentUser?.roles.includes('admin') ?? false;
   // Staff see only local suppliers; admin sees all
   const sparePartSuppliers = suppliers.filter(s => s.categories.includes('spare_parts')).filter(s => isAdmin || s.supplierType !== 'wholesale');
+  const accessorySuppliers = useMemo(
+    () => suppliers.filter((s) => s.categories.includes("accessories")),
+    [suppliers]
+  );
+  const spareShopItems = useMemo(
+    () =>
+      items.filter(
+        (i) =>
+          i.shopId === currentShop?.id &&
+          i.stock > 0 &&
+          (i.category === "Spare" || i.category === "Phone")
+      ),
+    [items, currentShop?.id]
+  );
+  const accessoryShopItems = useMemo(
+    () =>
+      items.filter((i) => i.shopId === currentShop?.id && i.stock > 0 && i.category === "Accessory"),
+    [items, currentShop?.id]
+  );
+
+  const serviceSuppliers = useMemo(() => {
+    const byId = new Map<string, (typeof suppliers)[0]>();
+    for (const s of sparePartSuppliers) byId.set(s.id, s);
+    for (const s of accessorySuppliers) {
+      if (!byId.has(s.id)) byId.set(s.id, s);
+    }
+    return Array.from(byId.values());
+  }, [sparePartSuppliers, accessorySuppliers]);
+
   const [customerStatus, setCustomerStatus] = useState<'waiting' | 'coming_back'>('waiting');
-  const [isServiceOnly, setIsServiceOnly] = useState(false);
-  const [serviceType, setServiceType] = useState("");
-  const [additionalLaborItems, setAdditionalLaborItems] = useState<AdditionalLaborItem[]>([]);
-  const [additionalLaborItemName, setAdditionalLaborItemName] = useState("");
-  const [additionalLaborItemSource, setAdditionalLaborItemSource] = useState<'inventory' | 'outsourced'>('inventory');
   const [form, setForm] = useState({
     customerName: "",
     customerPhone: "",
@@ -70,9 +87,13 @@ export default function RepairSales() {
   });
 
   const [selectedParts, setSelectedParts] = useState<RepairPart[]>([]);
+  const [partLineKind, setPartLineKind] = useState<RepairLineKind>("spare_part");
   const [partName, setPartName] = useState("");
-  const [partSource, setPartSource] = useState<PartSource>('in-house');
+  const [partSource, setPartSource] = useState<PartSource>("in-house");
+  const [spareInventoryPickId, setSpareInventoryPickId] = useState<string>("");
+  const [accessoryInventoryPickId, setAccessoryInventoryPickId] = useState<string>("");
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
+  const [manualSupplierName, setManualSupplierName] = useState("");
   const [showAddSupplier, setShowAddSupplier] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState("");
   const [pendingSupplierName, setPendingSupplierName] = useState<string | null>(null);
@@ -107,8 +128,6 @@ export default function RepairSales() {
   const [splitPaymentAmount, setSplitPaymentAmount] = useState("");
   const [splitPaymentCode, setSplitPaymentCode] = useState("");
   const [splitPaymentBank, setSplitPaymentBank] = useState("");
-  const [selectedInventoryItem, setSelectedInventoryItem] = useState<number | null>(null);
-  const [outsourcedItemSupplier, setOutsourcedItemSupplier] = useState("");
   const [isSubmittingRepairSale, setIsSubmittingRepairSale] = useState(false);
   const repairSaleSubmitLock = useRef(false);
 
@@ -121,8 +140,10 @@ export default function RepairSales() {
       return;
     }
     const supplierName = newSupplierName.trim();
+    const categories =
+      partLineKind === "accessory" ? (["accessories"] as const) : (["spare_parts"] as const);
     try {
-      await addSupplier({ name: supplierName, categories: ['spare_parts'], supplierType: 'local' });
+      await addSupplier({ name: supplierName, categories: [...categories], supplierType: "local" });
       setPendingSupplierName(supplierName);
       setNewSupplierName("");
       setShowAddSupplier(false);
@@ -132,162 +153,147 @@ export default function RepairSales() {
     }
   }
 
+  function resolveSupplierName(): string | undefined {
+    if (manualSupplierName.trim()) return manualSupplierName.trim();
+    if (selectedSupplierId) {
+      const s = suppliers.find((x) => x.id === selectedSupplierId);
+      return s?.name;
+    }
+    return undefined;
+  }
+
   function addPart() {
-    if (!partName.trim()) {
-      alert("Please enter part name");
+    const supplierNameResolved = resolveSupplierName();
+
+    if (partLineKind === "service") {
+      if (!partName.trim()) {
+        alert("Describe the service (e.g. software update, cleaning).");
+        return;
+      }
+      setSelectedParts((prev) => [
+        ...prev,
+        {
+          itemId: Date.now(),
+          itemName: partName.trim(),
+          qty: 1,
+          cost: 0,
+          source: "in-house",
+          lineKind: "service",
+          supplierName: supplierNameResolved,
+        },
+      ]);
+      setPartName("");
+      setManualSupplierName("");
+      setSelectedSupplierId("");
       return;
     }
 
-    if (partSource === 'outsourced') {
-      if (!selectedSupplierId) {
-        alert("Please select a supplier for outsourced part");
+    if (partSource === "outsourced") {
+      if (!supplierNameResolved) {
+        alert("Select a supplier or type the supplier name for outsourced items.");
         return;
       }
     }
 
     let selectedItemId = Date.now();
-    let supplierName: string | undefined;
     let supplierId: string | undefined;
     let cost = 0;
+    let itemName = partName.trim();
 
-    if (partSource === 'in-house') {
-      const inventoryItem = items.find(
-        (i) =>
-          i.name.toLowerCase() === partName.trim().toLowerCase() &&
-          i.stock > 0 &&
-          i.shopId === currentShop?.id
-      );
-      if (!inventoryItem) {
-        alert("For in-house part, type an exact inventory item name with available stock allocated to your shop.");
-        return;
+    if (partLineKind === "spare_part") {
+      if (partSource === "in-house") {
+        const fromPick = spareInventoryPickId
+          ? items.find((i) => i.id === Number(spareInventoryPickId))
+          : undefined;
+        const inventoryItem =
+          fromPick ||
+          items.find(
+            (i) =>
+              i.name.toLowerCase() === partName.trim().toLowerCase() &&
+              i.stock > 0 &&
+              i.shopId === currentShop?.id &&
+              (i.category === "Spare" || i.category === "Phone")
+          );
+        if (!inventoryItem) {
+          alert(
+            "For spare parts from our stock: pick from the list or type the exact name of a Spare/Phone item with stock at this shop."
+          );
+          return;
+        }
+        selectedItemId = inventoryItem.id;
+        itemName = inventoryItem.name;
+        cost = inventoryItem.adminCostPrice || inventoryItem.costPrice || 0;
+        addStock(inventoryItem.id, -1);
+      } else {
+        if (!itemName) {
+          alert("Enter the spare part name.");
+          return;
+        }
+        supplierId = selectedSupplierId || undefined;
+        cost = 0;
       }
-
-      selectedItemId = inventoryItem.id;
-      cost = inventoryItem.adminCostPrice || inventoryItem.costPrice || 0;
-
-      // Deduct stock immediately for in-house parts.
-      addStock(inventoryItem.id, -1);
     } else {
-      const supplier = suppliers.find(s => s.id === selectedSupplierId);
-      supplierId = selectedSupplierId;
-      supplierName = supplier?.name;
-      // Outsourced cost is filled later on Cost of Parts page.
-      cost = 0;
+      // accessory
+      if (partSource === "in-house") {
+        const accId = accessoryInventoryPickId ? Number(accessoryInventoryPickId) : null;
+        const inventoryItem = accId
+          ? items.find((i) => i.id === accId && i.category === "Accessory")
+          : items.find(
+              (i) =>
+                i.name.toLowerCase() === partName.trim().toLowerCase() &&
+                i.stock > 0 &&
+                i.shopId === currentShop?.id &&
+                i.category === "Accessory"
+            );
+        if (!inventoryItem) {
+          alert("Select an accessory from inventory with stock at this shop, or type the exact accessory name.");
+          return;
+        }
+        selectedItemId = inventoryItem.id;
+        itemName = inventoryItem.name;
+        cost = inventoryItem.adminCostPrice || inventoryItem.costPrice || 0;
+        addStock(inventoryItem.id, -1);
+      } else {
+        if (!itemName) {
+          alert("Enter the accessory name.");
+          return;
+        }
+        supplierId = selectedSupplierId || undefined;
+        cost = 0;
+      }
     }
 
-    setSelectedParts(prev => [
+    setSelectedParts((prev) => [
       ...prev,
       {
         itemId: selectedItemId,
-        itemName: partName.trim(),
+        itemName,
         qty: 1,
         cost,
         source: partSource,
+        lineKind: partLineKind,
         supplierId,
-        supplierName,
-        additionalLaborCost: 0,
+        supplierName: partSource === "outsourced" ? supplierNameResolved : undefined,
       },
     ]);
 
-    // Reset form
     setPartName("");
-    setPartSource('in-house');
+    setPartSource("in-house");
     setSelectedSupplierId("");
+    setManualSupplierName("");
+    setSpareInventoryPickId("");
+    setAccessoryInventoryPickId("");
   }
 
   function removePart(index: number) {
     const part = selectedParts[index];
-    // Restore stock if in-house
-    if (part.source === 'in-house') {
-      const item = items.find(i => i.id === part.itemId);
+    if (part.source === "in-house" && part.lineKind !== "service") {
+      const item = items.find((i) => i.id === part.itemId);
       if (item) {
         addStock(item.id, part.qty);
       }
     }
-    setSelectedParts(prev => prev.filter((_, i) => i !== index));
-  }
-
-  function addAdditionalLaborItem() {
-    if (additionalLaborItemSource === 'inventory') {
-      if (!selectedInventoryItem) {
-        alert("Please select an inventory item");
-        return;
-      }
-      const item = items.find(i => i.id === selectedInventoryItem);
-      if (!item) {
-        alert("Selected inventory item not found");
-        return;
-      }
-      if (item.stock <= 0) {
-        alert("Selected item is out of stock");
-        return;
-      }
-      // Reduce stock
-      addStock(item.id, -1);
-      // Use item name from inventory
-      setAdditionalLaborItems(prev => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          itemName: item.name,
-          source: additionalLaborItemSource,
-          itemId: selectedInventoryItem,
-        },
-      ]);
-      // Track inventory item in partsUsed for accurate cost/profit reporting.
-      setSelectedParts(prev => [
-        ...prev,
-        {
-          itemId: item.id,
-          itemName: item.name,
-          qty: 1,
-          cost: item.adminCostPrice || item.costPrice || 0,
-          source: 'in-house',
-        },
-      ]);
-      setSelectedInventoryItem(null);
-    } else {
-      // Outsourced item - require supplier selection
-      if (!additionalLaborItemName.trim()) {
-        alert("Please enter outsourced item name");
-        return;
-      }
-      if (!outsourcedItemSupplier) {
-        alert("Please select a supplier");
-        return;
-      }
-      const supplier = suppliers.find(s => s.id === outsourcedItemSupplier || s.name === outsourcedItemSupplier);
-      setAdditionalLaborItems(prev => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          itemName: additionalLaborItemName.trim(), // Store actual item name
-          source: additionalLaborItemSource,
-          itemId: undefined,
-          supplierId: supplier?.id,
-          supplierName: supplier?.name,
-        },
-      ]);
-      setAdditionalLaborItemName("");
-      setOutsourcedItemSupplier("");
-    }
-  }
-
-  function removeAdditionalLaborItem(id: string) {
-    const item = additionalLaborItems.find(i => i.id === id);
-    if (item && item.source === 'inventory' && item.itemId) {
-      // Restore stock
-      addStock(item.itemId, 1);
-      // Remove mirrored in-house cost entry added for profit tracking.
-      setSelectedParts(prev => {
-        const indexToRemove = prev.findIndex(
-          (part) => part.source === 'in-house' && part.itemId === item.itemId
-        );
-        if (indexToRemove === -1) return prev;
-        return prev.filter((_, idx) => idx !== indexToRemove);
-      });
-    }
-    setAdditionalLaborItems(prev => prev.filter(item => item.id !== id));
+    setSelectedParts((prev) => prev.filter((_, i) => i !== index));
   }
 
   const bankMethods: PaymentMethod[] = ['bank_to_mpesa_shop', 'bank_to_shop_bank', 'sacco_to_mpesa'];
@@ -424,11 +430,6 @@ export default function RepairSales() {
       return;
     }
 
-    if (isServiceOnly && !serviceType.trim()) {
-      alert("Please describe the service rendered");
-      return;
-    }
-
     if (!validateTransactionCodes()) {
       return;
     }
@@ -469,20 +470,16 @@ export default function RepairSales() {
       phoneModel: `${form.phoneBrand} ${form.phoneModel}`.trim(),
       issue: form.issue,
       technician: technician,
-      partsUsed: selectedParts.map(p => ({
+      partsUsed: selectedParts.map((p) => ({
         itemId: p.itemId,
         itemName: p.itemName,
         qty: p.qty,
         cost: p.cost,
         supplierName: p.supplierName,
         source: p.source,
+        lineKind: p.lineKind,
       })),
-      additionalItems: additionalLaborItems.map(item => ({
-        itemName: item.itemName,
-        source: item.source,
-        itemId: item.itemId,
-        supplierName: item.supplierName,
-      })),
+      additionalItems: [],
       outsourcedCost: totals.totalOutsourced,
       laborCost: 0, // No longer tracking labor cost separately
       status: repairStatus,
@@ -501,7 +498,8 @@ export default function RepairSales() {
         : { paymentMethod, transactionCodes: { ...transactionCodes } },
       ticketNumber: ticketNumber,
       collected: false,
-      serviceType: isServiceOnly ? serviceType : undefined,
+      serviceType:
+        selectedParts.filter((p) => p.lineKind === "service").map((p) => p.itemName).join("; ") || undefined,
     };
 
     const repairId = await addRepair(repair);
@@ -513,9 +511,9 @@ export default function RepairSales() {
 
     // Record accessory sales for in-house parts that are accessories (unified table, linked to repair)
     const accessoryParts = selectedParts.filter((p) => {
-      if (p.source !== 'in-house' || !p.itemId) return false;
+      if (p.lineKind !== "accessory" || p.source !== "in-house" || !p.itemId) return false;
       const inv = items.find((i) => i.id === p.itemId);
-      return inv?.category?.toLowerCase() === 'accessory';
+      return inv?.category?.toLowerCase() === "accessory";
     });
     if (accessoryParts.length > 0) {
       const accessorySaleItems = accessoryParts.map((p) => {
@@ -548,18 +546,15 @@ export default function RepairSales() {
       date: new Date(),
       shopId: currentShop?.id,
       saleType: 'repair' as const,
-      items: [
-        ...selectedParts.map(p => ({
-          name: p.itemName,
-          qty: p.qty,
-          price: 0, // Cost not shown on receipt
-        })),
-        ...additionalLaborItems.map(item => ({
-          name: item.itemName,
-          qty: 1,
-          price: 0, // Cost not shown on receipt
-        })),
-      ],
+      items: selectedParts.map((p) => ({
+        name: p.itemName,
+        qty: p.qty,
+        price: 0,
+        lineKind: p.lineKind,
+        sourceLabel: sourceLabelForReceipt(p.lineKind, p.source),
+        kindLabel: lineKindLabel(p.lineKind),
+        supplierName: p.supplierName,
+      })),
       total: finalTotal,
       totalAgreedAmount: finalTotal,
       paymentMethod,
@@ -574,7 +569,8 @@ export default function RepairSales() {
       customerStatus,
       paymentApproved: false,
       depositAmount: depositAmount,
-      serviceType: isServiceOnly ? serviceType : undefined,
+      serviceType:
+        selectedParts.filter((p) => p.lineKind === "service").map((p) => p.itemName).join("; ") || undefined,
       ...(paymentMode === 'split' && splitPayments.length > 0 ? { splitPayments } : {}),
     };
 
@@ -591,7 +587,10 @@ export default function RepairSales() {
       depositAmount: "",
     });
     setSelectedParts([]);
-    setAdditionalLaborItems([]);
+    setPartLineKind("spare_part");
+    setManualSupplierName("");
+    setSpareInventoryPickId("");
+    setAccessoryInventoryPickId("");
     setCustomerStatus('waiting');
     setPaymentMethod('mpesa_to_paybill');
     setTransactionCodes({
@@ -604,10 +603,6 @@ export default function RepairSales() {
       bank: "",
       customBank: "",
     });
-    setSelectedInventoryItem(null);
-    setAdditionalLaborItemSource('inventory');
-    setIsServiceOnly(false);
-    setServiceType("");
     setPaymentMode('single');
     setSplitPayments([]);
     setSplitPaymentAmount('');
@@ -630,12 +625,19 @@ export default function RepairSales() {
     }
   }
 
+  const supplierListForLine =
+    partLineKind === "spare_part"
+      ? sparePartSuppliers
+      : partLineKind === "accessory"
+        ? accessorySuppliers
+        : serviceSuppliers;
+
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Repair Sales</h2>
       <ShopSelector />
       {currentShop && (
-        <p className="text-sm text-gray-600">Only stock <strong>allocated to {currentShop.name}</strong> is available for in-house parts and additional items. Unallocated items cannot be selected.</p>
+        <p className="text-sm text-gray-600">Only stock <strong>allocated to {currentShop.name}</strong> is available for spare parts and accessories from our inventory. Unallocated items cannot be selected.</p>
       )}
 
       {/* Customer Status */}
@@ -790,157 +792,319 @@ export default function RepairSales() {
         </div>
       </div>
 
-      {/* Parts Selection */}
-      <div className="bg-white p-6 rounded shadow">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Spare Parts Used</h3>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="serviceOnly"
-              checked={isServiceOnly}
-              onChange={(e) => setIsServiceOnly(e.target.checked)}
-              className="w-4 h-4"
-            />
-            <label htmlFor="serviceOnly" className="text-sm text-gray-700">
-              Includes Service (e.g., Cleaning, Software Update)
-            </label>
+      {/* Parts, accessories & services */}
+      <div className="bg-white p-6 rounded shadow space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold">Spare parts, accessories & services</h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Add a spare part or accessory (from our stock or outsourced), or a service that does not require a physical part. Supplier is required when outsourced; optional for services.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Line type</label>
+            <select
+              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              value={partLineKind}
+              onChange={(e) => {
+                const v = e.target.value as RepairLineKind;
+                setPartLineKind(v);
+                setPartSource("in-house");
+                setSelectedSupplierId("");
+                setManualSupplierName("");
+                setSpareInventoryPickId("");
+                setAccessoryInventoryPickId("");
+                setPartName("");
+                setShowAddSupplier(false);
+              }}
+            >
+              <option value="spare_part">Spare part used</option>
+              <option value="accessory">Accessory used</option>
+              <option value="service">Service (no spare part)</option>
+            </select>
           </div>
         </div>
 
-        {isServiceOnly && (
-          <div className="bg-blue-50 border border-blue-200 rounded p-4 mb-4">
-            <label className="block text-sm font-medium text-blue-800 mb-2">
-              Describe the service rendered <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              className="border border-blue-300 rounded-md px-3 py-2 w-full bg-white text-gray-900"
-              placeholder="e.g., Software update, Cleaning, Screen replacement + software update"
-              value={serviceType}
-              onChange={(e) => setServiceType(e.target.value)}
-            />
-            <p className="text-xs text-blue-600 mt-2">This will appear as part of the issue on the receipt. You can still add spare parts below.</p>
-          </div>
-        )}
-        
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-          <input
-            type="text"
-            className="border border-gray-300 rounded-md px-3 py-2"
-            placeholder="Type the part name"
-            value={partName}
-            onChange={(e) => setPartName(e.target.value)}
-          />
-
-          <select
-            className="border border-gray-300 rounded-md px-3 py-2"
-            value={partSource}
-            onChange={(e) => {
-              setPartSource(e.target.value as PartSource);
-              if (e.target.value === 'in-house') {
-                setSelectedSupplierId("");
-              }
-            }}
-          >
-            <option value="in-house">In-House</option>
-            <option value="outsourced">Outsourced</option>
-          </select>
-
-          {partSource === 'outsourced' && (
-            <div className="relative">
-              <select
+        {partLineKind === "service" ? (
+          <div className="space-y-3 border border-gray-200 rounded-lg p-4 bg-gray-50">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Service description <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
                 className="border border-gray-300 rounded-md px-3 py-2 w-full"
-                value={selectedSupplierId}
-                onChange={(e) => {
-                  if (e.target.value === 'add_new') {
-                    setShowAddSupplier(true);
-                  } else {
-                    setSelectedSupplierId(e.target.value);
-                  }
-                }}
-              >
-                <option value="">Select Supplier (spare parts only)</option>
-                {sparePartSuppliers
-                  .map((supplier) => (
+                placeholder="e.g. Software update, ultrasonic cleaning"
+                value={partName}
+                onChange={(e) => setPartName(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="relative">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Supplier (optional)</label>
+                <select
+                  className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                  value={selectedSupplierId}
+                  onChange={(e) => {
+                    if (e.target.value === "add_new") {
+                      setShowAddSupplier(true);
+                    } else {
+                      setSelectedSupplierId(e.target.value);
+                    }
+                  }}
+                >
+                  <option value="">— Select or type below —</option>
+                  {supplierListForLine.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.name}
                     </option>
                   ))}
-                <option value="add_new">+ Add New Supplier</option>
+                  <option value="add_new">+ Add new supplier</option>
+                </select>
+                {showAddSupplier && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md p-3 shadow-lg z-10">
+                    <input
+                      type="text"
+                      className="border border-gray-300 rounded-md px-3 py-2 w-full mb-2"
+                      placeholder="Supplier name"
+                      value={newSupplierName}
+                      onChange={(e) => setNewSupplierName(e.target.value)}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void addNewSupplier()}
+                        className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddSupplier(false);
+                          setNewSupplierName("");
+                        }}
+                        className="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Or type supplier name</label>
+                <input
+                  type="text"
+                  className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                  placeholder="Manual supplier name"
+                  value={manualSupplierName}
+                  onChange={(e) => setManualSupplierName(e.target.value)}
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={addPart}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              Add line
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3 border border-gray-200 rounded-lg p-4 bg-gray-50">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Source</label>
+              <select
+                className="border border-gray-300 rounded-md px-3 py-2 w-full max-w-md"
+                value={partSource}
+                onChange={(e) => {
+                  setPartSource(e.target.value as PartSource);
+                  if (e.target.value === "in-house") {
+                    setSelectedSupplierId("");
+                    setManualSupplierName("");
+                  }
+                }}
+              >
+                <option value="in-house">Our inventory (this shop)</option>
+                <option value="outsourced">Outsourced</option>
               </select>
-              {showAddSupplier && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md p-3 shadow-lg z-10">
+            </div>
+
+            {partSource === "in-house" && partLineKind === "spare_part" && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Pick spare / phone part</label>
+                <select
+                  className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                  value={spareInventoryPickId}
+                  onChange={(e) => {
+                    setSpareInventoryPickId(e.target.value);
+                    const it = items.find((i) => i.id === Number(e.target.value));
+                    if (it) setPartName(it.name);
+                  }}
+                >
+                  <option value="">— Select from stock —</option>
+                  {spareShopItems.map((it) => (
+                    <option key={it.id} value={String(it.id)}>
+                      {it.name} (stock {it.stock})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Or type the exact name of a Spare/Phone item with stock at this shop.</p>
+              </div>
+            )}
+
+            {partSource === "in-house" && partLineKind === "accessory" && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Pick accessory</label>
+                <select
+                  className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                  value={accessoryInventoryPickId}
+                  onChange={(e) => {
+                    setAccessoryInventoryPickId(e.target.value);
+                    const it = items.find((i) => i.id === Number(e.target.value));
+                    if (it) setPartName(it.name);
+                  }}
+                >
+                  <option value="">— Select from stock —</option>
+                  {accessoryShopItems.map((it) => (
+                    <option key={it.id} value={String(it.id)}>
+                      {it.name} (stock {it.stock})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Or type the exact accessory name with stock at this shop.</p>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {partSource === "in-house" ? "Name (must match stock if not using pick list)" : "Item name"}{" "}
+                <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                placeholder={partLineKind === "accessory" ? "Accessory name" : "Spare part name"}
+                value={partName}
+                onChange={(e) => setPartName(e.target.value)}
+              />
+            </div>
+
+            {partSource === "outsourced" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+                  <select
+                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    value={selectedSupplierId}
+                    onChange={(e) => {
+                      if (e.target.value === "add_new") {
+                        setShowAddSupplier(true);
+                      } else {
+                        setSelectedSupplierId(e.target.value);
+                      }
+                    }}
+                  >
+                    <option value="">— Select supplier —</option>
+                    {supplierListForLine.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                    <option value="add_new">+ Add new supplier</option>
+                  </select>
+                  {showAddSupplier && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md p-3 shadow-lg z-10">
+                      <input
+                        type="text"
+                        className="border border-gray-300 rounded-md px-3 py-2 w-full mb-2"
+                        placeholder="Supplier name"
+                        value={newSupplierName}
+                        onChange={(e) => setNewSupplierName(e.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void addNewSupplier()}
+                          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                        >
+                          Add
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAddSupplier(false);
+                            setNewSupplierName("");
+                          }}
+                          className="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Or type supplier name</label>
                   <input
                     type="text"
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full mb-2"
-                    placeholder="Supplier name"
-                    value={newSupplierName}
-                    onChange={(e) => setNewSupplierName(e.target.value)}
+                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    placeholder="If not in list"
+                    value={manualSupplierName}
+                    onChange={(e) => setManualSupplierName(e.target.value)}
                   />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={addNewSupplier}
-                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                    >
-                      Add
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowAddSupplier(false);
-                        setNewSupplierName("");
-                      }}
-                      className="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700"
-                    >
-                      Cancel
-                    </button>
-                  </div>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
 
-          {partSource === 'in-house' && (
-            <div></div>
-          )}
-
-          <button
-            onClick={addPart}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 col-span-4 md:col-span-1"
-          >
-            Add Part
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={addPart}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              Add line
+            </button>
+          </div>
+        )}
 
         {selectedParts.length > 0 && (
           <div className="mt-4">
-            <table className="w-full">
+            <table className="w-full text-sm">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="p-2 text-left text-sm">Part</th>
-                  <th className="p-2 text-left text-sm">Source</th>
-                  <th className="p-2 text-left text-sm">Supplier</th>
-                  <th className="p-2 text-center text-sm">Actions</th>
+                  <th className="p-2 text-left">Type</th>
+                  <th className="p-2 text-left">Item / service</th>
+                  <th className="p-2 text-left">Source</th>
+                  <th className="p-2 text-left">Supplier</th>
+                  <th className="p-2 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {selectedParts.map((part, index) => (
                   <tr key={index} className="border-t">
-                    <td className="p-2 text-sm">{part.itemName}</td>
-                    <td className="p-2 text-sm">
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        part.source === 'in-house' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-orange-100 text-orange-800'
-                      }`}>
-                        {part.source === 'in-house' ? 'In-House' : 'Outsourced'}
+                    <td className="p-2">{lineKindLabel(part.lineKind)}</td>
+                    <td className="p-2 font-medium">{part.itemName}</td>
+                    <td className="p-2">
+                      <span
+                        className={`px-2 py-1 rounded text-xs ${
+                          part.lineKind === "service"
+                            ? "bg-blue-100 text-blue-800"
+                            : part.source === "in-house"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-orange-100 text-orange-800"
+                        }`}
+                      >
+                        {sourceLabelForReceipt(part.lineKind, part.source)}
                       </span>
                     </td>
-                    <td className="p-2 text-sm">{part.supplierName || '-'}</td>
+                    <td className="p-2">{part.supplierName || "—"}</td>
                     <td className="p-2 text-center">
                       <button
+                        type="button"
                         onClick={() => removePart(index)}
-                        className="text-red-600 hover:text-red-800 text-sm"
+                        className="text-red-600 hover:text-red-800"
                       >
                         Remove
                       </button>
@@ -956,104 +1120,6 @@ export default function RepairSales() {
       {/* Costs & Payment */}
       <div className="bg-white p-6 rounded shadow">
         <h3 className="text-lg font-semibold mb-4">Costs & Payment</h3>
-        
-        {/* Additional Items & Services */}
-        <div>
-          <h4 className="font-semibold mb-3">Additional Items & Services</h4>
-          <p className="text-sm text-gray-600 mb-3">Add items like screen protector, charger, case, etc.</p>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-            <input
-              type="text"
-              className="border border-gray-300 rounded-md px-3 py-2"
-              placeholder="Item name (e.g., Screen Protector)"
-              value={additionalLaborItemName}
-              onChange={(e) => setAdditionalLaborItemName(e.target.value)}
-            />
-            <select
-              className="border border-gray-300 rounded-md px-3 py-2"
-              value={additionalLaborItemSource}
-              onChange={(e) => setAdditionalLaborItemSource(e.target.value as 'inventory' | 'outsourced')}
-            >
-              <option value="inventory">From Inventory</option>
-              <option value="outsourced">Outsourced</option>
-            </select>
-            {additionalLaborItemSource === 'inventory' ? (
-              <select
-                className="border border-gray-300 rounded-md px-3 py-2"
-                value={selectedInventoryItem || ""}
-                onChange={(e) => setSelectedInventoryItem(e.target.value ? Number(e.target.value) : null)}
-              >
-                <option value="">Select Inventory Item</option>
-                {items && items.filter(i => i.stock > 0 && i.shopId === currentShop?.id).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} (Stock: {item.stock})
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <select
-                className="border border-gray-300 rounded-md px-3 py-2"
-                value={outsourcedItemSupplier}
-                onChange={(e) => setOutsourcedItemSupplier(e.target.value)}
-              >
-                <option value="">Select Supplier</option>
-                {suppliers
-                  .filter(s => s.categories.includes('accessories'))
-                  .map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </option>
-                  ))}
-              </select>
-            )}
-            <button
-              onClick={addAdditionalLaborItem}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-            >
-              Add Item
-            </button>
-          </div>
-
-          {additionalLaborItems.length > 0 && (
-            <div className="mt-4">
-              <table className="w-full border">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="p-2 text-left text-sm">Item</th>
-                    <th className="p-2 text-left text-sm">Source</th>
-                    <th className="p-2 text-center text-sm">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {additionalLaborItems.map((item) => (
-                      <tr key={item.id} className="border-t">
-                        <td className="p-2 text-sm">
-                          {item.source === 'inventory' ? item.itemName : `Supplier: ${item.itemName}`}
-                        </td>
-                        <td className="p-2 text-sm">
-                          <span className={`px-2 py-1 rounded text-xs ${
-                            item.source === 'inventory' 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-orange-100 text-orange-800'
-                          }`}>
-                            {item.source === 'inventory' ? 'Inventory' : 'Outsourced'}
-                          </span>
-                        </td>
-                        <td className="p-2 text-center">
-                          <button
-                            onClick={() => removeAdditionalLaborItem(item.id)}
-                            className="text-red-600 hover:text-red-800 text-sm"
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
 
         {/* Payment Section */}
         <div className="border-t pt-4 mt-4">
@@ -1441,10 +1507,15 @@ export default function RepairSales() {
                 <span className="font-semibold text-orange-600">Not Paid - Will pay later</span>
               </div>
             )}
-            {isServiceOnly && serviceType && (
-              <div className="flex justify-between border-t pt-2">
-                <span className="text-blue-600">Service Type:</span>
-                <span className="font-semibold text-blue-600">{serviceType}</span>
+            {selectedParts.some((p) => p.lineKind === "service") && (
+              <div className="flex justify-between border-t pt-2 gap-2">
+                <span className="text-blue-600 shrink-0">Services (no part):</span>
+                <span className="font-semibold text-blue-600 text-right">
+                  {selectedParts
+                    .filter((p) => p.lineKind === "service")
+                    .map((p) => p.itemName)
+                    .join("; ")}
+                </span>
               </div>
             )}
           </div>
