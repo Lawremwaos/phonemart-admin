@@ -1,10 +1,36 @@
 import { useMemo } from "react";
 import { useSales } from "../context/SalesContext";
-import { useRepair } from "../context/RepairContext";
+import { useRepair, type Repair } from "../context/RepairContext";
 import { useInventory } from "../context/InventoryContext";
 import { usePayment } from "../context/PaymentContext";
 import { useShop } from "../context/ShopContext";
 import { shareViaWhatsApp } from "../utils/receiptUtils";
+
+/** Additional repair items: trust explicit source; never infer "our stock" from name match alone. */
+function classifyAdditionalItem(a: NonNullable<Repair["additionalItems"]>[number]): "outsourced" | "inventory" {
+  const src = (a.source || "").toString().toLowerCase();
+  if (src === "outsourced") return "outsourced";
+  if (src === "inventory") return "inventory";
+  if (a.supplierName && a.supplierName.trim()) return "outsourced";
+  return "inventory";
+}
+
+function getAdditionalItemReportCost(
+  r: Repair,
+  a: NonNullable<Repair["additionalItems"]>[number],
+  inventoryItems: Array<{ id: number; name: string; adminCostPrice?: number; costPrice?: number }>,
+  getItemCost: (inv: { adminCostPrice?: number; costPrice?: number } | undefined) => number
+): number {
+  const matchPart = r.partsUsed.find((p) => p.itemName.toLowerCase() === a.itemName.toLowerCase());
+  if (matchPart) return matchPart.cost * matchPart.qty;
+  if (classifyAdditionalItem(a) === "inventory") {
+    const inv = inventoryItems.find(
+      (i) => (a.itemId != null && i.id === a.itemId) || i.name.toLowerCase() === a.itemName.toLowerCase()
+    );
+    return getItemCost(inv);
+  }
+  return 0;
+}
 
 export default function AutomatedDailyReport() {
   const { getDailySales, getDailyRevenue } = useSales();
@@ -41,7 +67,7 @@ export default function AutomatedDailyReport() {
     return todayRepairs.reduce((sum, r) => {
       const partsCost = r.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
       const inventoryAdditionalCost = (r.additionalItems || [])
-        .filter((item) => item.source === 'inventory')
+        .filter((item) => classifyAdditionalItem(item) === "inventory")
         .reduce((s, item) => {
           const inv = inventoryItems.find((i) => i.id === item.itemId || i.name.toLowerCase() === item.itemName.toLowerCase());
           return s + getItemCost(inv);
@@ -116,50 +142,63 @@ export default function AutomatedDailyReport() {
       });
     }
 
-    const usedInRepairOurOwn: Array<{ name: string; qty: number }> = [];
-    const usedInRepairOutsource: Array<{ name: string; qty: number; supplier?: string }> = [];
+    const usedInRepairOurOwn: Array<{ name: string; qty: number; totalCost: number }> = [];
+    const usedInRepairOutsource: Array<{ name: string; qty: number; supplier?: string; totalCost: number }> = [];
     todayRepairs.forEach((r) => {
       r.partsUsed.forEach((p) => {
         const supplier = getSupplierForItem(p.itemName, p.supplierName);
+        const lineCost = p.cost * p.qty;
         const isOutsource = (p.source === 'outsourced' || p.supplierName || (supplier && supplier !== 'Own Inventory'));
         if (isOutsource) {
           const existing = usedInRepairOutsource.find((x) => x.name === p.itemName && x.supplier === supplier);
-          if (existing) existing.qty += p.qty;
-          else usedInRepairOutsource.push({ name: p.itemName, qty: p.qty, supplier });
+          if (existing) {
+            existing.qty += p.qty;
+            existing.totalCost += lineCost;
+          } else usedInRepairOutsource.push({ name: p.itemName, qty: p.qty, supplier, totalCost: lineCost });
         } else {
           const existing = usedInRepairOurOwn.find((x) => x.name === p.itemName);
-          if (existing) existing.qty += p.qty;
-          else usedInRepairOurOwn.push({ name: p.itemName, qty: p.qty });
+          if (existing) {
+            existing.qty += p.qty;
+            existing.totalCost += lineCost;
+          } else usedInRepairOurOwn.push({ name: p.itemName, qty: p.qty, totalCost: lineCost });
         }
       });
       (r.additionalItems || []).forEach((a) => {
-        const inv = inventoryItems.find((i) => i.name.toLowerCase() === a.itemName.toLowerCase());
-        const supplier = a.supplierName || inv?.supplier;
-        if (a.source === 'outsourced' || supplier) {
-          const s = supplier || 'Outsourced';
-          const existing = usedInRepairOutsource.find((x) => x.name === a.itemName && x.supplier === s);
-          if (existing) existing.qty += 1;
-          else usedInRepairOutsource.push({ name: a.itemName, qty: 1, supplier: s });
+        const kind = classifyAdditionalItem(a);
+        const lineCost = getAdditionalItemReportCost(r, a, inventoryItems, getItemCost);
+        const supplierLabel = a.supplierName?.trim() || "Outsourced";
+        if (kind === "outsourced") {
+          const existing = usedInRepairOutsource.find((x) => x.name === a.itemName && x.supplier === supplierLabel);
+          if (existing) {
+            existing.qty += 1;
+            existing.totalCost += lineCost;
+          } else usedInRepairOutsource.push({ name: a.itemName, qty: 1, supplier: supplierLabel, totalCost: lineCost });
         } else {
           const existing = usedInRepairOurOwn.find((x) => x.name === a.itemName);
-          if (existing) existing.qty += 1;
-          else usedInRepairOurOwn.push({ name: a.itemName, qty: 1 });
+          if (existing) {
+            existing.qty += 1;
+            existing.totalCost += lineCost;
+          } else usedInRepairOurOwn.push({ name: a.itemName, qty: 1, totalCost: lineCost });
         }
       });
     });
 
     report += `\n*Used in Repair Sale:*\n`;
-    report += `Our own:\n`;
+    report += `Our inventory:\n`;
     if (usedInRepairOurOwn.length === 0) {
       report += `(None)\n`;
     } else {
-      usedInRepairOurOwn.forEach((item) => report += `• ${item.name} x${item.qty}\n`);
+      usedInRepairOurOwn.forEach((item) => {
+        report += `• ${item.name} x${item.qty} — our stock — cost KES ${item.totalCost.toLocaleString()}\n`;
+      });
     }
-    report += `Outsource:\n`;
+    report += `Outsourced:\n`;
     if (usedInRepairOutsource.length === 0) {
       report += `(None)\n`;
     } else {
-      usedInRepairOutsource.forEach((item) => report += `• ${item.name} x${item.qty} (${item.supplier || 'Outsourced'})\n`);
+      usedInRepairOutsource.forEach((item) => {
+        report += `• ${item.name} x${item.qty} — outsourced (${item.supplier || "Outsourced"}) — cost KES ${item.totalCost.toLocaleString()}\n`;
+      });
     }
 
     const totalDeposit = cashCollected + mpesaCollected + bankDeposits;
@@ -183,7 +222,7 @@ export default function AutomatedDailyReport() {
         const revenue = r.totalAgreedAmount || r.totalCost;
         const partsCost = r.partsUsed.reduce((s, p) => s + (p.cost * p.qty), 0);
         const additionalCost = (r.additionalItems || []).reduce((sum, item) => {
-          if (item.source === 'inventory') {
+          if (classifyAdditionalItem(item) === "inventory") {
             const inv = inventoryItems.find((i) => i.id === item.itemId || i.name.toLowerCase() === item.itemName.toLowerCase());
             return sum + getItemCost(inv);
           }
@@ -193,16 +232,26 @@ export default function AutomatedDailyReport() {
         const profit = revenue - totalPartCost;
 
         report += `${r.customerName} - ${r.phoneModel}\n`;
-        report += `Parts Used: `;
-        const partsList = r.partsUsed.map((p) => {
+        report += `Parts & items: `;
+        const partsList: string[] = r.partsUsed.map((p) => {
+          const lineCost = p.cost * p.qty;
           const supplier = getSupplierForItem(p.itemName, p.supplierName);
-          return `${p.itemName} (${getSupplierDisplay(supplier)})`;
+          const isOut =
+            p.source === "outsourced" || p.supplierName || (supplier && supplier !== "Own Inventory");
+          const src = isOut ? `outsourced (${getSupplierDisplay(supplier)})` : "our inventory";
+          return `${p.itemName} [${src}] cost KES ${lineCost.toLocaleString()}`;
         });
         (r.additionalItems || []).forEach((a) => {
-          const sup = a.supplierName || getSupplierForItem(a.itemName) || 'Outsourced';
-          partsList.push(`${a.itemName} (${getSupplierDisplay(sup)})`);
+          const kind = classifyAdditionalItem(a);
+          const c = getAdditionalItemReportCost(r, a, inventoryItems, getItemCost);
+          if (kind === "outsourced") {
+            const sup = a.supplierName?.trim() || "outsourced";
+            partsList.push(`${a.itemName} [outsourced: ${sup}] cost KES ${c.toLocaleString()}`);
+          } else {
+            partsList.push(`${a.itemName} [our inventory] cost KES ${c.toLocaleString()}`);
+          }
         });
-        report += partsList.length ? partsList.join(', ') : '(None)';
+        report += partsList.length ? partsList.join("; ") : '(None)';
         report += `\n`;
         report += `Revenue: KES ${revenue.toLocaleString()}\n`;
         const splitPayments = (r.pendingTransactionCodes as any)?.splitPayments;
@@ -232,6 +281,21 @@ export default function AutomatedDailyReport() {
             existing.total += total;
           } else arr.push({ name: p.itemName, qty: p.qty, total });
         }
+      });
+      (r.additionalItems || []).forEach((a) => {
+        if (classifyAdditionalItem(a) !== "outsourced") return;
+        const hasPartRow = r.partsUsed.some((p) => p.itemName.toLowerCase() === a.itemName.toLowerCase());
+        if (hasPartRow) return;
+        const supplier = a.supplierName?.trim() || "Outsourced";
+        if (supplier === "Own Inventory") return;
+        const total = getAdditionalItemReportCost(r, a, inventoryItems, getItemCost);
+        if (!bySupplier.has(supplier)) bySupplier.set(supplier, []);
+        const arr = bySupplier.get(supplier)!;
+        const existing = arr.find((x) => x.name === a.itemName);
+        if (existing) {
+          existing.qty += 1;
+          existing.total += total;
+        } else arr.push({ name: a.itemName, qty: 1, total });
       });
     });
     if (bySupplier.size === 0) {
@@ -297,11 +361,11 @@ export default function AutomatedDailyReport() {
           return inventoryCost <= 0;
         });
         const missingAdditional = (r.additionalItems || []).filter(item =>
-          item.source === 'outsourced' &&
+          classifyAdditionalItem(item) === 'outsourced' &&
           !r.partsUsed.some(p => p.itemName === item.itemName && p.cost > 0)
         );
         const missingInventoryAdditional = (r.additionalItems || []).filter((item) => {
-          if (item.source !== 'inventory') return false;
+          if (classifyAdditionalItem(item) !== 'inventory') return false;
           const inv = inventoryItems.find((i) => i.id === item.itemId || i.name.toLowerCase() === item.itemName.toLowerCase());
           return getItemCost(inv) <= 0;
         });
