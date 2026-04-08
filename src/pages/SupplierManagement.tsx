@@ -678,18 +678,48 @@ export default function SupplierManagement() {
                                           {isAdmin && (
                                             <td className="p-2 text-center">
                                               <div className="flex items-center justify-center gap-2">
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setActivePaymentPurchaseId(isPaymentFormOpen ? null : purchase.id);
-                                                    if (isPaymentFormOpen) {
+                                                {isPaymentFormOpen ? (
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setActivePaymentPurchaseId(null);
                                                       resetPaymentForm();
-                                                    }
-                                                  }}
-                                                  className="text-green-700 hover:text-green-900 text-xs font-semibold hover:bg-green-50 px-2 py-1 rounded"
-                                                >
-                                                  {isPaymentFormOpen ? "Cancel Payment" : "Record Payment"}
-                                                </button>
+                                                    }}
+                                                    className="text-gray-700 hover:text-gray-900 text-xs font-semibold hover:bg-gray-100 px-2 py-1 rounded"
+                                                  >
+                                                    Cancel Payment
+                                                  </button>
+                                                ) : (
+                                                  <>
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setActivePaymentPurchaseId(purchase.id);
+                                                        setPaymentForm({
+                                                          amount: paymentInfo.balance.toString(),
+                                                          method: "mpesa",
+                                                          paymentDate: new Date().toISOString().slice(0, 10),
+                                                          notes: "Full supplier payment",
+                                                        });
+                                                      }}
+                                                      disabled={paymentInfo.balance <= 0}
+                                                      className="text-green-700 hover:text-green-900 text-xs font-semibold hover:bg-green-50 px-2 py-1 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    >
+                                                      Confirm Full Payment
+                                                    </button>
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setActivePaymentPurchaseId(purchase.id);
+                                                        resetPaymentForm();
+                                                      }}
+                                                      disabled={paymentInfo.balance <= 0}
+                                                      className="text-orange-700 hover:text-orange-900 text-xs font-semibold hover:bg-orange-50 px-2 py-1 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    >
+                                                      Partial Payment
+                                                    </button>
+                                                  </>
+                                                )}
                                               <button
                                                 onClick={(e) => {
                                                   e.stopPropagation();
@@ -774,12 +804,12 @@ export default function SupplierManagement() {
                                                     }}
                                                     className="bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 w-full"
                                                   >
-                                                    Save Payment
+                                                    Confirm Payment
                                                   </button>
                                                 </div>
                                               </div>
                                               <div className="mt-2 text-xs text-gray-600">
-                                                Workaround for unpaid day: leave balance pending and record payment later using the exact payment date.
+                                                Use Partial Payment for amount less than balance, or Confirm Full Payment to clear balance in one step.
                                               </div>
                                             </td>
                                           </tr>
@@ -912,13 +942,43 @@ export default function SupplierManagement() {
                                                   <button
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      setActivePaymentRepairKey(isRepairPaymentOpen ? null : repairKey);
-                                                      if (isRepairPaymentOpen) resetPaymentForm();
+                                                      setActivePaymentRepairKey(repairKey);
+                                                      setPaymentForm({
+                                                        amount: rpInfo.balance.toString(),
+                                                        method: "mpesa",
+                                                        paymentDate: new Date().toISOString().slice(0, 10),
+                                                        notes: "Full supplier payment",
+                                                      });
                                                     }}
-                                                    className="text-green-700 hover:text-green-900 text-xs font-semibold hover:bg-green-50 px-2 py-1 rounded"
+                                                    disabled={rpInfo.balance <= 0}
+                                                    className="text-green-700 hover:text-green-900 text-xs font-semibold hover:bg-green-50 px-2 py-1 rounded disabled:opacity-40 disabled:cursor-not-allowed"
                                                   >
-                                                    {isRepairPaymentOpen ? "Cancel" : "Record Payment"}
+                                                    Confirm Full Payment
                                                   </button>
+                                                  {isRepairPaymentOpen ? (
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setActivePaymentRepairKey(null);
+                                                        resetPaymentForm();
+                                                      }}
+                                                      className="text-gray-700 hover:text-gray-900 text-xs font-semibold hover:bg-gray-100 px-2 py-1 rounded"
+                                                    >
+                                                      Cancel
+                                                    </button>
+                                                  ) : (
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setActivePaymentRepairKey(repairKey);
+                                                        resetPaymentForm();
+                                                      }}
+                                                      disabled={rpInfo.balance <= 0}
+                                                      className="text-orange-700 hover:text-orange-900 text-xs font-semibold hover:bg-orange-50 px-2 py-1 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    >
+                                                      Partial Payment
+                                                    </button>
+                                                  )}
                                                   <button
                                                     onClick={(e) => {
                                                       e.stopPropagation();
@@ -1009,12 +1069,12 @@ export default function SupplierManagement() {
                                                     }}
                                                     className="bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 w-full"
                                                   >
-                                                    Save Payment
+                                                    Confirm Payment
                                                   </button>
                                                 </div>
                                               </div>
                                               <div className="mt-2 text-xs text-gray-600">
-                                                Pay later? Leave balance pending and record on the actual payment date.
+                                                Enter a smaller amount for partial payment, or use Confirm Full Payment button to clear all balance.
                                               </div>
                                             </td>
                                           </tr>

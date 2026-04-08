@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useRepair } from "../context/RepairContext";
+import { useRepair, type Repair } from "../context/RepairContext";
 import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
 
@@ -55,6 +55,9 @@ export default function RepairSaleProfit() {
 
   // Calculate profit breakdown
   const profitBreakdown = useMemo(() => {
+    const isOutsourcedPart = (part: Repair["partsUsed"][number]) =>
+      part.source === "outsourced" || Boolean(part.supplierName?.trim());
+
     let totalRevenue = 0;
     let totalStaffCost = 0;
     let totalWholesaleCost = 0;
@@ -67,7 +70,7 @@ export default function RepairSaleProfit() {
     const repairDetails = filteredRepairs.map(repair => {
       // In-house parts: staff view uses staff/base price; admin can also compare wholesale/actual cost.
       const staffPartsCost = repair.partsUsed
-        .filter(p => p.source === 'in-house' || !p.source)
+        .filter((p) => !isOutsourcedPart(p))
         .reduce((sum, p) => {
           const item = items.find(i => i.id === p.itemId);
           const cost = item?.costPrice ?? p.cost ?? 0;
@@ -75,7 +78,7 @@ export default function RepairSaleProfit() {
         }, 0);
 
       const wholesalePartsCost = repair.partsUsed
-        .filter(p => p.source === 'in-house' || !p.source)
+        .filter((p) => !isOutsourcedPart(p))
         .reduce((sum, p) => {
           const item = items.find(i => i.id === p.itemId);
           const cost = item?.actualCost ?? item?.adminCostPrice ?? item?.costPrice ?? p.cost ?? 0;
@@ -83,7 +86,10 @@ export default function RepairSaleProfit() {
         }, 0);
 
       // Outsourced parts cost
-      const outsourcedCost = repair.outsourcedCost || 0;
+      const outsourcedFromParts = repair.partsUsed
+        .filter((p) => isOutsourcedPart(p))
+        .reduce((sum, p) => sum + ((Number(p.cost) || 0) * (Number(p.qty) || 0)), 0);
+      const outsourcedCost = outsourcedFromParts > 0 ? outsourcedFromParts : (repair.outsourcedCost || 0);
       
       // Labor cost
       const laborCost = repair.laborCost || 0;
