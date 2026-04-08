@@ -57,9 +57,13 @@ export default function RepairReport() {
   const getSupplierDisplay = (supplier: string): string =>
     supplier === 'Own Inventory' ? `In-stock (${currentShop?.name || 'shop'})` : supplier;
 
-  const getCostPrice = (itemName: string): number => {
+  const getStaffCostPrice = (itemName: string): number => {
     const inv = inventoryItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
-    if (!isAdmin) return inv?.costPrice ?? 0;
+    return inv?.costPrice ?? 0;
+  };
+
+  const getWholesaleCostPrice = (itemName: string): number => {
+    const inv = inventoryItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
     return inv?.actualCost ?? inv?.adminCostPrice ?? inv?.costPrice ?? 0;
   };
 
@@ -67,13 +71,16 @@ export default function RepairReport() {
     return filteredRepairs.map(repair => {
       const revenue = repair.totalAgreedAmount || repair.totalCost;
       const partsBreakdown = repair.partsUsed.map(part => {
-        const costPerUnit = part.cost > 0 ? part.cost : getCostPrice(part.itemName);
+        const staffCostPerUnit = part.cost > 0 ? part.cost : getStaffCostPrice(part.itemName);
+        const wholesaleCostPerUnit = part.cost > 0 ? part.cost : getWholesaleCostPrice(part.itemName);
         const supplier = getSupplierForItem(part.itemName, part.supplierName);
         return {
           itemName: part.itemName,
           qty: part.qty,
-          costPerUnit,
-          totalCost: costPerUnit * part.qty,
+          staffCostPerUnit,
+          wholesaleCostPerUnit,
+          staffTotalCost: staffCostPerUnit * part.qty,
+          wholesaleTotalCost: wholesaleCostPerUnit * part.qty,
           supplier,
         };
       });
@@ -83,22 +90,26 @@ export default function RepairReport() {
         .map(item => ({
           itemName: item.itemName,
           qty: 1,
-          costPerUnit: 0,
-          totalCost: 0,
+          staffCostPerUnit: 0,
+          wholesaleCostPerUnit: 0,
+          staffTotalCost: 0,
+          wholesaleTotalCost: 0,
           supplier: getSupplierForItem(item.itemName, item.supplierName),
         }));
       const allParts = [...partsBreakdown, ...outsourcedBreakdown];
-      const totalPartsCost = allParts.reduce((sum, p) => sum + p.totalCost, 0);
-      const profit = revenue - totalPartsCost;
-      return { repair, revenue, allParts, totalPartsCost, profit };
+      const totalStaffPartsCost = allParts.reduce((sum, p) => sum + p.staffTotalCost, 0);
+      const totalWholesalePartsCost = allParts.reduce((sum, p) => sum + p.wholesaleTotalCost, 0);
+      const staffProfit = revenue - totalStaffPartsCost;
+      const wholesaleProfit = revenue - totalWholesalePartsCost;
+      return { repair, revenue, allParts, totalStaffPartsCost, totalWholesalePartsCost, staffProfit, wholesaleProfit };
     });
-  }, [filteredRepairs, inventoryItems, purchases, isAdmin]);
+  }, [filteredRepairs, inventoryItems, purchases]);
 
   const incompleteOutsourced = useMemo(() => {
     const list: Array<{ repairId: string; ticket?: string; customerName: string; itemNames: string[] }> = [];
     repairAnalysis.forEach((ra) => {
       const missing = ra.allParts
-        .filter((p) => p.supplier !== 'Own Inventory' && (p.totalCost === 0 || p.costPerUnit === 0))
+        .filter((p) => p.supplier !== 'Own Inventory' && (p.staffTotalCost === 0 || p.staffCostPerUnit === 0))
         .map((p) => p.itemName);
       const uniqueMissing = [...new Set(missing)];
       if (uniqueMissing.length > 0) {
@@ -117,8 +128,10 @@ export default function RepairReport() {
 
   const totals = useMemo(() => ({
     revenue: repairAnalysis.reduce((s, r) => s + r.revenue, 0),
-    cost: repairAnalysis.reduce((s, r) => s + r.totalPartsCost, 0),
-    profit: repairAnalysis.reduce((s, r) => s + r.profit, 0),
+    staffCost: repairAnalysis.reduce((s, r) => s + r.totalStaffPartsCost, 0),
+    wholesaleCost: repairAnalysis.reduce((s, r) => s + r.totalWholesalePartsCost, 0),
+    staffProfit: repairAnalysis.reduce((s, r) => s + r.staffProfit, 0),
+    wholesaleProfit: repairAnalysis.reduce((s, r) => s + r.wholesaleProfit, 0),
   }), [repairAnalysis]);
 
   const formatDate = (d: Date) => new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -129,8 +142,8 @@ export default function RepairReport() {
     text += `${formatDate(start)}${period !== 'daily' ? ` to ${formatDate(end)}` : ''}\n\n`;
     text += `${b('SUMMARY')}\n`;
     text += `Repairs: ${filteredRepairs.length}\n`;
-    text += `Revenue: KES ${totals.revenue.toLocaleString()} | Cost: KES ${totals.cost.toLocaleString()}\n`;
-    text += `${b('Profit: KES ' + totals.profit.toLocaleString())}\n\n`;
+    text += `Revenue: KES ${totals.revenue.toLocaleString()} | Cost: KES ${(isAdmin ? totals.wholesaleCost : totals.staffCost).toLocaleString()}\n`;
+    text += `${b('Profit: KES ' + (isAdmin ? totals.wholesaleProfit : totals.staffProfit).toLocaleString())}\n\n`;
     if (repairAnalysis.length > 0) {
       text += `${b('REPAIRS')}\n`;
       repairAnalysis.forEach((ra, idx) => {
@@ -141,10 +154,13 @@ export default function RepairReport() {
         if (r.serviceType) text += ` (${r.serviceType})`;
         text += ` | Rev: KES ${ra.revenue.toLocaleString()}\n`;
         ra.allParts.forEach(p => {
-          const costStr = p.supplier === 'Own Inventory' ? '-' : (p.totalCost > 0 ? `KES ${p.totalCost.toLocaleString()}` : '?');
+          const partTotalCost = isAdmin ? p.wholesaleTotalCost : p.staffTotalCost;
+          const costStr = p.supplier === 'Own Inventory' ? '-' : (partTotalCost > 0 ? `KES ${partTotalCost.toLocaleString()}` : '?');
           text += `  - ${p.itemName} x${p.qty} ${costStr} (${getSupplierDisplay(p.supplier)})\n`;
         });
-        text += `Cost: KES ${ra.totalPartsCost.toLocaleString()} ${b('Profit: KES ' + ra.profit.toLocaleString())}\n`;
+        const rowCost = isAdmin ? ra.totalWholesalePartsCost : ra.totalStaffPartsCost;
+        const rowProfit = isAdmin ? ra.wholesaleProfit : ra.staffProfit;
+        text += `Cost: KES ${rowCost.toLocaleString()} ${b('Profit: KES ' + rowProfit.toLocaleString())}\n`;
       });
     }
     text += `\n${b('End of Report')}`;
@@ -248,14 +264,33 @@ export default function RepairReport() {
           <p className="text-xl font-bold text-green-700">KES {totals.revenue.toLocaleString()}</p>
         </div>
         <div className="bg-white p-4 rounded shadow">
-          <p className="text-xs text-gray-600">Cost</p>
-          <p className="text-xl font-bold text-red-700">KES {totals.cost.toLocaleString()}</p>
+          <p className="text-xs text-gray-600">{isAdmin ? 'Cost (Wholesale)' : 'Cost (Staff Base)'}</p>
+          <p className="text-xl font-bold text-red-700">KES {(isAdmin ? totals.wholesaleCost : totals.staffCost).toLocaleString()}</p>
         </div>
         <div className="bg-white p-4 rounded shadow">
-          <p className="text-xs text-gray-600">Profit</p>
-          <p className={`text-xl font-bold ${totals.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>KES {totals.profit.toLocaleString()}</p>
+          <p className="text-xs text-gray-600">{isAdmin ? 'Profit (Wholesale)' : 'Profit (Staff)'}</p>
+          <p className={`text-xl font-bold ${(isAdmin ? totals.wholesaleProfit : totals.staffProfit) >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+            KES {(isAdmin ? totals.wholesaleProfit : totals.staffProfit).toLocaleString()}
+          </p>
         </div>
       </div>
+
+      {isAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+            <p className="text-xs text-gray-600">Staff Profit View (Retail/Base)</p>
+            <p className={`text-xl font-bold ${totals.staffProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+              KES {totals.staffProfit.toLocaleString()}
+            </p>
+          </div>
+          <div className="bg-white p-4 rounded shadow border-l-4 border-purple-500">
+            <p className="text-xs text-gray-600">Admin Profit View (Wholesale/Actual)</p>
+            <p className={`text-xl font-bold ${totals.wholesaleProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+              KES {totals.wholesaleProfit.toLocaleString()}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white p-6 rounded shadow">
         <h2 className="text-lg font-semibold mb-4">Detailed Repair Sales</h2>
@@ -273,15 +308,22 @@ export default function RepairReport() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-green-700 font-semibold">Revenue: KES {ra.revenue.toLocaleString()}</p>
-                    <p className="text-sm text-red-600">Cost: KES {ra.totalPartsCost.toLocaleString()}</p>
-                    <p className={`text-sm font-bold ${ra.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>Profit: KES {ra.profit.toLocaleString()}</p>
+                    <p className="text-sm text-red-600">Cost: KES {(isAdmin ? ra.totalWholesalePartsCost : ra.totalStaffPartsCost).toLocaleString()}</p>
+                    <p className={`text-sm font-bold ${(isAdmin ? ra.wholesaleProfit : ra.staffProfit) >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                      Profit: KES {(isAdmin ? ra.wholesaleProfit : ra.staffProfit).toLocaleString()}
+                    </p>
+                    {isAdmin && (
+                      <p className={`text-xs font-semibold ${ra.staffProfit >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
+                        Staff Profit View: KES {ra.staffProfit.toLocaleString()}
+                      </p>
+                    )}
                   </div>
                 </div>
                 {ra.allParts.length > 0 && (
                   <div className="mt-2 text-sm text-gray-600">
                     {ra.allParts.map((p, i) => (
                       <span key={i} className="inline-block mr-2 mb-1">
-                        {p.itemName} x{p.qty} {p.totalCost > 0 ? `KES ${p.totalCost.toLocaleString()}` : '?'} ({getSupplierDisplay(p.supplier)})
+                        {p.itemName} x{p.qty} {(isAdmin ? p.wholesaleTotalCost : p.staffTotalCost) > 0 ? `KES ${(isAdmin ? p.wholesaleTotalCost : p.staffTotalCost).toLocaleString()}` : '?'} ({getSupplierDisplay(p.supplier)})
                       </span>
                     ))}
                   </div>
