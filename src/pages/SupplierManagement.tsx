@@ -36,8 +36,15 @@ export default function SupplierManagement() {
   const [activePaymentPurchaseId, setActivePaymentPurchaseId] = useState<string | null>(null);
   const [paymentHistoryPurchase, setPaymentHistoryPurchase] = useState<Purchase | null>(null);
   const [activePaymentRepairKey, setActivePaymentRepairKey] = useState<string | null>(null);
+  const [activeBulkRepairPaymentSupplierId, setActiveBulkRepairPaymentSupplierId] = useState<string | null>(null);
   const [paymentHistoryRepairKey, setPaymentHistoryRepairKey] = useState<{ repairId: string; partName: string; supplierName: string; cost: number } | null>(null);
   const [paymentForm, setPaymentForm] = useState({
+    amount: "",
+    method: "mpesa" as PaymentMethod,
+    paymentDate: new Date().toISOString().slice(0, 10),
+    notes: "",
+  });
+  const [bulkRepairPaymentForm, setBulkRepairPaymentForm] = useState({
     amount: "",
     method: "mpesa" as PaymentMethod,
     paymentDate: new Date().toISOString().slice(0, 10),
@@ -178,6 +185,15 @@ export default function SupplierManagement() {
     });
   };
 
+  const resetBulkRepairPaymentForm = () => {
+    setBulkRepairPaymentForm({
+      amount: "",
+      method: "mpesa",
+      paymentDate: new Date().toISOString().slice(0, 10),
+      notes: "",
+    });
+  };
+
   const handleRecordPayment = async (purchase: Purchase) => {
     const amount = Number(paymentForm.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -266,6 +282,86 @@ export default function SupplierManagement() {
     await loadSupplierPayments();
     setActivePaymentRepairKey(null);
     resetPaymentForm();
+  };
+
+  const handleRecordBulkRepairPayment = async (
+    supplier: { id: string; name: string },
+    partsTaken: Array<{ repairId: string; partName: string; cost: number; date: Date }>
+  ) => {
+    const amount = Number(bulkRepairPaymentForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert("Please enter a valid cumulative payment amount.");
+      return;
+    }
+    if (!bulkRepairPaymentForm.paymentDate) {
+      alert("Please select the payment date.");
+      return;
+    }
+
+    const outstandingRecords = partsTaken
+      .map((record) => {
+        const info = getRepairPartPaymentInfo(record.repairId, record.partName, record.cost);
+        return { ...record, balance: info.balance };
+      })
+      .filter((record) => record.balance > 0)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const totalOutstanding = outstandingRecords.reduce((sum, record) => sum + record.balance, 0);
+    if (totalOutstanding <= 0) {
+      alert("No outstanding supplier spare balance for this supplier.");
+      return;
+    }
+    if (amount > totalOutstanding) {
+      alert(`Amount cannot exceed outstanding supplier spare balance (KES ${totalOutstanding.toLocaleString()}).`);
+      return;
+    }
+
+    let remaining = amount;
+    const inserts: Array<{
+      repair_id: string;
+      part_name: string;
+      supplier_name: string;
+      amount: number;
+      payment_method: PaymentMethod;
+      payment_date: string;
+      notes: string | null;
+      recorded_by: string;
+    }> = [];
+
+    for (const record of outstandingRecords) {
+      if (remaining <= 0) break;
+      const payAmount = Math.min(record.balance, remaining);
+      if (payAmount <= 0) continue;
+      inserts.push({
+        repair_id: record.repairId,
+        part_name: record.partName,
+        supplier_name: supplier.name,
+        amount: payAmount,
+        payment_method: bulkRepairPaymentForm.method,
+        payment_date: new Date(bulkRepairPaymentForm.paymentDate).toISOString(),
+        notes: bulkRepairPaymentForm.notes.trim()
+          ? `[Bulk repair spare payment] ${bulkRepairPaymentForm.notes.trim()}`
+          : "[Bulk repair spare payment]",
+        recorded_by: currentUser?.name || "Admin",
+      });
+      remaining -= payAmount;
+    }
+
+    if (inserts.length === 0) {
+      alert("No outstanding records found to allocate this payment.");
+      return;
+    }
+
+    const { error } = await supabase.from("supplier_payments").insert(inserts);
+    if (error) {
+      alert("Failed to save cumulative payment. Please try again.");
+      console.error("Error recording cumulative supplier spare payment:", error);
+      return;
+    }
+
+    await loadSupplierPayments();
+    setActiveBulkRepairPaymentSupplierId(null);
+    resetBulkRepairPaymentForm();
   };
 
   const supplierData = useMemo(() => {
@@ -893,6 +989,137 @@ export default function SupplierManagement() {
                               <span className="w-3 h-3 bg-orange-500 rounded-full inline-block"></span>
                               Parts Taken for Repairs ({data.partsTaken.length})
                             </h5>
+                            {isAdmin && (
+                              <div className="mb-3 border rounded p-3 bg-orange-50/40">
+                                {(() => {
+                                  const supplierRepairPaid = data.partsTaken.reduce(
+                                    (sum, record) => sum + getRepairPartPaymentInfo(record.repairId, record.partName, record.cost).paidAmount,
+                                    0
+                                  );
+                                  const supplierRepairBalance = data.partsTaken.reduce(
+                                    (sum, record) => sum + getRepairPartPaymentInfo(record.repairId, record.partName, record.cost).balance,
+                                    0
+                                  );
+                                  const isBulkFormOpen = activeBulkRepairPaymentSupplierId === data.supplier.id;
+                                  return (
+                                    <>
+                                      <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div className="text-xs">
+                                          <span className="font-semibold text-green-700">Paid: KES {supplierRepairPaid.toLocaleString()}</span>
+                                          <span className="mx-2 text-gray-400">|</span>
+                                          <span className="font-semibold text-red-700">Outstanding: KES {supplierRepairBalance.toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                          {isBulkFormOpen ? (
+                                            <button
+                                              onClick={() => {
+                                                setActiveBulkRepairPaymentSupplierId(null);
+                                                resetBulkRepairPaymentForm();
+                                              }}
+                                              className="text-gray-700 hover:text-gray-900 text-xs font-semibold hover:bg-gray-100 px-2 py-1 rounded"
+                                            >
+                                              Cancel
+                                            </button>
+                                          ) : (
+                                            <>
+                                              <button
+                                                onClick={() => {
+                                                  setActiveBulkRepairPaymentSupplierId(data.supplier.id);
+                                                  setBulkRepairPaymentForm({
+                                                    amount: supplierRepairBalance.toString(),
+                                                    method: "mpesa",
+                                                    paymentDate: new Date().toISOString().slice(0, 10),
+                                                    notes: "Bulk full payment for supplier repair spares",
+                                                  });
+                                                }}
+                                                disabled={supplierRepairBalance <= 0}
+                                                className="text-green-700 hover:text-green-900 text-xs font-semibold hover:bg-green-50 px-2 py-1 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                              >
+                                                Confirm Full (All Spares)
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  setActiveBulkRepairPaymentSupplierId(data.supplier.id);
+                                                  resetBulkRepairPaymentForm();
+                                                }}
+                                                disabled={supplierRepairBalance <= 0}
+                                                className="text-orange-700 hover:text-orange-900 text-xs font-semibold hover:bg-orange-50 px-2 py-1 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                              >
+                                                Partial Cumulative Payment
+                                              </button>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {isBulkFormOpen && (
+                                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end mt-3">
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Amount (KES)</label>
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              step="0.01"
+                                              className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                              value={bulkRepairPaymentForm.amount}
+                                              onChange={(e) => setBulkRepairPaymentForm((prev) => ({ ...prev, amount: e.target.value }))}
+                                              placeholder={`Max ${supplierRepairBalance.toLocaleString()}`}
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Method</label>
+                                            <select
+                                              className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                              value={bulkRepairPaymentForm.method}
+                                              onChange={(e) => setBulkRepairPaymentForm((prev) => ({ ...prev, method: e.target.value as PaymentMethod }))}
+                                            >
+                                              <option value="mpesa">M-Pesa</option>
+                                              <option value="bank">Bank</option>
+                                              <option value="cash">Cash</option>
+                                              <option value="other">Other</option>
+                                            </select>
+                                          </div>
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Payment Date</label>
+                                            <input
+                                              type="date"
+                                              className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                              value={bulkRepairPaymentForm.paymentDate}
+                                              onChange={(e) => setBulkRepairPaymentForm((prev) => ({ ...prev, paymentDate: e.target.value }))}
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Notes (Optional)</label>
+                                            <input
+                                              type="text"
+                                              className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                              value={bulkRepairPaymentForm.notes}
+                                              onChange={(e) => setBulkRepairPaymentForm((prev) => ({ ...prev, notes: e.target.value }))}
+                                              placeholder="Reference / reason"
+                                            />
+                                          </div>
+                                          <div>
+                                            <button
+                                              onClick={() => handleRecordBulkRepairPayment(
+                                                { id: data.supplier.id, name: data.supplier.name },
+                                                data.partsTaken.map((record) => ({
+                                                  repairId: record.repairId,
+                                                  partName: record.partName,
+                                                  cost: record.cost,
+                                                  date: record.date,
+                                                }))
+                                              )}
+                                              className="bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 w-full"
+                                            >
+                                              Confirm Cumulative Payment
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            )}
                             <div className="overflow-x-auto">
                               <table className="w-full text-sm">
                                 <thead className="bg-orange-50">
