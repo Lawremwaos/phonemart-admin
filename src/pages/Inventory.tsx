@@ -5,10 +5,22 @@ import { useShop } from "../context/ShopContext";
 import InventoryAlerts from "../components/InventoryAlerts";
 
 export default function Inventory() {
-  const { items, updateItem, removeItem, addAuditLog } = useInventory();
+  const {
+    items,
+    updateItem,
+    removeItem,
+    addAuditLog,
+    managerApprovals,
+    requestManagerApproval,
+    approveManagerApproval,
+    rejectManagerApproval,
+    getStockMath,
+  } = useInventory();
   const { currentShop, currentUser, shops } = useShop();
   const isAdmin = currentUser?.roles.includes("admin") || false;
-  const canEditStock = isAdmin || currentUser?.roles.includes("manager") || false;
+  const isManager = currentUser?.roles.includes("manager") || false;
+  const canEditStock = isAdmin || isManager;
+  const canViewAllStock = isAdmin || isManager;
 
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
@@ -26,10 +38,15 @@ export default function Inventory() {
   // Filter items: Admin sees all, staff sees only their allocated items (items with shopId matching their shop)
   const filteredItems = useMemo(
     () =>
-      isAdmin
+      canViewAllStock
         ? items
         : items.filter((item) => item.shopId === currentShop?.id),
-    [isAdmin, items, currentShop]
+    [canViewAllStock, items, currentShop]
+  );
+
+  const pendingManagerApprovals = useMemo(
+    () => managerApprovals.filter((a) => a.status === "pending"),
+    [managerApprovals]
   );
 
   const openEdit = (item: typeof items[0]) => {
@@ -59,7 +76,7 @@ export default function Inventory() {
     }
 
     const previousItem = items.find((i) => i.id === editingItemId);
-    updateItem(editingItemId, {
+    const updates = {
       name: formData.name.trim(),
       category: formData.category,
       itemType: formData.itemType.trim() || undefined,
@@ -69,7 +86,21 @@ export default function Inventory() {
       supplier: formData.supplier.trim() || undefined,
       costPrice: formData.costPrice > 0 ? formData.costPrice : undefined,
       shopId: formData.shopId || undefined,
-    });
+    };
+
+    if (isManager && !isAdmin) {
+      void requestManagerApproval({
+        action: "inventory_update",
+        requestedBy: currentUser?.name || "Manager",
+        payload: { itemId: editingItemId, updates },
+        notes: "Manager requested inventory update. Waiting for admin approval.",
+      });
+      alert("Update request submitted to admin for approval.");
+      closeEdit();
+      return;
+    }
+
+    updateItem(editingItemId, updates);
     void addAuditLog({
       action: "edit",
       itemId: editingItemId,
@@ -85,12 +116,24 @@ export default function Inventory() {
   };
 
   const handleDelete = (itemId: number) => {
-    if (!isAdmin) {
-      alert("Only admin can delete stock items.");
+    if (!canEditStock) {
+      alert("You don't have permission to delete stock items.");
       return;
     }
     if (!window.confirm("Delete this stock item? This cannot be undone.")) return;
     const item = items.find((i) => i.id === itemId);
+
+    if (isManager && !isAdmin) {
+      void requestManagerApproval({
+        action: "inventory_delete",
+        requestedBy: currentUser?.name || "Manager",
+        payload: { itemId },
+        notes: `Manager requested delete for ${item?.name || "item"}.`,
+      });
+      alert("Delete request submitted to admin for approval.");
+      return;
+    }
+
     void addAuditLog({
       action: "delete",
       itemId,
@@ -120,6 +163,46 @@ export default function Inventory() {
         <InventoryAlerts />
       </div>
 
+      {isAdmin && pendingManagerApprovals.length > 0 && (
+        <div className="mb-6 bg-yellow-50 border border-yellow-300 rounded p-4">
+          <h3 className="font-semibold text-yellow-900 mb-3">Manager Approval Queue</h3>
+          <div className="space-y-2">
+            {pendingManagerApprovals.map((req) => (
+              <div key={req.id} className="bg-white border rounded p-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-sm">
+                    {req.action === "inventory_update"
+                      ? "Inventory Edit"
+                      : req.action === "inventory_delete"
+                      ? "Inventory Delete"
+                      : "Stock Allocation"}
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    Requested by {req.requestedBy || "Unknown"} on {new Date(req.requestedAt).toLocaleString()}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void approveManagerApproval(req.id)}
+                    className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void rejectManagerApproval(req.id, "Rejected by admin")}
+                    className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded shadow overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-100">
@@ -128,7 +211,8 @@ export default function Inventory() {
               <th className="p-3">Category</th>
               <th className="p-3">Stock</th>
               <th className="p-3">Price</th>
-              {isAdmin && <th className="p-3">Shop</th>}
+              {canViewAllStock && <th className="p-3">Shop</th>}
+              <th className="p-3">Math Check</th>
               <th className="p-3">Status</th>
               {canEditStock && <th className="p-3">Actions</th>}
             </tr>
@@ -136,6 +220,7 @@ export default function Inventory() {
           <tbody>
             {filteredItems.map((item) => {
               const lowStock = item.stock <= item.reorderLevel;
+              const math = getStockMath(item.id);
               return (
                 <tr 
                   key={item.id} 
@@ -147,9 +232,16 @@ export default function Inventory() {
                     {item.stock}
                   </td>
                   <td className="p-3">KES {item.price}</td>
-                  {isAdmin && (
+                  {canViewAllStock && (
                     <td className="p-3">{item.shopId ? shops.find((s) => s.id === item.shopId)?.name || "Unknown" : "Unassigned"}</td>
                   )}
+                  <td className="p-3 text-xs">
+                    {math.matches ? (
+                      <span className="text-green-700 font-semibold">Balanced</span>
+                    ) : (
+                      <span className="text-red-700 font-semibold">Mismatch ({math.expectedStock} expected)</span>
+                    )}
+                  </td>
                   <td className="p-3">
                     {lowStock ? (
                       <span className="text-red-600 font-bold">LOW STOCK</span>

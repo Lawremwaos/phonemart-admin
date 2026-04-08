@@ -3,7 +3,7 @@ import { useShop, type Shop, type User } from "../context/ShopContext";
 import { supabase } from "../lib/supabaseClient";
 
 export default function AdminSettings() {
-  const { shops, users, addShop, updateShop, deleteShop, addUser, updateUser, deleteUser, currentUser } = useShop();
+  const { shops, users, staffAuditLogs, addShop, updateShop, deleteShop, addUser, updateUser, deleteUser, currentUser } = useShop();
   const [activeTab, setActiveTab] = useState<'shops' | 'staff'>('shops');
   const [clearing, setClearing] = useState(false);
   const [clearDone, setClearDone] = useState(false);
@@ -339,6 +339,38 @@ export default function AdminSettings() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="bg-white rounded shadow mt-6 p-4">
+            <h3 className="text-lg font-semibold mb-3">Staff Account History</h3>
+            {staffAuditLogs.length === 0 ? (
+              <p className="text-sm text-gray-500">No staff account changes logged yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-2 text-left">Date</th>
+                      <th className="p-2 text-left">Action</th>
+                      <th className="p-2 text-left">Target</th>
+                      <th className="p-2 text-left">By</th>
+                      <th className="p-2 text-left">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {staffAuditLogs.map((log) => (
+                      <tr key={log.id} className="border-t">
+                        <td className="p-2">{new Date(log.createdAt).toLocaleString()}</td>
+                        <td className="p-2">{log.action.replace("staff_", "").toUpperCase()}</td>
+                        <td className="p-2">{log.targetName || "-"}</td>
+                        <td className="p-2">{log.actor || "-"}</td>
+                        <td className="p-2">{log.details || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

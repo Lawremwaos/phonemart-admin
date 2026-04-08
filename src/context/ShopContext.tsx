@@ -20,11 +20,22 @@ export type User = {
   managerScope?: 'accessories' | 'repair' | 'both';
 };
 
+export type StaffAuditLog = {
+  id: string;
+  action: 'staff_add' | 'staff_update' | 'staff_delete';
+  actor?: string;
+  targetUserId?: string;
+  targetName?: string;
+  details?: string;
+  createdAt: Date;
+};
+
 type ShopContextType = {
   currentShop: Shop | null;
   currentUser: User | null;
   shops: Shop[];
   users: User[];
+  staffAuditLogs: StaffAuditLog[];
   isAuthenticated: boolean;
   isLoadingAuth: boolean;
   login: (email: string, password: string) => Promise<boolean>;
@@ -125,6 +136,7 @@ const defaultUsers: Array<Omit<User, 'id' | 'shopId'> & { shopName: string }> = 
 export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
   const [shops, setShops] = useState<Shop[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [staffAuditLogs, setStaffAuditLogs] = useState<StaffAuditLog[]>([]);
   const [currentShop, setCurrentShop] = useState<Shop | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -277,6 +289,71 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
       supabase.removeChannel(usersChannel);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("staff_audit_logs")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(200);
+        if (error) throw error;
+        if (!cancelled) {
+          setStaffAuditLogs(
+            (data || []).map((row: any) => ({
+              id: row.id,
+              action: row.action as StaffAuditLog['action'],
+              actor: row.actor || undefined,
+              targetUserId: row.target_user_id || undefined,
+              targetName: row.target_name || undefined,
+              details: row.details || undefined,
+              createdAt: new Date(row.created_at),
+            }))
+          );
+        }
+      } catch {
+        if (!cancelled) setStaffAuditLogs([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const addStaffAuditLog = useCallback(async (entry: Omit<StaffAuditLog, 'id' | 'createdAt'>) => {
+    const local: StaffAuditLog = {
+      ...entry,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: new Date(),
+    };
+    setStaffAuditLogs((prev) => [local, ...prev].slice(0, 200));
+    const { data, error } = await supabase
+      .from("staff_audit_logs")
+      .insert({
+        action: entry.action,
+        actor: entry.actor || currentUser?.name || null,
+        target_user_id: entry.targetUserId || null,
+        target_name: entry.targetName || null,
+        details: entry.details || null,
+      })
+      .select("*")
+      .single();
+    if (error) return;
+    setStaffAuditLogs((prev) => [
+      {
+        id: data.id,
+        action: data.action as StaffAuditLog['action'],
+        actor: data.actor || undefined,
+        targetUserId: data.target_user_id || undefined,
+        targetName: data.target_name || undefined,
+        details: data.details || undefined,
+        createdAt: new Date(data.created_at),
+      },
+      ...prev.filter((l) => l.id !== local.id),
+    ].slice(0, 200));
+  }, [currentUser?.name]);
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -473,8 +550,14 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         managerScope: (data.manager_scope || undefined) as 'accessories' | 'repair' | 'both' | undefined,
       };
       setUsers((prev) => [newUser, ...prev]);
+      void addStaffAuditLog({
+        action: 'staff_add',
+        targetUserId: newUser.id,
+        targetName: newUser.name,
+        details: `Added staff with roles: ${newUser.roles.join(', ')}`,
+      });
     })();
-  }, []);
+  }, [addStaffAuditLog]);
 
   const updateUser = useCallback((userId: string, userData: Partial<User>) => {
     (async () => {
@@ -506,8 +589,15 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
           return updated;
         })
       );
+      const target = users.find((u) => u.id === userId);
+      void addStaffAuditLog({
+        action: 'staff_update',
+        targetUserId: userId,
+        targetName: userData.name || target?.name,
+        details: `Updated staff account fields: ${Object.keys(payload).join(', ')}`,
+      });
     })();
-  }, []);
+  }, [addStaffAuditLog, users]);
 
   const deleteUser = useCallback((userId: string) => {
     (async () => {
@@ -516,9 +606,16 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         console.error("Error deleting user:", error);
         return;
       }
+      const target = users.find((u) => u.id === userId);
       setUsers((prev) => prev.filter((user) => user.id !== userId));
+      void addStaffAuditLog({
+        action: 'staff_delete',
+        targetUserId: userId,
+        targetName: target?.name,
+        details: 'Deleted staff account',
+      });
     })();
-  }, []);
+  }, [addStaffAuditLog, users]);
 
   const getShopById = useCallback((shopId: string) => {
     return shops.find((shop) => shop.id === shopId);
@@ -547,6 +644,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         currentUser,
         shops,
         users,
+        staffAuditLogs,
         isAuthenticated,
         isLoadingAuth,
         login,

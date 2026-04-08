@@ -396,7 +396,7 @@ function AppContent() {
           <Route
             path="/inventory/manage"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'technician', 'manager']}>
+              <ProtectedRoute allowedRoles={['admin', 'technician']}>
                 <InventoryManagement />
               </ProtectedRoute>
             }

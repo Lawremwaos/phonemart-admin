@@ -3,7 +3,16 @@ import { useInventory } from "../context/InventoryContext";
 import { useShop } from "../context/ShopContext";
 
 export default function StockAllocation() {
-  const { items, purchases, stockAllocations, approveStockAllocation, requestStockAllocation, refreshStockAllocations, auditLogs } = useInventory();
+  const {
+    items,
+    purchases,
+    stockAllocations,
+    approveStockAllocation,
+    requestStockAllocation,
+    refreshStockAllocations,
+    auditLogs,
+    requestManagerApproval,
+  } = useInventory();
   const { currentUser, currentShop, shops } = useShop();
 
   // Refresh allocations when component mounts or becomes visible (for staff to see new allocations)
@@ -41,6 +50,7 @@ export default function StockAllocation() {
   const [adminAllocationQty, setAdminAllocationQty] = useState(0);
   const canManageUnallocatedStock =
     currentUser?.roles.includes("admin") || currentUser?.roles.includes("manager");
+  const isAdmin = currentUser?.roles.includes("admin");
 
   // Get pending allocations for current staff's shop
   const pendingAllocationsForMyShop = useMemo(() => {
@@ -162,8 +172,7 @@ export default function StockAllocation() {
       return;
     }
 
-    // Create pending stock allocation using requestStockAllocation
-    requestStockAllocation({
+    const allocationRequest = {
       itemId: inventoryItem.id,
       itemName: inventoryItem.name,
       totalQty: adminAllocationQty,
@@ -173,7 +182,26 @@ export default function StockAllocation() {
         qty: adminAllocationQty,
       }],
       requestedBy: currentUser?.name || 'Admin',
-    });
+    };
+
+    // Managers must submit for admin approval before allocation exists.
+    if (!isAdmin) {
+      await requestManagerApproval({
+        action: "stock_allocation_create",
+        requestedBy: currentUser?.name || "Manager",
+        payload: { allocationData: allocationRequest },
+        notes: `Manager requested stock allocation to ${targetShop.name}.`,
+      });
+      alert(`Allocation request submitted for admin approval: ${adminAllocationQty} ${purchaseItem.itemName} -> ${targetShop.name}.`);
+      setAdminSelectedPurchaseId("");
+      setAdminSelectedItemId("");
+      setAdminSelectedShopId("");
+      setAdminAllocationQty(0);
+      return;
+    }
+
+    // Admin creates pending stock allocation directly
+    requestStockAllocation(allocationRequest);
 
     alert(`Allocation created: ${adminAllocationQty} ${purchaseItem.itemName} allocated to ${targetShop.name}. Staff can now accept it.`);
     setAdminSelectedPurchaseId("");

@@ -90,12 +90,38 @@ export type InventoryAuditLog = {
   createdAt: Date;
 };
 
+export type InventoryManagerApproval = {
+  id: string;
+  action: 'inventory_update' | 'inventory_delete' | 'stock_allocation_create';
+  status: 'pending' | 'approved' | 'rejected';
+  requestedBy?: string;
+  approvedBy?: string;
+  requestedAt: Date;
+  approvedAt?: Date;
+  payload: Record<string, unknown>;
+  notes?: string;
+};
+
+export type StockMovement = {
+  id: string;
+  itemId: number;
+  itemName: string;
+  shopId?: string;
+  delta: number;
+  reason: 'initial_stock' | 'manual_edit' | 'manual_delete' | 'sale' | 'allocation_out' | 'allocation_in' | 'purchase_in' | 'adjustment';
+  actor?: string;
+  referenceId?: string;
+  createdAt: Date;
+};
+
 type InventoryContextType = {
   items: InventoryItem[];
   purchases: Purchase[];
   exchanges: Exchange[];
   stockAllocations: StockAllocation[];
   auditLogs: InventoryAuditLog[];
+  managerApprovals: InventoryManagerApproval[];
+  stockMovements: StockMovement[];
   addItem: (item: AddInventoryItemInput) => void;
   updateItem: (id: number, updates: Partial<InventoryItem>) => void;
   removeItem: (id: number) => void;
@@ -114,6 +140,10 @@ type InventoryContextType = {
   rejectStockAllocation: (allocationId: string) => void;
   refreshStockAllocations: () => Promise<void>;
   addAuditLog: (entry: Omit<InventoryAuditLog, 'id' | 'createdAt'>) => Promise<void>;
+  requestManagerApproval: (request: Omit<InventoryManagerApproval, 'id' | 'status' | 'requestedAt'>) => Promise<void>;
+  approveManagerApproval: (requestId: string) => Promise<void>;
+  rejectManagerApproval: (requestId: string, notes?: string) => Promise<void>;
+  getStockMath: (itemId: number) => { inQty: number; outQty: number; netDelta: number; expectedStock: number; matches: boolean };
 };
 
 const InventoryContext = createContext<InventoryContextType | null>(null);
@@ -124,6 +154,8 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [stockAllocations, setStockAllocations] = useState<StockAllocation[]>([]);
   const [auditLogs, setAuditLogs] = useState<InventoryAuditLog[]>([]);
+  const [managerApprovals, setManagerApprovals] = useState<InventoryManagerApproval[]>([]);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const { currentUser } = useShop();
   const lastLocalUpdateRef = useRef<number>(0);
   const DEBOUNCE_MS = 3000;
@@ -222,6 +254,91 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         },
         ...prev.filter((p) => p.id !== localEntry.id),
       ].slice(0, 200));
+    }
+  }, [currentUser?.name]);
+
+  const loadManagerApprovals = useCallback(async (): Promise<InventoryManagerApproval[]> => {
+    const { data, error } = await supabase
+      .from("inventory_manager_approvals")
+      .select("*")
+      .order("requested_at", { ascending: false })
+      .limit(200);
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      action: row.action as InventoryManagerApproval['action'],
+      status: row.status as InventoryManagerApproval['status'],
+      requestedBy: row.requested_by || undefined,
+      approvedBy: row.approved_by || undefined,
+      requestedAt: new Date(row.requested_at),
+      approvedAt: row.approved_at ? new Date(row.approved_at) : undefined,
+      payload: (row.payload || {}) as Record<string, unknown>,
+      notes: row.notes || undefined,
+    }));
+  }, []);
+
+  const loadStockMovements = useCallback(async (): Promise<StockMovement[]> => {
+    const { data, error } = await supabase
+      .from("inventory_stock_movements")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(2000);
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      itemId: row.item_id,
+      itemName: row.item_name,
+      shopId: row.shop_id || undefined,
+      delta: Number(row.delta) || 0,
+      reason: row.reason as StockMovement['reason'],
+      actor: row.actor || undefined,
+      referenceId: row.reference_id || undefined,
+      createdAt: new Date(row.created_at),
+    }));
+  }, []);
+
+  const recordStockMovement = useCallback(async (movement: Omit<StockMovement, 'id' | 'createdAt'>): Promise<void> => {
+    const local: StockMovement = {
+      ...movement,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: new Date(),
+    };
+    setStockMovements((prev) => [local, ...prev].slice(0, 2000));
+
+    const { data, error } = await supabase
+      .from("inventory_stock_movements")
+      .insert({
+        item_id: movement.itemId,
+        item_name: movement.itemName,
+        shop_id: movement.shopId || null,
+        delta: movement.delta,
+        reason: movement.reason,
+        actor: movement.actor || currentUser?.name || null,
+        reference_id: movement.referenceId || null,
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      console.warn("inventory_stock_movements insert failed:", error.message);
+      return;
+    }
+
+    if (data) {
+      setStockMovements((prev) => [
+        {
+          id: data.id,
+          itemId: data.item_id,
+          itemName: data.item_name,
+          shopId: data.shop_id || undefined,
+          delta: Number(data.delta) || 0,
+          reason: data.reason as StockMovement['reason'],
+          actor: data.actor || undefined,
+          referenceId: data.reference_id || undefined,
+          createdAt: new Date(data.created_at),
+        },
+        ...prev.filter((m) => m.id !== local.id),
+      ].slice(0, 2000));
     }
   }, [currentUser?.name]);
 
@@ -480,6 +597,36 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     };
   }, [loadAuditLogs]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const approvals = await loadManagerApprovals();
+        if (!cancelled) setManagerApprovals(approvals);
+      } catch {
+        if (!cancelled) setManagerApprovals([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadManagerApprovals]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const movements = await loadStockMovements();
+        if (!cancelled) setStockMovements(movements);
+      } catch {
+        if (!cancelled) setStockMovements([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadStockMovements]);
+
   const addItem = useCallback((itemData: AddInventoryItemInput) => {
     (async () => {
       const payload = {
@@ -520,11 +667,23 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       };
       lastLocalUpdateRef.current = Date.now();
       setItems((prev) => [newItem, ...prev]);
+      if (newItem.stock > 0) {
+        await recordStockMovement({
+          itemId: newItem.id,
+          itemName: newItem.name,
+          shopId: newItem.shopId,
+          delta: newItem.stock,
+          reason: 'initial_stock',
+          actor: currentUser?.name,
+        });
+      }
     })();
-  }, []);
+  }, [currentUser?.name, recordStockMovement]);
 
   const updateItem = useCallback((id: number, updates: Partial<InventoryItem>) => {
     (async () => {
+      const currentItem = items.find((item) => item.id === id);
+      if (!currentItem) return;
       const payload: any = {};
       if (updates.name !== undefined) payload.name = updates.name;
       if (updates.category !== undefined) payload.category = updates.category;
@@ -549,11 +708,25 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       setItems((prev) =>
         prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
       );
+      if (updates.stock !== undefined) {
+        const delta = updates.stock - currentItem.stock;
+        if (delta !== 0) {
+          await recordStockMovement({
+            itemId: currentItem.id,
+            itemName: updates.name || currentItem.name,
+            shopId: updates.shopId !== undefined ? updates.shopId : currentItem.shopId,
+            delta,
+            reason: 'manual_edit',
+            actor: currentUser?.name,
+          });
+        }
+      }
     })();
-  }, []);
+  }, [currentUser?.name, items, recordStockMovement]);
 
   const removeItem = useCallback((id: number) => {
     (async () => {
+      const itemToDelete = items.find((item) => item.id === id);
       const { error } = await supabase.from("inventory_items").delete().eq("id", id);
       if (error) {
         console.error("Error deleting inventory item:", error);
@@ -561,12 +734,22 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       }
       lastLocalUpdateRef.current = Date.now();
       setItems((prev) => prev.filter((item) => item.id !== id));
+      if (itemToDelete && itemToDelete.stock !== 0) {
+        await recordStockMovement({
+          itemId: itemToDelete.id,
+          itemName: itemToDelete.name,
+          shopId: itemToDelete.shopId,
+          delta: -itemToDelete.stock,
+          reason: 'manual_delete',
+          actor: currentUser?.name,
+        });
+      }
     })();
-  }, []);
+  }, [currentUser?.name, items, recordStockMovement]);
 
   const addStock = useCallback((itemId: number, qty: number) => {
     const item = items.find((i) => i.id === itemId);
-    if (!item) return;
+    if (!item || qty <= 0) return;
     updateItem(itemId, { stock: item.stock + qty });
   }, [items, updateItem]);
 
@@ -574,7 +757,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     const item = shopId
       ? items.find((i) => i.name === name && i.shopId === shopId)
       : items.find((i) => i.name === name);
-    if (!item) return;
+    if (!item || qty <= 0) return;
     updateItem(item.id, { stock: Math.max(0, item.stock - qty) });
   }, [items, updateItem]);
 
@@ -1011,6 +1194,111 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     })();
   }, [addAuditLog, currentUser?.name, items, stockAllocations]);
 
+  const requestManagerApproval = useCallback(async (request: Omit<InventoryManagerApproval, 'id' | 'status' | 'requestedAt'>): Promise<void> => {
+    const local: InventoryManagerApproval = {
+      ...request,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      status: 'pending',
+      requestedAt: new Date(),
+    };
+    setManagerApprovals((prev) => [local, ...prev].slice(0, 200));
+
+    const { data, error } = await supabase
+      .from("inventory_manager_approvals")
+      .insert({
+        action: request.action,
+        status: 'pending',
+        requested_by: request.requestedBy || currentUser?.name || null,
+        payload: request.payload,
+        notes: request.notes || null,
+      })
+      .select("*")
+      .single();
+    if (error) {
+      console.warn("inventory_manager_approvals insert failed:", error.message);
+      return;
+    }
+    if (data) {
+      setManagerApprovals((prev) => [
+        {
+          id: data.id,
+          action: data.action as InventoryManagerApproval['action'],
+          status: data.status as InventoryManagerApproval['status'],
+          requestedBy: data.requested_by || undefined,
+          approvedBy: data.approved_by || undefined,
+          requestedAt: new Date(data.requested_at),
+          approvedAt: data.approved_at ? new Date(data.approved_at) : undefined,
+          payload: (data.payload || {}) as Record<string, unknown>,
+          notes: data.notes || undefined,
+        },
+        ...prev.filter((r) => r.id !== local.id),
+      ].slice(0, 200));
+    }
+  }, [currentUser?.name]);
+
+  const approveManagerApproval = useCallback(async (requestId: string): Promise<void> => {
+    const request = managerApprovals.find((r) => r.id === requestId);
+    if (!request || request.status !== 'pending') return;
+
+    if (request.action === 'inventory_update') {
+      const itemId = Number(request.payload.itemId);
+      const updates = (request.payload.updates || {}) as Partial<InventoryItem>;
+      updateItem(itemId, updates);
+    } else if (request.action === 'inventory_delete') {
+      const itemId = Number(request.payload.itemId);
+      removeItem(itemId);
+    } else if (request.action === 'stock_allocation_create') {
+      const allocationData = request.payload.allocationData as Omit<StockAllocation, 'id' | 'requestedDate' | 'status'> | undefined;
+      if (allocationData) requestStockAllocation(allocationData);
+    }
+
+    const { error } = await supabase
+      .from("inventory_manager_approvals")
+      .update({
+        status: 'approved',
+        approved_by: currentUser?.name || 'admin',
+        approved_at: new Date().toISOString(),
+      })
+      .eq("id", requestId);
+    if (error) {
+      console.warn("approve manager approval failed:", error.message);
+    }
+    setManagerApprovals((prev) => prev.map((r) => (r.id === requestId ? { ...r, status: 'approved', approvedBy: currentUser?.name, approvedAt: new Date() } : r)));
+  }, [currentUser?.name, managerApprovals, removeItem, requestStockAllocation, updateItem]);
+
+  const rejectManagerApproval = useCallback(async (requestId: string, notes?: string): Promise<void> => {
+    const { error } = await supabase
+      .from("inventory_manager_approvals")
+      .update({
+        status: 'rejected',
+        approved_by: currentUser?.name || 'admin',
+        approved_at: new Date().toISOString(),
+        notes: notes || null,
+      })
+      .eq("id", requestId);
+    if (error) {
+      console.warn("reject manager approval failed:", error.message);
+    }
+    setManagerApprovals((prev) => prev.map((r) => (r.id === requestId ? { ...r, status: 'rejected', approvedBy: currentUser?.name, approvedAt: new Date(), notes } : r)));
+  }, [currentUser?.name]);
+
+  const getStockMath = useCallback((itemId: number) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return { inQty: 0, outQty: 0, netDelta: 0, expectedStock: 0, matches: true };
+    const rows = stockMovements.filter((m) => m.itemId === itemId);
+    const inQty = rows.filter((m) => m.delta > 0).reduce((s, m) => s + m.delta, 0);
+    const outQty = rows.filter((m) => m.delta < 0).reduce((s, m) => s + Math.abs(m.delta), 0);
+    const netDelta = inQty - outQty;
+    const expectedStock = Math.max(0, item.initialStock + netDelta);
+    return {
+      inQty,
+      outQty,
+      netDelta,
+      expectedStock,
+      matches: expectedStock === item.stock,
+    };
+  }, [items, stockMovements]);
+
   const completeExchange = (exchangeId: string) => {
     const exchange = exchanges.find(e => e.id === exchangeId);
     if (!exchange || exchange.status === 'completed') return;
@@ -1086,6 +1374,8 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         exchanges,
         stockAllocations,
         auditLogs,
+        managerApprovals,
+        stockMovements,
         addItem,
         updateItem,
         removeItem,
@@ -1103,6 +1393,10 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         rejectStockAllocation,
         refreshStockAllocations,
         addAuditLog,
+        requestManagerApproval,
+        approveManagerApproval,
+        rejectManagerApproval,
+        getStockMath,
       }}
     >
       {children}
