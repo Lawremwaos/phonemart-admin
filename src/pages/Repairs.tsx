@@ -77,10 +77,19 @@ export default function Repairs() {
     if (repair.status === 'WAITING_PARTS') {
       return { text: 'Waiting Parts', color: 'bg-orange-100 text-orange-800' };
     }
-    
-    // Check if payment is pending
-    if (repair.paymentStatus === 'pending' || repair.paymentStatus === 'partial') {
+
+    // Payment workflow states
+    if (repair.paymentStatus === 'partial') {
+      return { text: 'Awaiting Balance', color: 'bg-amber-100 text-amber-800' };
+    }
+    if (repair.paymentStatus === 'fully_paid' && !repair.paymentApproved) {
+      return { text: 'Awaiting Admin Confirmation', color: 'bg-yellow-100 text-yellow-800' };
+    }
+    if (repair.paymentStatus === 'pending') {
       return { text: 'Payment Pending', color: 'bg-red-100 text-red-800' };
+    }
+    if (repair.paymentStatus === 'fully_paid' && repair.paymentApproved) {
+      return { text: 'Fully Paid', color: 'bg-green-100 text-green-800' };
     }
     
     // Default status
@@ -183,13 +192,13 @@ export default function Repairs() {
               <th className="p-3 text-right">Paid</th>
               <th className="p-3 text-right">Balance</th>
               <th className="p-3 text-center">Status</th>
-              <th className="p-3 text-center">Actions</th>
+              {isAdmin && <th className="p-3 text-center">Actions</th>}
             </tr>
           </thead>
           <tbody>
             {filteredRepairs.length === 0 ? (
               <tr>
-                <td colSpan={isAdmin ? 14 : 13} className="p-4 text-center text-gray-500">
+                <td colSpan={isAdmin ? 14 : 12} className="p-4 text-center text-gray-500">
                   No repairs found
                 </td>
               </tr>
@@ -197,8 +206,10 @@ export default function Repairs() {
               filteredRepairs.map((repair) => (
                 <tr
                   key={repair.id}
-                  className="border-t hover:bg-gray-50 cursor-pointer"
-                  onClick={() => setRepairRowAction(repair)}
+                  className={`border-t hover:bg-gray-50 ${isAdmin ? 'cursor-pointer' : ''}`}
+                  onClick={() => {
+                    if (isAdmin) setRepairRowAction(repair);
+                  }}
                 >
                   {isAdmin && (
                     <td className="p-3">
@@ -214,7 +225,7 @@ export default function Repairs() {
                   <td className="p-3 text-sm">{repair.issue}</td>
                   <td className="p-3 text-sm">{supplierLabel(repair)}</td>
                   <td className="p-3">{repair.technician}</td>
-                  <td className="p-3 text-right">KES {repair.totalCost.toLocaleString()}</td>
+                  <td className="p-3 text-right">KES {(repair.totalAgreedAmount || repair.totalCost).toLocaleString()}</td>
                   <td className="p-3 text-sm">{paymentMethodLabel(repair)}</td>
                   <td className="p-3 text-right text-green-600">KES {repair.amountPaid.toLocaleString()}</td>
                   <td className="p-3 text-right text-red-600">KES {repair.balance.toLocaleString()}</td>
@@ -228,39 +239,41 @@ export default function Repairs() {
                       );
                     })()}
                   </td>
-                  <td className="p-3 text-center">
-                    {repair.balance > 0 && (
+                  {isAdmin && (
+                    <td className="p-3 text-center">
+                      {repair.balance > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const amount = prompt(`Enter payment amount (Balance: KES ${repair.balance}):`);
+                            if (amount) {
+                              const paymentType = prompt("Payment type (cash/mpesa/bank_deposit):") as 'cash' | 'mpesa' | 'bank_deposit';
+                              let bank: string | undefined, depositRef: string | undefined;
+                              if (paymentType === 'bank_deposit') {
+                                bank = prompt("Bank name:") || undefined;
+                                depositRef = prompt("Deposit reference:") || undefined;
+                              }
+                              handlePayment(repair.id, Number(amount), paymentType, bank, depositRef);
+                            }
+                          }}
+                          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                        >
+                          Add Payment
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          const amount = prompt(`Enter payment amount (Balance: KES ${repair.balance}):`);
-                          if (amount) {
-                            const paymentType = prompt("Payment type (cash/mpesa/bank_deposit):") as 'cash' | 'mpesa' | 'bank_deposit';
-                            let bank: string | undefined, depositRef: string | undefined;
-                            if (paymentType === 'bank_deposit') {
-                              bank = prompt("Bank name:") || undefined;
-                              depositRef = prompt("Deposit reference:") || undefined;
-                            }
-                            handlePayment(repair.id, Number(amount), paymentType, bank, depositRef);
-                          }
+                          navigate('/pending-collections/pending-payment');
                         }}
-                        className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                        className="ml-2 bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700"
                       >
-                        Add Payment
+                        Confirm Payment
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate('/pending-collections/pending-payment');
-                      }}
-                      className="ml-2 bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700"
-                    >
-                      Confirm Payment
-                    </button>
-                  </td>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
@@ -268,7 +281,7 @@ export default function Repairs() {
         </table>
       </div>
 
-      {repairRowAction && (
+      {isAdmin && repairRowAction && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={() => setRepairRowAction(null)}
