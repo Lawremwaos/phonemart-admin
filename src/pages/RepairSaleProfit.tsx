@@ -56,19 +56,29 @@ export default function RepairSaleProfit() {
   // Calculate profit breakdown
   const profitBreakdown = useMemo(() => {
     let totalRevenue = 0;
-    let totalCost = 0;
+    let totalStaffCost = 0;
+    let totalWholesaleCost = 0;
     let totalLaborCost = 0;
     let totalOutsourcedCost = 0;
-    let totalPartsCost = 0;
+    let totalStaffPartsCost = 0;
+    let totalWholesalePartsCost = 0;
     let repairCount = 0;
 
     const repairDetails = filteredRepairs.map(repair => {
-      // Calculate parts cost (in-house parts)
-      const partsCost = repair.partsUsed
+      // In-house parts: staff view uses staff/base price; admin can also compare wholesale/actual cost.
+      const staffPartsCost = repair.partsUsed
         .filter(p => p.source === 'in-house' || !p.source)
         .reduce((sum, p) => {
           const item = items.find(i => i.id === p.itemId);
-          const cost = item?.adminCostPrice ?? item?.costPrice ?? p.cost ?? 0;
+          const cost = item?.costPrice ?? p.cost ?? 0;
+          return sum + (cost * p.qty);
+        }, 0);
+
+      const wholesalePartsCost = repair.partsUsed
+        .filter(p => p.source === 'in-house' || !p.source)
+        .reduce((sum, p) => {
+          const item = items.find(i => i.id === p.itemId);
+          const cost = item?.actualCost ?? item?.adminCostPrice ?? item?.costPrice ?? p.cost ?? 0;
           return sum + (cost * p.qty);
         }, 0);
 
@@ -78,20 +88,22 @@ export default function RepairSaleProfit() {
       // Labor cost
       const laborCost = repair.laborCost || 0;
       
-      // Total cost
-      const totalCostForRepair = partsCost + outsourcedCost + laborCost;
+      const staffTotalCostForRepair = staffPartsCost + outsourcedCost + laborCost;
+      const wholesaleTotalCostForRepair = wholesalePartsCost + outsourcedCost + laborCost;
       
-      // Revenue (total cost charged to customer)
-      const revenue = repair.totalCost || 0;
+      // Revenue charged to customer
+      const revenue = repair.totalAgreedAmount || repair.totalCost || 0;
       
-      // Profit
-      const profit = revenue - totalCostForRepair;
+      const staffProfit = revenue - staffTotalCostForRepair;
+      const wholesaleProfit = revenue - wholesaleTotalCostForRepair;
 
       totalRevenue += revenue;
-      totalCost += totalCostForRepair;
+      totalStaffCost += staffTotalCostForRepair;
+      totalWholesaleCost += wholesaleTotalCostForRepair;
       totalLaborCost += laborCost;
       totalOutsourcedCost += outsourcedCost;
-      totalPartsCost += partsCost;
+      totalStaffPartsCost += staffPartsCost;
+      totalWholesalePartsCost += wholesalePartsCost;
       repairCount++;
 
       return {
@@ -102,11 +114,14 @@ export default function RepairSaleProfit() {
         shopId: repair.shopId,
         shopName: shops.find(s => s.id === repair.shopId)?.name || 'Unassigned',
         revenue,
-        partsCost,
+        staffPartsCost,
+        wholesalePartsCost,
         outsourcedCost,
         laborCost,
-        totalCost: totalCostForRepair,
-        profit,
+        staffTotalCost: staffTotalCostForRepair,
+        wholesaleTotalCost: wholesaleTotalCostForRepair,
+        staffProfit,
+        wholesaleProfit,
         partsUsed: repair.partsUsed,
         status: repair.status,
       };
@@ -117,11 +132,14 @@ export default function RepairSaleProfit() {
       summary: {
         repairCount,
         totalRevenue,
-        totalPartsCost,
+        totalStaffPartsCost,
+        totalWholesalePartsCost,
         totalOutsourcedCost,
         totalLaborCost,
-        totalCost,
-        totalProfit: totalRevenue - totalCost,
+        totalStaffCost,
+        totalWholesaleCost,
+        totalStaffProfit: totalRevenue - totalStaffCost,
+        totalWholesaleProfit: totalRevenue - totalWholesaleCost,
       },
     };
   }, [filteredRepairs, items, shops]);
@@ -181,16 +199,41 @@ export default function RepairSaleProfit() {
           <p className="text-2xl font-bold text-green-600">KES {profitBreakdown.summary.totalRevenue.toLocaleString()}</p>
         </div>
         <div className="bg-white p-5 rounded-lg shadow">
-          <h3 className="text-sm text-gray-600 mb-1">Total Cost</h3>
-          <p className="text-2xl font-bold text-red-600">KES {profitBreakdown.summary.totalCost.toLocaleString()}</p>
+          <h3 className="text-sm text-gray-600 mb-1">{isAdmin ? 'Total Cost (Wholesale)' : 'Total Cost (Staff Base)'}</h3>
+          <p className="text-2xl font-bold text-red-600">
+            KES {(isAdmin ? profitBreakdown.summary.totalWholesaleCost : profitBreakdown.summary.totalStaffCost).toLocaleString()}
+          </p>
         </div>
         <div className="bg-white p-5 rounded-lg shadow">
-          <h3 className="text-sm text-gray-600 mb-1">Total Profit</h3>
-          <p className={`text-2xl font-bold ${profitBreakdown.summary.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            KES {profitBreakdown.summary.totalProfit.toLocaleString()}
+          <h3 className="text-sm text-gray-600 mb-1">{isAdmin ? 'Total Profit (Wholesale)' : 'Total Profit (Staff)'}</h3>
+          <p className={`text-2xl font-bold ${(isAdmin ? profitBreakdown.summary.totalWholesaleProfit : profitBreakdown.summary.totalStaffProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            KES {(isAdmin ? profitBreakdown.summary.totalWholesaleProfit : profitBreakdown.summary.totalStaffProfit).toLocaleString()}
           </p>
         </div>
       </div>
+
+      {isAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white p-5 rounded-lg shadow border-l-4 border-blue-500">
+            <h3 className="text-sm text-gray-600 mb-1">Staff Profit View (Retail/Base)</h3>
+            <p className={`text-2xl font-bold ${profitBreakdown.summary.totalStaffProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              KES {profitBreakdown.summary.totalStaffProfit.toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Uses staff/base part prices.
+            </p>
+          </div>
+          <div className="bg-white p-5 rounded-lg shadow border-l-4 border-purple-500">
+            <h3 className="text-sm text-gray-600 mb-1">Admin Profit View (Wholesale/Actual)</h3>
+            <p className={`text-2xl font-bold ${profitBreakdown.summary.totalWholesaleProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              KES {profitBreakdown.summary.totalWholesaleProfit.toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Uses actual/wholesale part costs.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Cost Breakdown */}
       <div className="bg-white p-6 rounded-lg shadow">
@@ -222,17 +265,19 @@ export default function RepairSaleProfit() {
               <th className="p-3 text-left text-sm">Customer</th>
               <th className="p-3 text-left text-sm">Phone Model</th>
               <th className="p-3 text-right text-sm">Revenue</th>
-              <th className="p-3 text-right text-sm">Parts Cost</th>
+              <th className="p-3 text-right text-sm">Parts Cost (Staff)</th>
+              {isAdmin && <th className="p-3 text-right text-sm">Parts Cost (Wholesale)</th>}
               <th className="p-3 text-right text-sm">Outsourced</th>
               <th className="p-3 text-right text-sm">Labor</th>
               <th className="p-3 text-right text-sm">Total Cost</th>
-              <th className="p-3 text-right text-sm font-semibold">Profit</th>
+              <th className="p-3 text-right text-sm font-semibold">{isAdmin ? 'Profit (Wholesale)' : 'Profit (Staff)'}</th>
+              {isAdmin && <th className="p-3 text-right text-sm font-semibold">Profit (Staff)</th>}
             </tr>
           </thead>
           <tbody>
             {profitBreakdown.repairDetails.length === 0 ? (
               <tr>
-                <td colSpan={isAdmin ? 10 : 9} className="p-4 text-center text-gray-500">
+                <td colSpan={isAdmin ? 12 : 9} className="p-4 text-center text-gray-500">
                   No repairs found for {periodLabel(period)}
                 </td>
               </tr>
@@ -254,17 +299,25 @@ export default function RepairSaleProfit() {
                   <td className="p-3 text-right text-sm font-medium text-green-600">
                     KES {repair.revenue.toLocaleString()}
                   </td>
-                  <td className="p-3 text-right text-sm">KES {repair.partsCost.toLocaleString()}</td>
+                  <td className="p-3 text-right text-sm">KES {repair.staffPartsCost.toLocaleString()}</td>
+                  {isAdmin && (
+                    <td className="p-3 text-right text-sm">KES {repair.wholesalePartsCost.toLocaleString()}</td>
+                  )}
                   <td className="p-3 text-right text-sm">KES {repair.outsourcedCost.toLocaleString()}</td>
                   <td className="p-3 text-right text-sm">KES {repair.laborCost.toLocaleString()}</td>
                   <td className="p-3 text-right text-sm font-medium text-red-600">
-                    KES {repair.totalCost.toLocaleString()}
+                    KES {(isAdmin ? repair.wholesaleTotalCost : repair.staffTotalCost).toLocaleString()}
                   </td>
                   <td className={`p-3 text-right text-sm font-bold ${
-                    repair.profit >= 0 ? 'text-green-600' : 'text-red-600'
+                    (isAdmin ? repair.wholesaleProfit : repair.staffProfit) >= 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    KES {repair.profit.toLocaleString()}
+                    KES {(isAdmin ? repair.wholesaleProfit : repair.staffProfit).toLocaleString()}
                   </td>
+                  {isAdmin && (
+                    <td className={`p-3 text-right text-sm font-bold ${repair.staffProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      KES {repair.staffProfit.toLocaleString()}
+                    </td>
+                  )}
                 </tr>
               ))
             )}
