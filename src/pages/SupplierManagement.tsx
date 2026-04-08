@@ -25,7 +25,7 @@ export default function SupplierManagement() {
   const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useSupplier();
   const { items: inventoryItems, purchases, deletePurchase } = useInventory();
   const { repairs, deleteRepair } = useRepair();
-  const { currentUser } = useShop();
+  const { currentUser, shops } = useShop();
   const isAdmin = currentUser?.roles.includes('admin') || false;
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -272,6 +272,10 @@ export default function SupplierManagement() {
     const inventoryCategoryByName = new Map(
       inventoryItems.map((item) => [item.name.toLowerCase(), item.category])
     );
+    const shopNameById = new Map(shops.map((shop) => [shop.id, shop.name]));
+    const relevantRepairs = isAdmin
+      ? repairs
+      : repairs.filter((repair) => repair.shopId === currentUser?.shopId);
 
     return visibleSuppliers.map(supplier => {
       // Purchases from this supplier
@@ -300,6 +304,8 @@ export default function SupplierManagement() {
       const partsTaken: Array<{
         repairId: string;
         date: Date;
+        shopId?: string;
+        shopName: string;
         staffName: string;
         customerName: string;
         phoneModel: string;
@@ -311,7 +317,8 @@ export default function SupplierManagement() {
         status: string;
       }> = [];
 
-      repairs.forEach(repair => {
+      relevantRepairs.forEach(repair => {
+        const shopName = repair.shopId ? (shopNameById.get(repair.shopId) || repair.shopId) : 'Unassigned';
         const fromThisSupplier = repair.partsUsed.filter(p =>
           p.supplierName?.toLowerCase() === supplier.name.toLowerCase() ||
           (p.source === 'outsourced' && p.supplierName?.toLowerCase() === supplier.name.toLowerCase())
@@ -320,6 +327,8 @@ export default function SupplierManagement() {
           partsTaken.push({
             repairId: repair.id,
             date: repair.date,
+            shopId: repair.shopId,
+            shopName,
             staffName: repair.technician || 'Unknown',
             customerName: repair.customerName,
             phoneModel: repair.phoneModel,
@@ -346,6 +355,8 @@ export default function SupplierManagement() {
                 partsTaken.push({
                   repairId: repair.id,
                   date: repair.date,
+                  shopId: repair.shopId,
+                  shopName,
                   staffName: repair.technician || 'Unknown',
                   customerName: repair.customerName,
                   phoneModel: repair.phoneModel,
@@ -364,6 +375,24 @@ export default function SupplierManagement() {
       partsTaken.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       const totalPartsCost = partsTaken.reduce((sum, p) => sum + p.cost, 0);
+      const repairCostByShop = Object.entries(
+        partsTaken.reduce<Record<string, number>>((acc, part) => {
+          const key = part.shopName;
+          acc[key] = (acc[key] || 0) + part.cost;
+          return acc;
+        }, {})
+      )
+        .map(([shopName, totalCost]) => ({ shopName, totalCost }))
+        .sort((a, b) => b.totalCost - a.totalCost);
+      const repairCostByStaff = Object.entries(
+        partsTaken.reduce<Record<string, number>>((acc, part) => {
+          const key = part.staffName || 'Unknown';
+          acc[key] = (acc[key] || 0) + part.cost;
+          return acc;
+        }, {})
+      )
+        .map(([staffName, totalCost]) => ({ staffName, totalCost }))
+        .sort((a, b) => b.totalCost - a.totalCost);
 
       return {
         supplier,
@@ -372,11 +401,13 @@ export default function SupplierManagement() {
         accessoryPurchaseCost,
         purchaseItemBreakdown,
         partsTaken,
+        repairCostByShop,
+        repairCostByStaff,
         totalPartsCost,
         grandTotal: totalPurchaseCost + totalPartsCost,
       };
     });
-  }, [inventoryItems, visibleSuppliers, purchases, repairs]);
+  }, [inventoryItems, visibleSuppliers, purchases, repairs, shops, isAdmin, currentUser?.shopId]);
 
   const overallStats = useMemo(() => {
     const totalPurchases = supplierData.reduce((sum, d) => sum + d.totalPurchaseCost, 0);
@@ -867,6 +898,7 @@ export default function SupplierManagement() {
                                 <thead className="bg-orange-50">
                                   <tr>
                                     <th className="p-2 text-left">Date</th>
+                                    {isAdmin && <th className="p-2 text-left">Shop</th>}
                                     <th className="p-2 text-left">Staff</th>
                                     <th className="p-2 text-left">Customer</th>
                                     <th className="p-2 text-left">Part Name</th>
@@ -900,6 +932,13 @@ export default function SupplierManagement() {
                                           <td className="p-2">
                                             {formatDate(record.date)}
                                           </td>
+                                          {isAdmin && (
+                                            <td className="p-2">
+                                              <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded font-medium">
+                                                {record.shopName}
+                                              </span>
+                                            </td>
+                                          )}
                                           <td className="p-2">
                                             <span className="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded font-medium">
                                               {record.staffName}
@@ -1011,7 +1050,7 @@ export default function SupplierManagement() {
                                         </tr>
                                         {isAdmin && isRepairPaymentOpen && (
                                           <tr className="bg-green-50/40 border-t">
-                                            <td className="p-3" colSpan={9}>
+                                            <td className="p-3" colSpan={10}>
                                               <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                                                 <div>
                                                   <label className="block text-xs font-medium text-gray-700 mb-1">Amount (KES)</label>
@@ -1127,6 +1166,40 @@ export default function SupplierManagement() {
                               </div>
                             )}
                           </div>
+                          {isAdmin && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                              <div>
+                                <p className="text-xs font-semibold text-gray-700 mb-2">Repair Supplier Cost by Shop</p>
+                                {data.repairCostByShop.length === 0 ? (
+                                  <p className="text-xs text-gray-500">No outsourced parts recorded.</p>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {data.repairCostByShop.map((entry) => (
+                                      <div key={entry.shopName} className="text-xs flex justify-between">
+                                        <span>{entry.shopName}</span>
+                                        <span className="font-semibold text-orange-700">KES {entry.totalCost.toLocaleString()}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold text-gray-700 mb-2">Repair Supplier Cost by Staff</p>
+                                {data.repairCostByStaff.length === 0 ? (
+                                  <p className="text-xs text-gray-500">No staff records yet.</p>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {data.repairCostByStaff.map((entry) => (
+                                      <div key={entry.staffName} className="text-xs flex justify-between">
+                                        <span>{entry.staffName}</span>
+                                        <span className="font-semibold text-indigo-700">KES {entry.totalCost.toLocaleString()}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1152,7 +1225,15 @@ export default function SupplierManagement() {
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Email</th>
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Address</th>
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Categories</th>
-                  <th className="p-3 text-right text-sm font-semibold text-gray-700">{isAdmin ? 'Total Spent' : 'Parts Taken Total'}</th>
+                  {isAdmin ? (
+                    <>
+                      <th className="p-3 text-right text-sm font-semibold text-gray-700">Accessories Cost</th>
+                      <th className="p-3 text-right text-sm font-semibold text-gray-700">Repair Supplier Cost</th>
+                      <th className="p-3 text-left text-sm font-semibold text-gray-700">Repair Cost by Shop</th>
+                    </>
+                  ) : (
+                    <th className="p-3 text-right text-sm font-semibold text-gray-700">Parts Taken Total</th>
+                  )}
                   <th className="p-3 text-center text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
@@ -1174,9 +1255,36 @@ export default function SupplierManagement() {
                           ))}
                         </div>
                       </td>
-                      <td className="p-3 text-sm text-right font-bold text-red-700">
-                        KES {(isAdmin ? (data?.accessoryPurchaseCost || 0) + (data?.totalPartsCost || 0) : (data?.totalPartsCost || 0)).toLocaleString()}
-                      </td>
+                      {isAdmin ? (
+                        <>
+                          <td className="p-3 text-sm text-right font-bold text-emerald-700">
+                            KES {(data?.accessoryPurchaseCost || 0).toLocaleString()}
+                          </td>
+                          <td className="p-3 text-sm text-right font-bold text-orange-700">
+                            KES {(data?.totalPartsCost || 0).toLocaleString()}
+                          </td>
+                          <td className="p-3 text-sm text-gray-700">
+                            {data?.repairCostByShop && data.repairCostByShop.length > 0 ? (
+                              <div className="space-y-1">
+                                {data.repairCostByShop.slice(0, 2).map((shop) => (
+                                  <div key={shop.shopName} className="text-xs">
+                                    <span className="font-semibold">{shop.shopName}</span>: KES {shop.totalCost.toLocaleString()}
+                                  </div>
+                                ))}
+                                {data.repairCostByShop.length > 2 && (
+                                  <div className="text-xs text-gray-500">+{data.repairCostByShop.length - 2} more shops</div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                        </>
+                      ) : (
+                        <td className="p-3 text-sm text-right font-bold text-red-700">
+                          KES {(data?.totalPartsCost || 0).toLocaleString()}
+                        </td>
+                      )}
                       <td className="p-3 text-center">
                         <div className="flex gap-2 justify-center">
                           <button onClick={() => handleEdit(supplier)} className="text-blue-600 hover:text-blue-800 text-sm">
