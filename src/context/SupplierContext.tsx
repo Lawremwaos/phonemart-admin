@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { useShop } from "./ShopContext";
 
 export type SupplierType = 'local' | 'wholesale';
 
@@ -26,6 +27,8 @@ const SupplierContext = createContext<SupplierContextType | null>(null);
 
 export const SupplierProvider = ({ children }: { children: React.ReactNode }) => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const { currentUser } = useShop();
+  const isAdmin = currentUser?.roles.includes("admin") ?? false;
 
   // Load from Supabase on mount and set up real-time subscription
   useEffect(() => {
@@ -110,6 +113,7 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
       email: supplierData.email || null,
       address: supplierData.address || null,
       categories: supplierData.categories,
+      supplier_type: supplierData.supplierType || 'local',
     };
 
     const { data, error } = await supabase.from("suppliers").insert(payload).select("*").single();
@@ -161,6 +165,7 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
     if (supplierData.email !== undefined) payload.email = supplierData.email;
     if (supplierData.address !== undefined) payload.address = supplierData.address;
     if (supplierData.categories !== undefined) payload.categories = supplierData.categories;
+    if (supplierData.supplierType !== undefined) payload.supplier_type = supplierData.supplierType;
     const { error } = await supabase.from("suppliers").update(payload).eq("id", id);
     if (error) {
       console.error("Error updating supplier:", error);
@@ -185,11 +190,12 @@ export const SupplierProvider = ({ children }: { children: React.ReactNode }) =>
   const getSupplierById = useCallback((id: string) => {
     return suppliers.find((s) => s.id === id);
   }, [suppliers]);
+  const visibleSuppliers = isAdmin ? suppliers : suppliers.filter((s) => s.supplierType !== "wholesale");
 
   return (
     <SupplierContext.Provider
       value={{
-        suppliers,
+        suppliers: visibleSuppliers,
         addSupplier,
         updateSupplier,
         deleteSupplier,

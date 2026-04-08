@@ -23,7 +23,7 @@ type SupplierPayment = {
 
 export default function SupplierManagement() {
   const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useSupplier();
-  const { purchases, deletePurchase } = useInventory();
+  const { items: inventoryItems, purchases, deletePurchase } = useInventory();
   const { repairs, deleteRepair } = useRepair();
   const { currentUser } = useShop();
   const isAdmin = currentUser?.roles.includes('admin') || false;
@@ -52,8 +52,8 @@ export default function SupplierManagement() {
     supplierType: 'local' as SupplierType,
   });
 
-  // Staff can only see local suppliers; admin sees all (wholesale hidden from staff)
-  const visibleSuppliers = isAdmin ? suppliers : suppliers.filter(s => s.supplierType !== 'wholesale');
+  // SupplierContext already hides wholesale suppliers from non-admin users.
+  const visibleSuppliers = suppliers;
 
   const handleAdd = () => {
     setIsAdding(true);
@@ -269,6 +269,10 @@ export default function SupplierManagement() {
   };
 
   const supplierData = useMemo(() => {
+    const inventoryCategoryByName = new Map(
+      inventoryItems.map((item) => [item.name.toLowerCase(), item.category])
+    );
+
     return visibleSuppliers.map(supplier => {
       // Purchases from this supplier
       const supplierPurchases = purchases.filter(p =>
@@ -276,13 +280,19 @@ export default function SupplierManagement() {
       );
       const totalPurchaseCost = supplierPurchases.reduce((sum, p) => sum + p.total, 0);
       const purchaseItemBreakdown: Record<string, { qty: number; totalCost: number }> = {};
+      let accessoryPurchaseCost = 0;
       supplierPurchases.forEach(purchase => {
         purchase.items.forEach(item => {
           if (!purchaseItemBreakdown[item.itemName]) {
             purchaseItemBreakdown[item.itemName] = { qty: 0, totalCost: 0 };
           }
           purchaseItemBreakdown[item.itemName].qty += item.qty;
-          purchaseItemBreakdown[item.itemName].totalCost += item.qty * item.costPrice;
+          const itemTotalCost = item.qty * item.costPrice;
+          purchaseItemBreakdown[item.itemName].totalCost += itemTotalCost;
+          const invCategory = inventoryCategoryByName.get(item.itemName.toLowerCase());
+          if (invCategory === 'Accessory') {
+            accessoryPurchaseCost += itemTotalCost;
+          }
         });
       });
 
@@ -359,16 +369,18 @@ export default function SupplierManagement() {
         supplier,
         supplierPurchases,
         totalPurchaseCost,
+        accessoryPurchaseCost,
         purchaseItemBreakdown,
         partsTaken,
         totalPartsCost,
         grandTotal: totalPurchaseCost + totalPartsCost,
       };
     });
-  }, [suppliers, purchases, repairs]);
+  }, [inventoryItems, visibleSuppliers, purchases, repairs]);
 
   const overallStats = useMemo(() => {
     const totalPurchases = supplierData.reduce((sum, d) => sum + d.totalPurchaseCost, 0);
+    const totalAccessoriesCost = supplierData.reduce((sum, d) => sum + d.accessoryPurchaseCost, 0);
     const totalPartsCost = supplierData.reduce((sum, d) => sum + d.totalPartsCost, 0);
     const totalOrders = supplierData.reduce((sum, d) => sum + d.supplierPurchases.length, 0);
     const totalPartsTaken = supplierData.reduce((sum, d) => sum + d.partsTaken.length, 0);
@@ -377,6 +389,8 @@ export default function SupplierManagement() {
     const totalOutstandingSupplierBalance = Math.max(0, grandTotal - totalPaidToSuppliers);
     return {
       totalPurchases,
+      totalAccessoriesCost,
+      totalRepairSupplierCost: totalPartsCost,
       totalPartsCost,
       totalOrders,
       totalPartsTaken,
@@ -457,7 +471,7 @@ export default function SupplierManagement() {
       )}
 
       {/* Overall Summary - Staff see only Parts Taken and Active Suppliers; Admin sees all */}
-      <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-2'}`}>
+      <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'md:grid-cols-5' : 'md:grid-cols-2'}`}>
         {isAdmin && (
           <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
             <p className="text-sm text-gray-600">Total Supplier Purchases</p>
@@ -466,10 +480,17 @@ export default function SupplierManagement() {
           </div>
         )}
         <div className="bg-white p-4 rounded shadow border-l-4 border-orange-500">
-          <p className="text-sm text-gray-600">Total Parts Taken (Outsourced)</p>
-          <p className="text-2xl font-bold text-orange-700">KES {overallStats.totalPartsCost.toLocaleString()}</p>
-          <p className="text-xs text-gray-500">{overallStats.totalPartsTaken} parts used in repairs</p>
+          <p className="text-sm text-gray-600">Repair Supplier Cost</p>
+          <p className="text-2xl font-bold text-orange-700">KES {overallStats.totalRepairSupplierCost.toLocaleString()}</p>
+          <p className="text-xs text-gray-500">{overallStats.totalPartsTaken} outsourced parts used in repairs</p>
         </div>
+        {isAdmin && (
+          <div className="bg-white p-4 rounded shadow border-l-4 border-emerald-500">
+            <p className="text-sm text-gray-600">Accessories Supplier Cost</p>
+            <p className="text-2xl font-bold text-emerald-700">KES {overallStats.totalAccessoriesCost.toLocaleString()}</p>
+            <p className="text-xs text-gray-500">Accessory purchases only</p>
+          </div>
+        )}
         <div className="bg-white p-4 rounded shadow border-l-4 border-purple-500">
           <p className="text-sm text-gray-600">Active Suppliers</p>
           <p className="text-2xl font-bold text-purple-700">{visibleSuppliers.length}</p>
@@ -567,9 +588,16 @@ export default function SupplierManagement() {
                               <p className="text-xs text-gray-500">{data.supplierPurchases.length} orders</p>
                             </div>
                           )}
+                          {isAdmin && (
+                            <div className="text-right">
+                              <p className="text-gray-600">Accessories Cost</p>
+                              <p className="font-bold text-emerald-700">KES {data.accessoryPurchaseCost.toLocaleString()}</p>
+                              <p className="text-xs text-gray-500">Accessory purchases</p>
+                            </div>
+                          )}
                           {hasParts && (
                             <div className="text-right">
-                              <p className="text-gray-600">Parts Taken</p>
+                              <p className="text-gray-600">Repair Supplier Cost</p>
                               <p className="font-bold text-orange-700">KES {data.totalPartsCost.toLocaleString()}</p>
                               <p className="text-xs text-gray-500">{data.partsTaken.length} parts</p>
                             </div>
@@ -1087,7 +1115,7 @@ export default function SupplierManagement() {
                         </div>
                       </td>
                       <td className="p-3 text-sm text-right font-bold text-red-700">
-                        KES {(isAdmin ? (data?.grandTotal || 0) : (data?.totalPartsCost || 0)).toLocaleString()}
+                        KES {(isAdmin ? (data?.accessoryPurchaseCost || 0) + (data?.totalPartsCost || 0) : (data?.totalPartsCost || 0)).toLocaleString()}
                       </td>
                       <td className="p-3 text-center">
                         <div className="flex gap-2 justify-center">
