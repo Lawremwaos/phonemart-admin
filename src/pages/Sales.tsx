@@ -4,6 +4,7 @@ import { useInventory } from "../context/InventoryContext";
 import { useSales, type SaleItemInput } from "../context/SalesContext";
 import { useShop } from "../context/ShopContext";
 import { usePayment } from "../context/PaymentContext";
+import { useSupplier } from "../context/SupplierContext";
 import ShopSelector from "../components/ShopSelector";
 
 type SaleItem = {
@@ -21,6 +22,7 @@ export default function Sales() {
   const { addSale, openWholesaleSale, addItemToWholesaleSale, closeWholesaleSale } = useSales();
   const { currentShop, currentUser } = useShop();
   const { addPayment } = usePayment();
+  const { suppliers } = useSupplier();
 
   const [saleType, setSaleType] = useState<'retail' | 'wholesale'>('retail');
   
@@ -113,9 +115,13 @@ export default function Sales() {
         alert("Please enter item name and valid quantity.");
         return;
       }
+      if (!customSupplier.trim()) {
+        alert("Please select supplier from the system for custom sale items.");
+        return;
+      }
       setSaleItems((prev) => [
         ...prev,
-        { name: customItemName.trim(), qty, price, source: 'custom', supplier: customSupplier.trim() || undefined },
+        { name: customItemName.trim(), qty, price, source: 'custom', supplier: customSupplier.trim() },
       ]);
       setCustomItemName("");
       setCustomSupplier("");
@@ -465,13 +471,19 @@ export default function Sales() {
               />
 
               {itemSource === 'custom' && (
-                <input
+                <select
                   className="border p-2 rounded"
-                  type="text"
-                  placeholder="Supplier name (optional)"
                   value={customSupplier}
                   onChange={(e) => setCustomSupplier(e.target.value)}
-                />
+                  aria-label="Select supplier for custom item"
+                >
+                  <option value="">Select supplier (required)</option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.name}>
+                      {supplier.name}
+                    </option>
+                  ))}
+                </select>
               )}
             </div>
             {selectedItem && (

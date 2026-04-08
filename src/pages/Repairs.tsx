@@ -97,6 +97,20 @@ export default function Repairs() {
     });
   };
 
+  const paymentMethodLabel = (repair: Repair): string => {
+    const pending = repair.pendingTransactionCodes;
+    if (pending?.splitPayments && pending.splitPayments.length > 0) return "Split Payment";
+    const method = pending?.paymentMethod;
+    if (method === "mpesa_to_paybill") return "M-Pesa to Till ATC";
+    if (method === "mpesa_to_mpesa_shop") return "M-Pesa to Shop";
+    if (method === "cash_to_deposit") return "Cash Deposit";
+    if (method === "bank_to_mpesa_shop") return "Bank to M-Pesa";
+    if (method === "bank_to_shop_bank") return "Bank to Shop Bank";
+    if (method === "sacco_to_mpesa") return "Sacco to M-Pesa";
+    if (repair.paymentMade) return "Paid";
+    return "-";
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center flex-wrap gap-4">
@@ -152,6 +166,7 @@ export default function Repairs() {
               <th className="p-3 text-left">Issue</th>
               <th className="p-3 text-left">Technician</th>
               <th className="p-3 text-right">Total Cost</th>
+              <th className="p-3 text-left">Payment Done By</th>
               <th className="p-3 text-right">Paid</th>
               <th className="p-3 text-right">Balance</th>
               <th className="p-3 text-center">Status</th>
@@ -161,7 +176,7 @@ export default function Repairs() {
           <tbody>
             {filteredRepairs.length === 0 ? (
               <tr>
-                <td colSpan={isAdmin ? 12 : 11} className="p-4 text-center text-gray-500">
+                <td colSpan={isAdmin ? 13 : 12} className="p-4 text-center text-gray-500">
                   No repairs found
                 </td>
               </tr>
@@ -186,6 +201,7 @@ export default function Repairs() {
                   <td className="p-3 text-sm">{repair.issue}</td>
                   <td className="p-3">{repair.technician}</td>
                   <td className="p-3 text-right">KES {repair.totalCost.toLocaleString()}</td>
+                  <td className="p-3 text-sm">{paymentMethodLabel(repair)}</td>
                   <td className="p-3 text-right text-green-600">KES {repair.amountPaid.toLocaleString()}</td>
                   <td className="p-3 text-right text-red-600">KES {repair.balance.toLocaleString()}</td>
                   <td className="p-3 text-center">
@@ -220,6 +236,16 @@ export default function Repairs() {
                         Add Payment
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/pending-collections/pending-payment');
+                      }}
+                      className="ml-2 bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700"
+                    >
+                      Confirm Payment
+                    </button>
                   </td>
                 </tr>
               ))
@@ -283,6 +309,16 @@ export default function Repairs() {
                 }}
               >
                 Confirmation — payment / approvals (Pending Collections)
+              </button>
+              <button
+                type="button"
+                className="w-full bg-purple-600 text-white px-4 py-2 rounded font-semibold hover:bg-purple-700"
+                onClick={() => {
+                  setRepairRowAction(null);
+                  navigate("/pending-collections/pending-payment");
+                }}
+              >
+                Confirm Payment
               </button>
               <button
                 type="button"
