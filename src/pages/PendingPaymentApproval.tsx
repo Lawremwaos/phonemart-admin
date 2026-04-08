@@ -1,9 +1,11 @@
 import { useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
 import { usePayment, type Bank } from "../context/PaymentContext";
 
 export default function PendingPaymentApproval() {
+  const [searchParams] = useSearchParams();
   const { repairs, approvePayment } = useRepair();
   const { currentUser, shops } = useShop();
   const { addPayment } = usePayment();
@@ -27,6 +29,17 @@ export default function PendingPaymentApproval() {
       return hasPayment && !repair.paymentApproved && repair.amountPaid > 0;
     });
   }, [repairs]);
+
+  const focusedRepairId = searchParams.get("repairId") || "";
+
+  const sortedPendingApprovals = useMemo(() => {
+    if (!focusedRepairId) return pendingApprovals;
+    return [...pendingApprovals].sort((a, b) => {
+      if (a.id === focusedRepairId) return -1;
+      if (b.id === focusedRepairId) return 1;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+  }, [pendingApprovals, focusedRepairId]);
 
   const getShopName = (shopId?: string) => {
     if (!shopId) return 'Unknown';
@@ -121,7 +134,7 @@ export default function PendingPaymentApproval() {
       <h2 className="text-2xl font-bold">Pending Payment Approval</h2>
       <p className="text-gray-600">Approve payments that have been made by customers</p>
 
-      {pendingApprovals.length === 0 ? (
+      {sortedPendingApprovals.length === 0 ? (
         <div className="bg-white p-8 rounded shadow text-center">
           <p className="text-gray-500">No pending payment approvals</p>
         </div>
@@ -160,8 +173,11 @@ export default function PendingPaymentApproval() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {pendingApprovals.map((repair) => (
-                  <tr key={repair.id} className="hover:bg-gray-50">
+                {sortedPendingApprovals.map((repair) => (
+                  <tr
+                    key={repair.id}
+                    className={`hover:bg-gray-50 ${focusedRepairId === repair.id ? "bg-yellow-50 ring-1 ring-yellow-300" : ""}`}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {formatDate(repair.date)}
                     </td>

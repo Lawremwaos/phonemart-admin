@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams, Link, useSearchParams } from "react-router-dom";
 import { useRepair, type Repair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
 import { usePayment } from "../context/PaymentContext";
@@ -9,6 +9,7 @@ type FilterType = 'all' | 'pending_collection' | 'pending_payment' | 'fully_paid
 
 export default function PendingCollections() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { filterType } = useParams<{ filterType?: string }>();
   const { repairs, confirmPayment, confirmCollection, approvePayment } = useRepair();
   const { shops, currentUser } = useShop();
@@ -46,6 +47,27 @@ export default function PendingCollections() {
     bank_to_paybill: "",
     bank: "",
   });
+
+  useEffect(() => {
+    if (!currentUser?.roles.includes("admin")) return;
+    if (filter !== "pending_payment") return;
+    const repairId = searchParams.get("repairId");
+    if (!repairId) return;
+
+    const target = repairs.find((r) => r.id === repairId);
+    if (!target) return;
+    if (target.paymentStatus === "fully_paid") return;
+
+    setSelectedRepair(target);
+    setShowPaymentModal(true);
+    if ((target as any).pendingTransactionCodes?.paymentMethod) {
+      setPaymentMethod((target as any).pendingTransactionCodes.paymentMethod);
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("repairId");
+    setSearchParams(nextParams, { replace: true });
+  }, [currentUser, filter, repairs, searchParams, setSearchParams]);
 
   // Filter repairs based on customer status and payment
   const filteredRepairs = useMemo(() => {

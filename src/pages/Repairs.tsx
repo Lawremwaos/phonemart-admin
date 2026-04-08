@@ -132,6 +132,16 @@ export default function Repairs() {
     return Array.from(names).join(", ");
   };
 
+  const goToPaymentFlow = (repair: Repair) => {
+    // If customer already paid and admin only needs to approve, jump to approval screen.
+    if (repair.paymentStatus === "fully_paid" && !repair.paymentApproved) {
+      navigate(`/pending-payment-approval?repairId=${encodeURIComponent(repair.id)}`);
+      return;
+    }
+    // Otherwise jump to pending payment flow and focus this repair.
+    navigate(`/pending-collections/pending-payment?repairId=${encodeURIComponent(repair.id)}`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center flex-wrap gap-4">
@@ -266,7 +276,7 @@ export default function Repairs() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate('/pending-collections/pending-payment');
+                          goToPaymentFlow(repair);
                         }}
                         className="ml-2 bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700"
                       >
@@ -342,7 +352,7 @@ export default function Repairs() {
                 className="w-full bg-purple-600 text-white px-4 py-2 rounded font-semibold hover:bg-purple-700"
                 onClick={() => {
                   setRepairRowAction(null);
-                  navigate("/pending-collections/pending-payment");
+                  goToPaymentFlow(repairRowAction);
                 }}
               >
                 Confirm Payment
