@@ -212,6 +212,7 @@ create table if not exists users (
   password text not null,
   shop_id uuid references shops(id) on delete cascade,
   roles text[] not null default array['technician']::text[],
+  manager_scope text check (manager_scope in ('accessories','repair','both')),
   created_at timestamptz not null default now()
 );
 create index if not exists users_shop_id_idx on users(shop_id);

@@ -28,6 +28,7 @@ export default function AdminSettings() {
     password: '',
     shopId: '',
     roles: ['technician'] as ('admin' | 'technician' | 'manager')[],
+    managerScope: 'both' as 'accessories' | 'repair' | 'both',
   });
   const [showStaffPassword, setShowStaffPassword] = useState(false);
 
@@ -71,7 +72,7 @@ export default function AdminSettings() {
     }
     setShowStaffForm(false);
     setEditingUser(null);
-    setStaffForm({ name: '', email: '', password: '', shopId: '', roles: ['technician'] });
+    setStaffForm({ name: '', email: '', password: '', shopId: '', roles: ['technician'], managerScope: 'both' });
   };
 
   const handleEditShop = (shop: Shop) => {
@@ -94,6 +95,7 @@ export default function AdminSettings() {
       password: '', // Don't show password
       shopId: user.shopId,
       roles: [...user.roles], // Copy roles array
+      managerScope: user.managerScope || 'both',
     });
     setShowStaffForm(true);
   };
@@ -349,7 +351,7 @@ export default function AdminSettings() {
             <button
               onClick={() => {
                 setEditingUser(null);
-                setStaffForm({ name: '', email: '', password: '', shopId: '', roles: ['technician'] });
+                setStaffForm({ name: '', email: '', password: '', shopId: '', roles: ['technician'], managerScope: 'both' });
                 setShowStaffForm(true);
               }}
               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
@@ -471,6 +473,30 @@ export default function AdminSettings() {
                     <strong>Admin:</strong> Full system access, all shops
                   </p>
                 </div>
+                {staffForm.roles.includes('manager') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Manager Assignment
+                    </label>
+                    <select
+                      className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                      value={staffForm.managerScope}
+                      onChange={(e) =>
+                        setStaffForm({
+                          ...staffForm,
+                          managerScope: e.target.value as 'accessories' | 'repair' | 'both',
+                        })
+                      }
+                    >
+                      <option value="accessories">Accessories Manager</option>
+                      <option value="repair">Repair Manager</option>
+                      <option value="both">Both (Accessories + Repair)</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Use this to define what this manager oversees.
+                    </p>
+                  </div>
+                )}
                 <div className="flex space-x-4">
                   <button
                     type="submit"
@@ -510,6 +536,9 @@ export default function AdminSettings() {
                     Role
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Manager Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -541,6 +570,15 @@ export default function AdminSettings() {
                           </span>
                         ))}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {user.roles.includes('manager')
+                        ? user.managerScope === 'accessories'
+                          ? 'Accessories'
+                          : user.managerScope === 'repair'
+                          ? 'Repair'
+                          : 'Both'
+                        : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button

@@ -17,6 +17,7 @@ export type User = {
   password: string;
   shopId: string;
   roles: ('admin' | 'technician' | 'manager')[]; // Multiple roles support
+  managerScope?: 'accessories' | 'repair' | 'both';
 };
 
 type ShopContextType = {
@@ -207,6 +208,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
           password: u.password,
           shopId: u.shop_id || '',
           roles: (u.roles || []) as ('admin' | 'technician' | 'manager')[],
+          managerScope: (u.manager_scope || undefined) as 'accessories' | 'repair' | 'both' | undefined,
         }));
 
         // If no users exist, create default users
@@ -238,6 +240,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
               password: newUser.password,
               shopId: newUser.shop_id,
               roles: (newUser.roles || []) as ('admin' | 'technician' | 'manager')[],
+              managerScope: (newUser.manager_scope || undefined) as 'accessories' | 'repair' | 'both' | undefined,
             });
           }
         }
@@ -289,6 +292,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         password: string;
         shop_id: string | null;
         roles: string[] | null;
+        manager_scope: 'accessories' | 'repair' | 'both' | null;
       };
       let userRow: DbUserRow | null = null;
 
@@ -323,6 +327,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         password: userRow.password,
         shopId: userRow.shop_id || '',
         roles: (userRow.roles || []) as ('admin' | 'technician' | 'manager')[],
+        managerScope: userRow.manager_scope || undefined,
       };
 
       setCurrentUser(user);
@@ -450,6 +455,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
           password,
           shop_id: userData.shopId || null,
           roles: userData.roles,
+          manager_scope: userData.managerScope || null,
         })
         .select("*")
         .single();
@@ -464,6 +470,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         password: data.password,
         shopId: data.shop_id || '',
         roles: (data.roles || []) as ('admin' | 'technician' | 'manager')[],
+        managerScope: (data.manager_scope || undefined) as 'accessories' | 'repair' | 'both' | undefined,
       };
       setUsers((prev) => [newUser, ...prev]);
     })();
@@ -480,6 +487,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
       }
       if (userData.shopId !== undefined) payload.shop_id = userData.shopId || null;
       if (userData.roles !== undefined) payload.roles = userData.roles;
+      if (userData.managerScope !== undefined) payload.manager_scope = userData.managerScope || null;
 
       const { error } = await supabase
         .from("users")

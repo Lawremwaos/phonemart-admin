@@ -234,7 +234,9 @@ function AppContent() {
                       location.pathname === '/stock-allocation' ? 'bg-gray-800' : ''
                     }`}
                   >
-                    {currentUser?.roles.includes('admin') ? 'Stock Allocation' : 'My Stock & Requests'}
+                    {currentUser?.roles.includes('admin') || currentUser?.roles.includes('manager')
+                      ? 'Stock Allocation'
+                      : 'My Stock Transfers'}
                   </Link>
                 </li>
                 <li>
