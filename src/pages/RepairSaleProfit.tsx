@@ -240,8 +240,10 @@ export default function RepairSaleProfit() {
         <h3 className="text-lg font-semibold mb-4">Cost Breakdown</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="border rounded p-4">
-            <h4 className="text-sm text-gray-600 mb-1">Parts Cost</h4>
-            <p className="text-xl font-semibold">KES {profitBreakdown.summary.totalPartsCost.toLocaleString()}</p>
+            <h4 className="text-sm text-gray-600 mb-1">{isAdmin ? 'Parts Cost (Wholesale)' : 'Parts Cost (Staff Base)'}</h4>
+            <p className="text-xl font-semibold">
+              KES {(isAdmin ? profitBreakdown.summary.totalWholesalePartsCost : profitBreakdown.summary.totalStaffPartsCost).toLocaleString()}
+            </p>
           </div>
           <div className="border rounded p-4">
             <h4 className="text-sm text-gray-600 mb-1">Outsourced Cost</h4>
