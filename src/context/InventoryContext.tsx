@@ -75,11 +75,27 @@ export type Exchange = {
   confirmedDate?: Date;
 };
 
+export type InventoryAuditLog = {
+  id: string;
+  action: 'edit' | 'delete' | 'allocation_requested' | 'allocation_approved' | 'allocation_rejected';
+  itemId?: number;
+  itemName?: string;
+  qty?: number;
+  sourceShopId?: string;
+  sourceShopName?: string;
+  targetShopId?: string;
+  targetShopName?: string;
+  actor?: string;
+  details?: string;
+  createdAt: Date;
+};
+
 type InventoryContextType = {
   items: InventoryItem[];
   purchases: Purchase[];
   exchanges: Exchange[];
   stockAllocations: StockAllocation[];
+  auditLogs: InventoryAuditLog[];
   addItem: (item: AddInventoryItemInput) => void;
   updateItem: (id: number, updates: Partial<InventoryItem>) => void;
   removeItem: (id: number) => void;
@@ -97,6 +113,7 @@ type InventoryContextType = {
   approveStockAllocation: (allocationId: string) => void;
   rejectStockAllocation: (allocationId: string) => void;
   refreshStockAllocations: () => Promise<void>;
+  addAuditLog: (entry: Omit<InventoryAuditLog, 'id' | 'createdAt'>) => Promise<void>;
 };
 
 const InventoryContext = createContext<InventoryContextType | null>(null);
@@ -106,6 +123,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [stockAllocations, setStockAllocations] = useState<StockAllocation[]>([]);
+  const [auditLogs, setAuditLogs] = useState<InventoryAuditLog[]>([]);
   const { currentUser } = useShop();
   const lastLocalUpdateRef = useRef<number>(0);
   const DEBOUNCE_MS = 3000;
@@ -128,6 +146,84 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       pendingAllocation: item.pending_allocation || false,
     }));
   }, []);
+
+  const loadAuditLogs = useCallback(async (): Promise<InventoryAuditLog[]> => {
+    const { data, error } = await supabase
+      .from("inventory_audit_logs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    if (error) throw error;
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      action: row.action as InventoryAuditLog['action'],
+      itemId: row.item_id ?? undefined,
+      itemName: row.item_name ?? undefined,
+      qty: row.qty ?? undefined,
+      sourceShopId: row.source_shop_id ?? undefined,
+      sourceShopName: row.source_shop_name ?? undefined,
+      targetShopId: row.target_shop_id ?? undefined,
+      targetShopName: row.target_shop_name ?? undefined,
+      actor: row.actor ?? undefined,
+      details: row.details ?? undefined,
+      createdAt: new Date(row.created_at),
+    }));
+  }, []);
+
+  const addAuditLog = useCallback(async (entry: Omit<InventoryAuditLog, 'id' | 'createdAt'>): Promise<void> => {
+    const localEntry: InventoryAuditLog = {
+      ...entry,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: new Date(),
+    };
+
+    setAuditLogs((prev) => [localEntry, ...prev].slice(0, 200));
+
+    const { data, error } = await supabase
+      .from("inventory_audit_logs")
+      .insert({
+        action: entry.action,
+        item_id: entry.itemId ?? null,
+        item_name: entry.itemName ?? null,
+        qty: entry.qty ?? null,
+        source_shop_id: entry.sourceShopId ?? null,
+        source_shop_name: entry.sourceShopName ?? null,
+        target_shop_id: entry.targetShopId ?? null,
+        target_shop_name: entry.targetShopName ?? null,
+        actor: entry.actor ?? currentUser?.name ?? null,
+        details: entry.details ?? null,
+      })
+      .select("*")
+      .single();
+
+    // If table doesn't exist yet, keep local log only.
+    if (error) {
+      console.warn("inventory_audit_logs insert failed:", error.message);
+      return;
+    }
+
+    if (data) {
+      setAuditLogs((prev) => [
+        {
+          id: data.id,
+          action: data.action as InventoryAuditLog['action'],
+          itemId: data.item_id ?? undefined,
+          itemName: data.item_name ?? undefined,
+          qty: data.qty ?? undefined,
+          sourceShopId: data.source_shop_id ?? undefined,
+          sourceShopName: data.source_shop_name ?? undefined,
+          targetShopId: data.target_shop_id ?? undefined,
+          targetShopName: data.target_shop_name ?? undefined,
+          actor: data.actor ?? undefined,
+          details: data.details ?? undefined,
+          createdAt: new Date(data.created_at),
+        },
+        ...prev.filter((p) => p.id !== localEntry.id),
+      ].slice(0, 200));
+    }
+  }, [currentUser?.name]);
 
   const loadAllItems = useCallback(async (): Promise<InventoryItem[]> => {
     const isAdmin = currentUser?.roles?.includes('admin');
@@ -367,6 +463,22 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       supabase.removeChannel(channel);
     };
   }, [refreshStockAllocations]);
+
+  // Load audit logs (non-blocking; table may not exist on older DBs)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const logs = await loadAuditLogs();
+        if (!cancelled) setAuditLogs(logs);
+      } catch {
+        if (!cancelled) setAuditLogs([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAuditLogs]);
 
   const addItem = useCallback((itemData: AddInventoryItemInput) => {
     (async () => {
@@ -775,8 +887,20 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         allocations: allocationData.allocations,
       };
       setStockAllocations((prev) => [newAllocation, ...prev]);
+
+      await addAuditLog({
+        action: 'allocation_requested',
+        itemId: newAllocation.itemId,
+        itemName: newAllocation.itemName,
+        qty: newAllocation.totalQty,
+        sourceShopId: items.find((i) => i.id === newAllocation.itemId)?.shopId,
+        targetShopId: newAllocation.allocations[0]?.shopId,
+        targetShopName: newAllocation.allocations[0]?.shopName,
+        actor: allocationData.requestedBy,
+        details: `Allocation request to ${newAllocation.allocations.length} destination(s).`,
+      });
     })();
-  }, []);
+  }, [addAuditLog, items]);
 
   const approveStockAllocation = useCallback((allocationId: string) => {
     (async () => {
@@ -810,10 +934,23 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
             pendingAllocation: false, // Stock is allocated and confirmed
           });
         }
+
+        await addAuditLog({
+          action: 'allocation_approved',
+          itemId: allocation.itemId,
+          itemName: sourceItem.name,
+          qty: alloc.qty,
+          sourceShopId: sourceItem.shopId,
+          sourceShopName: sourceItem.shopId ?? 'Unassigned',
+          targetShopId: alloc.shopId,
+          targetShopName: alloc.shopName,
+          actor: currentUser?.name || 'admin',
+          details: `Approved transfer to ${alloc.shopName}.`,
+        });
       }
 
-      // Deduct from unassigned/main stock
-      const sourceItem = items.find((i) => i.id === allocation.itemId && !i.shopId);
+      // Deduct from source stock (unassigned or shop-owned)
+      const sourceItem = items.find((i) => i.id === allocation.itemId);
       if (sourceItem) {
         const newStock = Math.max(0, sourceItem.stock - allocation.totalQty);
         await updateItem(sourceItem.id, {
@@ -842,7 +979,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         )
       );
     })();
-  }, [stockAllocations, items, addItem, updateItem, currentUser?.name]);
+  }, [stockAllocations, items, addItem, updateItem, currentUser?.name, addAuditLog]);
 
   const rejectStockAllocation = useCallback((allocationId: string) => {
     (async () => {
@@ -854,11 +991,25 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         console.error("Error rejecting stock allocation:", error);
         return;
       }
+      const allocation = stockAllocations.find((a) => a.id === allocationId);
+      if (allocation) {
+        await addAuditLog({
+          action: 'allocation_rejected',
+          itemId: allocation.itemId,
+          itemName: allocation.itemName,
+          qty: allocation.totalQty,
+          sourceShopId: items.find((i) => i.id === allocation.itemId)?.shopId,
+          targetShopId: allocation.allocations[0]?.shopId,
+          targetShopName: allocation.allocations[0]?.shopName,
+          actor: currentUser?.name || 'admin',
+          details: 'Allocation request rejected.',
+        });
+      }
       setStockAllocations((prev) =>
         prev.map((a) => (a.id === allocationId ? { ...a, status: 'rejected' } : a))
       );
     })();
-  }, []);
+  }, [addAuditLog, currentUser?.name, items, stockAllocations]);
 
   const completeExchange = (exchangeId: string) => {
     const exchange = exchanges.find(e => e.id === exchangeId);
@@ -934,6 +1085,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         purchases,
         exchanges,
         stockAllocations,
+        auditLogs,
         addItem,
         updateItem,
         removeItem,
@@ -950,6 +1102,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         approveStockAllocation,
         rejectStockAllocation,
         refreshStockAllocations,
+        addAuditLog,
       }}
     >
       {children}

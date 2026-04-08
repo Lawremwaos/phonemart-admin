@@ -13,6 +13,7 @@ WHERE table_schema = 'public'
     'purchase_items',
     'stock_allocations',
     'stock_allocation_lines',
+    'inventory_audit_logs',
     'returns',
     'repairs',
     'repair_parts',
@@ -23,5 +24,5 @@ WHERE table_schema = 'public'
   )
 ORDER BY table_name;
 
--- Expected result: 13 rows (one for each table)
+-- Expected result: 14 rows (one for each table)
 -- If you see fewer rows, some tables weren't created

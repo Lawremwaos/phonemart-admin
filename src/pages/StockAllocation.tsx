@@ -14,7 +14,7 @@ type StockRequest = {
 };
 
 export default function StockAllocation() {
-  const { items, purchases, updateItem, addItem, stockAllocations, approveStockAllocation, requestStockAllocation, refreshStockAllocations } = useInventory();
+  const { items, purchases, updateItem, addItem, stockAllocations, approveStockAllocation, requestStockAllocation, refreshStockAllocations, auditLogs } = useInventory();
   const { currentUser, currentShop, shops } = useShop();
 
   // Refresh allocations when component mounts or becomes visible (for staff to see new allocations)
@@ -47,6 +47,9 @@ export default function StockAllocation() {
   // Request states (for staff)
   const [requestItemId, setRequestItemId] = useState<number | "">("");
   const [requestQty, setRequestQty] = useState(0);
+  const [myAllocateItemId, setMyAllocateItemId] = useState<number | "">("");
+  const [myAllocateTargetShopId, setMyAllocateTargetShopId] = useState<string>("");
+  const [myAllocateQty, setMyAllocateQty] = useState(0);
 
   // Admin allocation states
   const [adminSelectedPurchaseId, setAdminSelectedPurchaseId] = useState<string>("");
@@ -83,12 +86,26 @@ export default function StockAllocation() {
     );
   }, [stockAllocations, currentShop]);
 
+  // Staff-owned stock (received/accepted stock at current shop)
+  const myStockItems = useMemo(() => {
+    if (!currentShop) return [];
+    return items.filter(item => item.shopId === currentShop.id && item.stock > 0);
+  }, [items, currentShop]);
+
 
   // Get current staff's requests
   const myRequests = useMemo(() => {
     if (!currentUser) return [];
     return stockRequests.filter(r => r.staffName === currentUser.name);
   }, [stockRequests, currentUser]);
+
+  const transferHistory = useMemo(
+    () =>
+      auditLogs.filter(
+        (l) => l.action === "allocation_requested" || l.action === "allocation_approved" || l.action === "allocation_rejected"
+      ),
+    [auditLogs]
+  );
 
   // Staff: Accept pending allocation from admin
   const handleAcceptAllocation = async (allocationId: string) => {
@@ -150,6 +167,55 @@ export default function StockAllocation() {
     setRequestItemId("");
     setRequestQty(0);
     // Keep form open so staff can request more items
+  };
+
+  // Staff: Allocate own shop stock to another shop/staff (creates pending request for admin approval)
+  const handleAllocateMyStock = () => {
+    if (!currentShop) {
+      alert("No current shop selected.");
+      return;
+    }
+    if (!myAllocateItemId || !myAllocateTargetShopId || myAllocateQty <= 0) {
+      alert("Please select item, destination shop, and quantity.");
+      return;
+    }
+    if (myAllocateTargetShopId === currentShop.id) {
+      alert("Please select a different shop/staff.");
+      return;
+    }
+
+    const sourceItem = myStockItems.find(i => i.id === myAllocateItemId);
+    if (!sourceItem) {
+      alert("Selected stock item was not found.");
+      return;
+    }
+    if (myAllocateQty > sourceItem.stock) {
+      alert(`Only ${sourceItem.stock} in stock for ${sourceItem.name}.`);
+      return;
+    }
+
+    const targetShop = shops.find(s => s.id === myAllocateTargetShopId);
+    if (!targetShop) {
+      alert("Destination shop not found.");
+      return;
+    }
+
+    requestStockAllocation({
+      itemId: sourceItem.id,
+      itemName: sourceItem.name,
+      totalQty: myAllocateQty,
+      allocations: [{
+        shopId: targetShop.id,
+        shopName: targetShop.name,
+        qty: myAllocateQty,
+      }],
+      requestedBy: currentUser?.name || "Unknown",
+    });
+
+    alert(`Allocation request submitted: ${myAllocateQty} ${sourceItem.name} to ${targetShop.name}. Waiting for admin approval.`);
+    setMyAllocateItemId("");
+    setMyAllocateTargetShopId("");
+    setMyAllocateQty(0);
   };
 
   // Admin: Approve stock request
@@ -477,6 +543,59 @@ export default function StockAllocation() {
             </div>
           )}
         </div>
+
+        {/* Dedicated transfer history table */}
+        <div className="bg-white p-6 rounded shadow">
+          <h3 className="text-lg font-semibold mb-4">Transfer History</h3>
+          {transferHistory.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">No transfer history yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="p-3 text-left">Date</th>
+                    <th className="p-3 text-left">Action</th>
+                    <th className="p-3 text-left">Item</th>
+                    <th className="p-3 text-right">Qty</th>
+                    <th className="p-3 text-left">From</th>
+                    <th className="p-3 text-left">To</th>
+                    <th className="p-3 text-left">By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transferHistory.map((log) => (
+                    <tr key={log.id} className="border-t">
+                      <td className="p-3 text-sm">{new Date(log.createdAt).toLocaleString()}</td>
+                      <td className="p-3">
+                        <span
+                          className={`px-2 py-1 rounded text-xs font-semibold ${
+                            log.action === "allocation_approved"
+                              ? "bg-green-100 text-green-800"
+                              : log.action === "allocation_rejected"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-yellow-100 text-yellow-800"
+                          }`}
+                        >
+                          {log.action === "allocation_approved"
+                            ? "Approved"
+                            : log.action === "allocation_rejected"
+                            ? "Rejected"
+                            : "Requested"}
+                        </span>
+                      </td>
+                      <td className="p-3 font-medium">{log.itemName || "-"}</td>
+                      <td className="p-3 text-right">{log.qty || 0}</td>
+                      <td className="p-3 text-sm">{log.sourceShopName || log.sourceShopId || "Unassigned"}</td>
+                      <td className="p-3 text-sm">{log.targetShopName || log.targetShopId || "-"}</td>
+                      <td className="p-3 text-sm">{log.actor || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -536,6 +655,74 @@ export default function StockAllocation() {
           </div>
         </div>
       )}
+
+      {/* Allocate my stock to other staff/shops */}
+      <div className="bg-white p-6 rounded shadow border border-purple-200">
+        <h3 className="text-lg font-semibold mb-2 text-purple-800">Allocate My Stock to Other Staff</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Use this when you have already received stock and need to share it with another shop/staff.
+        </p>
+        {myStockItems.length === 0 ? (
+          <p className="text-sm text-gray-500">No stock available in your shop to allocate.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">My Item</label>
+              <select
+                value={myAllocateItemId}
+                onChange={(e) => {
+                  setMyAllocateItemId(e.target.value ? Number(e.target.value) : "");
+                  setMyAllocateQty(0);
+                }}
+                className="w-full border border-gray-300 rounded px-3 py-2"
+              >
+                <option value="">Select item</option>
+                {myStockItems.map(item => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} (Available: {item.stock})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Destination Shop/Staff</label>
+              <select
+                value={myAllocateTargetShopId}
+                onChange={(e) => setMyAllocateTargetShopId(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2"
+              >
+                <option value="">Select destination</option>
+                {shops
+                  .filter(shop => shop.id !== currentShop?.id)
+                  .map(shop => (
+                    <option key={shop.id} value={shop.id}>
+                      {shop.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+              <input
+                type="number"
+                min="1"
+                max={myStockItems.find(i => i.id === myAllocateItemId)?.stock || 0}
+                value={myAllocateQty || ""}
+                onChange={(e) => setMyAllocateQty(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded px-3 py-2"
+                placeholder="Qty"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleAllocateMyStock}
+              className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 font-semibold"
+            >
+              Submit Allocation
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Request Stock from Admin Inventory - Expandable Section */}
       {showRequestForm && (
@@ -736,6 +923,59 @@ export default function StockAllocation() {
                           : 'Pending'}
                       </span>
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Dedicated transfer history table */}
+      <div className="bg-white p-6 rounded shadow">
+        <h3 className="text-lg font-semibold mb-4">Transfer History</h3>
+        {transferHistory.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">No transfer history yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="p-3 text-left">Date</th>
+                  <th className="p-3 text-left">Action</th>
+                  <th className="p-3 text-left">Item</th>
+                  <th className="p-3 text-right">Qty</th>
+                  <th className="p-3 text-left">From</th>
+                  <th className="p-3 text-left">To</th>
+                  <th className="p-3 text-left">By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transferHistory.map((log) => (
+                  <tr key={log.id} className="border-t">
+                    <td className="p-3 text-sm">{new Date(log.createdAt).toLocaleString()}</td>
+                    <td className="p-3">
+                      <span
+                        className={`px-2 py-1 rounded text-xs font-semibold ${
+                          log.action === "allocation_approved"
+                            ? "bg-green-100 text-green-800"
+                            : log.action === "allocation_rejected"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {log.action === "allocation_approved"
+                          ? "Approved"
+                          : log.action === "allocation_rejected"
+                          ? "Rejected"
+                          : "Requested"}
+                      </span>
+                    </td>
+                    <td className="p-3 font-medium">{log.itemName || "-"}</td>
+                    <td className="p-3 text-right">{log.qty || 0}</td>
+                    <td className="p-3 text-sm">{log.sourceShopName || log.sourceShopId || "Unassigned"}</td>
+                    <td className="p-3 text-sm">{log.targetShopName || log.targetShopId || "-"}</td>
+                    <td className="p-3 text-sm">{log.actor || "-"}</td>
                   </tr>
                 ))}
               </tbody>
