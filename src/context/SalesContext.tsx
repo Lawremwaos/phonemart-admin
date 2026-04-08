@@ -283,6 +283,21 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
 
   const addRepairAccessorySale = useCallback(async (repairId: string, shopId: string | undefined, items: Array<{ itemId?: number; name: string; qty: number; sellingPrice: number; adminBasePrice?: number; actualCost?: number }>, soldBy?: string): Promise<void> => {
     if (items.length === 0) return;
+    const { data: existingSale, error: existingSaleError } = await supabase
+      .from("sales")
+      .select("id")
+      .eq("sale_type", "repair")
+      .eq("repair_id", repairId)
+      .limit(1)
+      .maybeSingle();
+    if (existingSaleError) {
+      console.error("Error checking existing repair accessory sale:", existingSaleError);
+      throw new Error("Failed to verify existing repair sale");
+    }
+    if (existingSale?.id) {
+      // Idempotency guard: this repair sale was already recorded.
+      return;
+    }
     const total = items.reduce((sum, i) => sum + i.qty * i.sellingPrice, 0);
     const { data: saleRecord, error: saleError } = await supabase
       .from("sales")

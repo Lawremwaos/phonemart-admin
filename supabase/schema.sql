@@ -73,6 +73,19 @@ create table if not exists stock_allocation_lines (
 );
 create index if not exists stock_allocation_lines_alloc_id_idx on stock_allocation_lines(allocation_id);
 
+-- Per-shop acceptance tracking for allocations (prevents double accept and supports multi-staff shops)
+create table if not exists stock_allocation_acceptances (
+  id uuid primary key default gen_random_uuid(),
+  allocation_id uuid not null references stock_allocations(id) on delete cascade,
+  shop_id text not null,
+  accepted_by text,
+  accepted_at timestamptz not null default now()
+);
+create unique index if not exists stock_allocation_acceptances_alloc_shop_uidx
+  on stock_allocation_acceptances(allocation_id, shop_id);
+create index if not exists stock_allocation_acceptances_alloc_id_idx
+  on stock_allocation_acceptances(allocation_id);
+
 -- Inventory audit logs (edits, deletes, transfer lifecycle)
 create table if not exists inventory_audit_logs (
   id uuid primary key default gen_random_uuid(),
@@ -210,6 +223,7 @@ create table if not exists sales (
 );
 create index if not exists sales_shop_id_idx on sales(shop_id);
 create index if not exists sales_date_idx on sales(date);
+create unique index if not exists sales_repair_unique_idx on sales(repair_id) where sale_type = 'repair';
 
 create table if not exists sale_items (
   id bigserial primary key,

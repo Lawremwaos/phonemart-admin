@@ -57,7 +57,7 @@ export default function StockAllocation() {
     if (!currentShop) return [];
     return stockAllocations.filter(alloc => 
       alloc.status === 'pending' &&
-      alloc.allocations.some(a => a.shopId === currentShop.id)
+      alloc.allocations.some(a => a.shopId === currentShop.id && !a.accepted)
     );
   }, [stockAllocations, currentShop]);
 
@@ -82,14 +82,14 @@ export default function StockAllocation() {
       return;
     }
 
-    const myAllocation = allocation.allocations.find(a => a.shopId === currentShop?.id);
+    const myAllocation = allocation.allocations.find(a => a.shopId === currentShop?.id && !a.accepted);
     if (!myAllocation) {
       alert("This allocation is not for your shop");
       return;
     }
 
     if (window.confirm(`Accept ${myAllocation.qty} ${allocation.itemName} allocated to you?`)) {
-      approveStockAllocation(allocationId);
+      approveStockAllocation(allocationId, currentShop?.id);
       alert(`Accepted: ${myAllocation.qty} ${allocation.itemName} added to your stock`);
     }
   };
@@ -246,7 +246,7 @@ export default function StockAllocation() {
             </p>
             <div className="space-y-3">
               {pendingAllocationsForMyShop.map((allocation) => {
-                const myAlloc = allocation.allocations.find((a) => a.shopId === currentShop?.id);
+                const myAlloc = allocation.allocations.find((a) => a.shopId === currentShop?.id && !a.accepted);
                 if (!myAlloc) return null;
                 return (
                   <div key={allocation.id} className="border rounded-lg p-4 bg-blue-50">
@@ -473,7 +473,7 @@ export default function StockAllocation() {
           </p>
           <div className="space-y-3">
             {pendingAllocationsForMyShop.map((allocation) => {
-              const myAlloc = allocation.allocations.find(a => a.shopId === currentShop?.id);
+              const myAlloc = allocation.allocations.find(a => a.shopId === currentShop?.id && !a.accepted);
               if (!myAlloc) return null;
               return (
                 <div key={allocation.id} className="border rounded-lg p-4 bg-blue-50">

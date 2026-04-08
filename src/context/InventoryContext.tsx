@@ -11,6 +11,9 @@ export type StockAllocation = {
     shopId: string;
     shopName: string;
     qty: number;
+    accepted?: boolean;
+    acceptedBy?: string;
+    acceptedAt?: Date;
   }>;
   status: 'pending' | 'approved' | 'rejected';
   requestedBy?: string;
@@ -136,7 +139,7 @@ type InventoryContextType = {
   confirmExchangeReceipt: (exchangeId: string) => void;
   completeExchange: (exchangeId: string) => void;
   requestStockAllocation: (allocation: Omit<StockAllocation, 'id' | 'requestedDate' | 'status'>) => void;
-  approveStockAllocation: (allocationId: string) => void;
+  approveStockAllocation: (allocationId: string, shopId?: string) => void;
   rejectStockAllocation: (allocationId: string) => void;
   refreshStockAllocations: () => Promise<void>;
   addAuditLog: (entry: Omit<InventoryAuditLog, 'id' | 'createdAt'>) => Promise<void>;
@@ -503,6 +506,15 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       .from("stock_allocation_lines")
       .select("*")
       .eq("allocation_id", allocationData.id);
+    const { data: acceptsData, error: acceptsError } = await supabase
+      .from("stock_allocation_acceptances")
+      .select("*")
+      .eq("allocation_id", allocationData.id);
+    if (acceptsError) {
+      console.warn("stock_allocation_acceptances read failed:", acceptsError.message);
+    }
+    const acceptanceByShop = new Map<string, any>();
+    (acceptsData || []).forEach((a: any) => acceptanceByShop.set(a.shop_id, a));
     
     return {
       id: allocationData.id,
@@ -514,11 +526,17 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       requestedDate: new Date(allocationData.requested_date),
       approvedBy: allocationData.approved_by || undefined,
       approvedDate: allocationData.approved_date ? new Date(allocationData.approved_date) : undefined,
-      allocations: (linesData || []).map((l: any) => ({
-        shopId: l.shop_id,
-        shopName: l.shop_name,
-        qty: l.qty,
-      })),
+      allocations: (linesData || []).map((l: any) => {
+        const accepted = acceptanceByShop.get(l.shop_id);
+        return {
+          shopId: l.shop_id,
+          shopName: l.shop_name,
+          qty: l.qty,
+          accepted: Boolean(accepted),
+          acceptedBy: accepted?.accepted_by || undefined,
+          acceptedAt: accepted?.accepted_at ? new Date(accepted.accepted_at) : undefined,
+        };
+      }),
     };
   }, []);
 
@@ -559,6 +577,13 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       )
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'stock_allocation_lines' },
+        async () => {
+          if (cancelled) return;
+          await refreshStockAllocations();
+        }
+      )
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'stock_allocation_acceptances' },
         async () => {
           if (cancelled) return;
           await refreshStockAllocations();
@@ -1085,24 +1110,64 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     })();
   }, [addAuditLog, items]);
 
-  const approveStockAllocation = useCallback((allocationId: string) => {
+  const approveStockAllocation = useCallback((allocationId: string, shopId?: string) => {
     (async () => {
       const allocation = stockAllocations.find((a) => a.id === allocationId);
       if (!allocation || allocation.status !== 'pending') return;
+      const sourceItem = items.find((i) => i.id === allocation.itemId);
+      if (!sourceItem) return;
 
-      // Distribute to destination shops
-      for (const alloc of allocation.allocations) {
-        const sourceItem = items.find((i) => i.id === allocation.itemId);
-        if (!sourceItem) continue;
+      const linesToProcess = shopId
+        ? allocation.allocations.filter((a) => a.shopId === shopId)
+        : allocation.allocations;
+      if (linesToProcess.length === 0) return;
+      let remainingSourceStock = sourceItem.stock;
+
+      // Process each destination line once (idempotent per allocation/shop line)
+      for (const alloc of linesToProcess) {
+        let acceptanceTracked = true;
+        const { data: acceptedRow, error: acceptedCheckError } = await supabase
+          .from("stock_allocation_acceptances")
+          .select("id")
+          .eq("allocation_id", allocationId)
+          .eq("shop_id", alloc.shopId)
+          .maybeSingle();
+        if (acceptedCheckError) {
+          if ((acceptedCheckError as any).code === "42P01") {
+            // Backward compatibility when migration has not been applied yet.
+            acceptanceTracked = false;
+          } else {
+            console.error("Error checking allocation acceptance:", acceptedCheckError);
+            continue;
+          }
+        }
+        if (acceptanceTracked && acceptedRow) continue;
+
+        if (acceptanceTracked) {
+          const { error: acceptErr } = await supabase
+            .from("stock_allocation_acceptances")
+            .insert({
+              allocation_id: allocationId,
+              shop_id: alloc.shopId,
+              accepted_by: currentUser?.name || "staff",
+              accepted_at: new Date().toISOString(),
+            });
+          if (acceptErr) {
+            // Another client may have accepted first (unique violation): skip safely.
+            if ((acceptErr as any).code === "23505") continue;
+            console.error("Error recording allocation acceptance:", acceptErr);
+            continue;
+          }
+        }
 
         const destItem = items.find((i) => i.name === sourceItem.name && i.shopId === alloc.shopId);
         if (destItem) {
-          await updateItem(destItem.id, { 
+          await updateItem(destItem.id, {
             stock: destItem.stock + alloc.qty,
-            pendingAllocation: false, // Stock is now allocated and confirmed
+            pendingAllocation: false,
           });
         } else {
-          await addItem({
+          addItem({
             name: sourceItem.name,
             category: sourceItem.category,
             itemType: sourceItem.itemType,
@@ -1114,9 +1179,15 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
             supplier: sourceItem.supplier,
             costPrice: sourceItem.costPrice,
             adminCostPrice: sourceItem.adminCostPrice,
-            pendingAllocation: false, // Stock is allocated and confirmed
+            pendingAllocation: false,
           });
         }
+
+        remainingSourceStock = Math.max(0, remainingSourceStock - alloc.qty);
+        await updateItem(sourceItem.id, {
+          stock: remainingSourceStock,
+          pendingAllocation: sourceItem.pendingAllocation,
+        });
 
         await addAuditLog({
           action: 'allocation_approved',
@@ -1128,41 +1199,43 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
           targetShopId: alloc.shopId,
           targetShopName: alloc.shopName,
           actor: currentUser?.name || 'admin',
-          details: `Approved transfer to ${alloc.shopName}.`,
+          details: `Accepted transfer to ${alloc.shopName}.`,
         });
       }
 
-      // Deduct from source stock (unassigned or shop-owned)
-      const sourceItem = items.find((i) => i.id === allocation.itemId);
-      if (sourceItem) {
-        const newStock = Math.max(0, sourceItem.stock - allocation.totalQty);
-        await updateItem(sourceItem.id, {
-          stock: newStock,
-          pendingAllocation: newStock > 0 ? sourceItem.pendingAllocation : false,
-        });
-      }
-
-      // Update allocation status in Supabase
-      const { error } = await supabase
-        .from("stock_allocations")
-        .update({
-          status: 'approved',
-          approved_by: currentUser?.name || 'admin',
-          approved_date: new Date().toISOString(),
-        })
-        .eq("id", allocationId);
-      if (error) {
-        console.error("Error approving stock allocation:", error);
+      const { data: acceptedRows, error: acceptedRowsError } = await supabase
+        .from("stock_allocation_acceptances")
+        .select("shop_id")
+        .eq("allocation_id", allocationId);
+      if (acceptedRowsError) {
+        if ((acceptedRowsError as any).code === "42P01") {
+          await refreshStockAllocations();
+          return;
+        }
+        console.error("Error checking allocation acceptances:", acceptedRowsError);
         return;
       }
+      const acceptedShopIds = new Set((acceptedRows || []).map((r: any) => r.shop_id));
+      const allAccepted = allocation.allocations.every((a) => acceptedShopIds.has(a.shopId));
 
-      setStockAllocations((prev) =>
-        prev.map((a) =>
-          a.id === allocationId ? { ...a, status: 'approved', approvedDate: new Date() } : a
-        )
-      );
+      if (allAccepted) {
+        const { error } = await supabase
+          .from("stock_allocations")
+          .update({
+            status: 'approved',
+            approved_by: currentUser?.name || 'admin',
+            approved_date: new Date().toISOString(),
+          })
+          .eq("id", allocationId);
+        if (error) {
+          console.error("Error finalizing stock allocation:", error);
+          return;
+        }
+      }
+
+      await refreshStockAllocations();
     })();
-  }, [stockAllocations, items, addItem, updateItem, currentUser?.name, addAuditLog]);
+  }, [stockAllocations, items, addItem, updateItem, currentUser?.name, addAuditLog, refreshStockAllocations]);
 
   const rejectStockAllocation = useCallback((allocationId: string) => {
     (async () => {
