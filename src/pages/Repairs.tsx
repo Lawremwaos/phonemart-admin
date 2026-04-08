@@ -111,6 +111,18 @@ export default function Repairs() {
     return "-";
   };
 
+  const supplierLabel = (repair: Repair): string => {
+    const names = new Set<string>();
+    repair.partsUsed.forEach((part) => {
+      if (part.supplierName?.trim()) names.add(part.supplierName.trim());
+    });
+    repair.additionalItems?.forEach((item) => {
+      if (item.supplierName?.trim()) names.add(item.supplierName.trim());
+    });
+    if (names.size === 0) return "-";
+    return Array.from(names).join(", ");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center flex-wrap gap-4">
@@ -164,6 +176,7 @@ export default function Repairs() {
               <th className="p-3 text-left">Phone</th>
               <th className="p-3 text-left">Model</th>
               <th className="p-3 text-left">Issue</th>
+              <th className="p-3 text-left">Supplier</th>
               <th className="p-3 text-left">Technician</th>
               <th className="p-3 text-right">Total Cost</th>
               <th className="p-3 text-left">Payment Done By</th>
@@ -176,7 +189,7 @@ export default function Repairs() {
           <tbody>
             {filteredRepairs.length === 0 ? (
               <tr>
-                <td colSpan={isAdmin ? 13 : 12} className="p-4 text-center text-gray-500">
+                <td colSpan={isAdmin ? 14 : 13} className="p-4 text-center text-gray-500">
                   No repairs found
                 </td>
               </tr>
@@ -199,6 +212,7 @@ export default function Repairs() {
                   <td className="p-3">{repair.phoneNumber}</td>
                   <td className="p-3">{repair.phoneModel}</td>
                   <td className="p-3 text-sm">{repair.issue}</td>
+                  <td className="p-3 text-sm">{supplierLabel(repair)}</td>
                   <td className="p-3">{repair.technician}</td>
                   <td className="p-3 text-right">KES {repair.totalCost.toLocaleString()}</td>
                   <td className="p-3 text-sm">{paymentMethodLabel(repair)}</td>
