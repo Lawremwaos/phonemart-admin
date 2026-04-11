@@ -49,6 +49,25 @@ export default function Inventory() {
     [managerApprovals]
   );
 
+  const isNotForSaleItem = (item: (typeof filteredItems)[number]) => {
+    const type = (item.itemType || "").toLowerCase();
+    return type.includes("not for sale") || type.includes("shop use");
+  };
+
+  const groupedInventory = useMemo(() => {
+    const notForSale = filteredItems.filter((item) => isNotForSaleItem(item));
+    const accessories = filteredItems.filter(
+      (item) => item.category === "Accessory" && !isNotForSaleItem(item)
+    );
+    const spares = filteredItems.filter(
+      (item) => item.category === "Spare" && !isNotForSaleItem(item)
+    );
+    const other = filteredItems.filter(
+      (item) => item.category === "Phone" && !isNotForSaleItem(item)
+    );
+    return { accessories, spares, notForSale, other };
+  }, [filteredItems]);
+
   const openEdit = (item: typeof items[0]) => {
     setEditingItemId(item.id);
     setFormData({
@@ -207,80 +226,105 @@ export default function Inventory() {
         </div>
       )}
 
-      <div className="pm-table-shell">
-        <table className="w-full">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-3">Item</th>
-              <th className="p-3">Category</th>
-              <th className="p-3">Stock</th>
-              <th className="p-3">Price</th>
-              {canViewAllStock && <th className="p-3">Shop</th>}
-              <th className="p-3">Math Check</th>
-              <th className="p-3">Status</th>
-              {canEditStock && <th className="p-3">Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredItems.map((item) => {
-              const lowStock = item.stock <= item.reorderLevel;
-              const math = getStockMath(item.id);
-              return (
-                <tr
-                  key={item.id} 
-                  className={`border-t border-[var(--pm-border)] ${lowStock ? 'bg-red-50' : ''}`}
-                >
-                  <td className="p-3">{item.name}</td>
-                  <td className="p-3">{item.category}</td>
-                  <td className={`p-3 font-semibold ${lowStock ? 'text-red-600' : ''}`}>
-                    {item.stock}
+      {[
+        { key: "accessories", title: "Accessories Stock", rows: groupedInventory.accessories },
+        { key: "spares", title: "Spare Parts Stock", rows: groupedInventory.spares },
+        { key: "not_for_sale", title: "Not for Sale (Shop Use) Stock", rows: groupedInventory.notForSale },
+        { key: "other", title: "Phones / Other Stock", rows: groupedInventory.other },
+      ].map((section) => (
+        <div key={section.key} className="pm-table-shell">
+          <div className="border-b border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-3">
+            <p className="font-semibold text-[var(--pm-ink)]">{section.title}</p>
+          </div>
+          <table className="w-full">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="p-3">Item</th>
+                <th className="p-3">Category</th>
+                <th className="p-3">Stock</th>
+                <th className="p-3">Price</th>
+                {canViewAllStock && <th className="p-3">Shop</th>}
+                <th className="p-3">Math Check</th>
+                <th className="p-3">Status</th>
+                {canEditStock && <th className="p-3">Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {section.rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={canEditStock ? (canViewAllStock ? 8 : 7) : canViewAllStock ? 7 : 6}
+                    className="p-4 text-center text-[var(--pm-ink-soft)]"
+                  >
+                    No items in this section.
                   </td>
-                  <td className="p-3">KES {item.price}</td>
-                  {canViewAllStock && (
-                    <td className="p-3">{item.shopId ? shops.find((s) => s.id === item.shopId)?.name || "Unknown" : "Unassigned"}</td>
-                  )}
-                  <td className="p-3 text-xs">
-                    {math.matches ? (
-                      <span className="text-green-700 font-semibold">Balanced</span>
-                    ) : (
-                      <span className="text-red-700 font-semibold">Mismatch ({math.expectedStock} expected)</span>
-                    )}
-                  </td>
-                  <td className="p-3">
-                    {lowStock ? (
-                      <span className="text-red-600 font-bold">LOW STOCK</span>
-                    ) : (
-                      <span className="text-green-600 font-bold">OK</span>
-                    )}
-                  </td>
-                  {canEditStock && (
-                    <td className="p-3">
-                      <div className="flex gap-2 justify-center">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(item)}
-                          className="pm-btn pm-btn-secondary pm-btn-sm"
-                        >
-                          Edit
-                        </button>
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(item.id)}
-                              className="pm-btn pm-btn-danger pm-btn-sm"
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  )}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                section.rows.map((item) => {
+                  const lowStock = item.stock <= item.reorderLevel;
+                  const math = getStockMath(item.id);
+                  return (
+                    <tr
+                      key={item.id}
+                      className={`border-t border-[var(--pm-border)] ${lowStock ? "bg-red-50" : ""}`}
+                    >
+                      <td className="p-3">{item.name}</td>
+                      <td className="p-3">{item.category}</td>
+                      <td className={`p-3 font-semibold ${lowStock ? "text-red-600" : ""}`}>
+                        {item.stock}
+                      </td>
+                      <td className="p-3">KES {item.price}</td>
+                      {canViewAllStock && (
+                        <td className="p-3">
+                          {item.shopId ? shops.find((s) => s.id === item.shopId)?.name || "Unknown" : "Unassigned"}
+                        </td>
+                      )}
+                      <td className="p-3 text-xs">
+                        {math.matches ? (
+                          <span className="text-green-700 font-semibold">Balanced</span>
+                        ) : (
+                          <span className="text-red-700 font-semibold">
+                            Mismatch ({math.expectedStock} expected)
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {lowStock ? (
+                          <span className="text-red-600 font-bold">LOW STOCK</span>
+                        ) : (
+                          <span className="text-green-600 font-bold">OK</span>
+                        )}
+                      </td>
+                      {canEditStock && (
+                        <td className="p-3">
+                          <div className="flex gap-2 justify-center">
+                            <button
+                              type="button"
+                              onClick={() => openEdit(item)}
+                              className="pm-btn pm-btn-secondary pm-btn-sm"
+                            >
+                              Edit
+                            </button>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(item.id)}
+                                className="pm-btn pm-btn-danger pm-btn-sm"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      ))}
 
       {canEditStock && editingItemId && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">

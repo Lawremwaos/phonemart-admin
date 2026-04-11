@@ -131,17 +131,27 @@ export default function ProcurementReview() {
       approved_date: new Date().toISOString(),
     }).eq("id", id);
     if (error) { alert("Failed to approve."); return; }
-    if (proc?.category === "future_stock") {
-      const existing = items.find((i) => i.name === proc.itemName && !i.shopId);
+    if (proc?.category === "future_stock" || proc?.category === "shop_use") {
+      const isNotForSale = proc.category === "shop_use";
+      const existing = items.find(
+        (i) =>
+          i.name === proc.itemName &&
+          !i.shopId &&
+          (isNotForSale
+            ? (i.itemType || "").toLowerCase().includes("shop use")
+            : !(i.itemType || "").toLowerCase().includes("shop use"))
+      );
       if (existing) {
         addStock(existing.id, proc.quantity);
       } else {
         addItem({
           name: proc.itemName,
-          category: "Accessory",
+          category: isNotForSale ? "Spare" : "Accessory",
+          itemType: isNotForSale ? "Shop Use (Not for Sale)" : "Accessory Stock",
           stock: proc.quantity,
           price: 0,
           reorderLevel: 0,
+          supplier: proc.supplierName || undefined,
         });
       }
     }
