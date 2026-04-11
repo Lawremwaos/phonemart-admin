@@ -18,7 +18,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     if (!hasAllowedRole) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-100">
-          <div className="bg-white p-8 rounded-lg shadow-lg text-center">
+          <div className="pm-modal-panel pm-pad-xl text-center">
             <h2 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h2>
             <p className="text-gray-700">You don't have permission to access this page.</p>
           </div>

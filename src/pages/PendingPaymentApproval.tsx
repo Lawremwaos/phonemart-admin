@@ -131,18 +131,23 @@ export default function PendingPaymentApproval() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Pending Payment Approval</h2>
-      <p className="text-gray-600">Approve payments that have been made by customers</p>
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Approvals</p>
+          <h2 className="pm-page-title">Pending Payment Approval</h2>
+          <p className="pm-page-desc">Approve customer payments before collection is confirmed.</p>
+        </div>
+      </div>
 
       {sortedPendingApprovals.length === 0 ? (
-        <div className="bg-white p-8 rounded shadow text-center">
-          <p className="text-gray-500">No pending payment approvals</p>
+        <div className="pm-card pm-pad-xl text-center">
+          <p className="text-[var(--pm-ink-soft)]">No pending payment approvals</p>
         </div>
       ) : (
-        <div className="bg-white rounded shadow overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+        <div className="pm-card pm-pad-0 overflow-hidden">
+          <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
+            <table className="min-w-full">
+              <thead>
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date
@@ -172,11 +177,11 @@ export default function PendingPaymentApproval() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody>
                 {sortedPendingApprovals.map((repair) => (
                   <tr
                     key={repair.id}
-                    className={`hover:bg-gray-50 ${focusedRepairId === repair.id ? "bg-yellow-50 ring-1 ring-yellow-300" : ""}`}
+                    className={`hover:bg-[var(--pm-surface-soft)] border-t border-[var(--pm-border)] ${focusedRepairId === repair.id ? "bg-yellow-50 ring-1 ring-yellow-300" : ""}`}
                   >
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {formatDate(repair.date)}
@@ -206,7 +211,7 @@ export default function PendingPaymentApproval() {
                       <div className="space-y-2">
                         <button
                           onClick={() => handleApprovePayment(repair)}
-                          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 w-full"
+                          className="pm-btn pm-btn-primary w-full"
                         >
                           Approve Payment
                         </button>

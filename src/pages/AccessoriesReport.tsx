@@ -121,17 +121,21 @@ export default function AccessoriesReport() {
   };
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
-        <h1 className="text-3xl font-bold">Accessories Report</h1>
+    <div className="space-y-6">
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Reports</p>
+          <h1 className="pm-page-title">Accessories Report</h1>
+          <p className="pm-page-desc">Track accessory sales performance, costs, and profit by period.</p>
+        </div>
         <div className="flex gap-3 items-center flex-wrap">
           <div className="flex gap-2">
             {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
-                className={`px-4 py-2 rounded text-sm font-medium transition ${
-                  period === p ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                className={`pm-btn text-sm ${
+                  period === p ? 'pm-btn-primary' : 'pm-btn-secondary'
                 }`}
               >
                 {periodLabel(p)}
@@ -139,54 +143,54 @@ export default function AccessoriesReport() {
             ))}
           </div>
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Direct number (optional)</label>
-            <input type="tel" placeholder="+254712345678" value={whatsAppNumber} onChange={(e) => setWhatsAppNumber(e.target.value)} className="border border-gray-300 rounded px-3 py-2 text-sm w-40" />
+            <label className="block text-xs text-[var(--pm-ink-soft)] mb-1">Direct number (optional)</label>
+            <input type="tel" placeholder="+254712345678" value={whatsAppNumber} onChange={(e) => setWhatsAppNumber(e.target.value)} className="pm-input text-sm !w-40 max-w-none" />
           </div>
-          <button onClick={handleShareWhatsApp} className="px-4 py-2 rounded text-sm bg-green-600 text-white hover:bg-green-700">
+          <button onClick={handleShareWhatsApp} className="pm-btn pm-btn-primary text-sm">
             Send to Number
           </button>
-          <button onClick={handleShareToGroup} className="px-4 py-2 rounded text-sm bg-green-700 text-white hover:bg-green-800">
+          <button onClick={handleShareToGroup} className="pm-btn pm-btn-secondary text-sm">
             Send to WhatsApp Group
           </button>
-          <button onClick={handleShareEmail} className="px-4 py-2 rounded text-sm bg-blue-600 text-white hover:bg-blue-700">
+          <button onClick={handleShareEmail} className="pm-btn pm-btn-secondary text-sm">
             Email Report
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-xs text-gray-600">Sales</p>
+        <div className="pm-card pm-pad">
+          <p className="text-xs text-[var(--pm-ink-soft)]">Sales</p>
           <p className="text-xl font-bold text-blue-700">{accessoryAnalysis.length}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-xs text-gray-600">Revenue</p>
+        <div className="pm-card pm-pad">
+          <p className="text-xs text-[var(--pm-ink-soft)]">Revenue</p>
           <p className="text-xl font-bold text-green-700">KES {totals.revenue.toLocaleString()}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-xs text-gray-600">Cost</p>
+        <div className="pm-card pm-pad">
+          <p className="text-xs text-[var(--pm-ink-soft)]">Cost</p>
           <p className="text-xl font-bold text-red-700">KES {totals.cost.toLocaleString()}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-xs text-gray-600">Profit</p>
+        <div className="pm-card pm-pad">
+          <p className="text-xs text-[var(--pm-ink-soft)]">Profit</p>
           <p className={`text-xl font-bold ${totals.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>KES {totals.profit.toLocaleString()}</p>
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded shadow">
+      <div className="pm-card pm-pad-lg">
         <h2 className="text-lg font-semibold mb-4">Detailed Accessory Sales</h2>
         {accessoryAnalysis.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No accessory sales in this period.</p>
+          <p className="text-[var(--pm-ink-soft)] text-center py-8">No accessory sales in this period.</p>
         ) : (
           <div className="space-y-4">
             {accessoryAnalysis.map((aa) => (
-              <div key={aa.sale.id} className="border rounded-lg p-4">
+              <div key={aa.sale.id} className="border border-[var(--pm-border)] rounded-lg p-4">
                 <div className="flex justify-between items-start flex-wrap gap-2">
                   <div>
-                    <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                    <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-[var(--pm-accent-soft)] text-[var(--pm-accent-strong)]">
                       {aa.sale.saleType === 'repair' ? 'From Repair' : aa.sale.saleType === 'wholesale' ? 'Wholesale' : 'Retail'}
                     </span>
-                    <p className="text-sm text-gray-500 mt-1">{new Date(aa.sale.date).toLocaleString()}</p>
+                    <p className="text-sm text-[var(--pm-ink-soft)] mt-1">{new Date(aa.sale.date).toLocaleString()}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-green-700 font-semibold">Revenue: KES {aa.revenue.toLocaleString()}</p>
@@ -194,7 +198,7 @@ export default function AccessoriesReport() {
                     <p className={`text-sm font-bold ${aa.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>Profit: KES {aa.profit.toLocaleString()}</p>
                   </div>
                 </div>
-                <div className="mt-2 text-sm text-gray-600">
+                <div className="mt-2 text-sm text-[var(--pm-ink-soft)]">
                   {aa.itemsBreakdown.map((item, i) => (
                     <span key={i} className="inline-block mr-2 mb-1">
                       {item.itemName} x{item.qty} KES {item.totalRevenue.toLocaleString()} ({getSupplierDisplay(item.supplier)})

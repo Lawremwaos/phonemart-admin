@@ -634,15 +634,21 @@ export default function RepairSales() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Repair Sales</h2>
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Repairs</p>
+          <h2 className="pm-page-title">Repair Sales</h2>
+          <p className="pm-page-desc">Capture repair intake, parts usage, and payment details in one flow.</p>
+        </div>
+      </div>
       <ShopSelector />
       {currentShop && (
         <p className="text-sm text-gray-600">Only stock <strong>allocated to {currentShop.name}</strong> is available for spare parts and accessories from our inventory. Unallocated items cannot be selected.</p>
       )}
 
       {/* Customer Status */}
-      <div className="bg-white p-4 rounded shadow">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Customer Status</label>
+      <div className="pm-card pm-pad">
+        <label className="pm-label">Customer Status</label>
         <div className="flex gap-4">
           <label className="flex items-center">
             <input
@@ -668,71 +674,71 @@ export default function RepairSales() {
       </div>
 
       {/* Customer & Phone Details */}
-      <div className="bg-white p-6 rounded shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">Customer & Phone Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="pm-label">
               Customer Name <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               placeholder="Enter customer name"
               value={form.customerName}
               onChange={(e) => setForm({ ...form, customerName: e.target.value })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="pm-label">
               Customer Phone <span className="text-red-500">*</span>
             </label>
             <input
               type="tel"
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               placeholder="+254712345678"
               value={form.customerPhone}
               onChange={(e) => setForm({ ...form, customerPhone: e.target.value })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Phone Brand</label>
+            <label className="pm-label">Phone Brand</label>
             <input
               type="text"
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               placeholder="e.g., Samsung, iPhone, etc."
               value={form.phoneBrand}
               onChange={(e) => setForm({ ...form, phoneBrand: e.target.value })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="pm-label">
               Phone Model <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               placeholder="e.g., Galaxy S21, iPhone 14"
               value={form.phoneModel}
               onChange={(e) => setForm({ ...form, phoneModel: e.target.value })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">IMEI Number</label>
+            <label className="pm-label">IMEI Number</label>
             <input
               type="text"
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               placeholder="IMEI (optional)"
               value={form.imei}
               onChange={(e) => setForm({ ...form, imei: e.target.value })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="pm-label">
               Issue / Problem <span className="text-red-500">*</span>
             </label>
             <textarea
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               placeholder="Describe the issue..."
               rows={3}
               value={form.issue}
@@ -740,23 +746,23 @@ export default function RepairSales() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="pm-label">
               Total Agreed Amount (KES) <span className="text-red-500">*</span>
             </label>
             <input
               type="number"
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               placeholder="Enter total amount customer agreed to pay"
               value={form.totalAgreedAmount}
               onChange={(e) => setForm({ ...form, totalAgreedAmount: e.target.value })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="pm-label">
               Payment Timing <span className="text-red-500">*</span>
             </label>
             <select
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               value={form.paymentTiming}
               onChange={(e) => setForm({ ...form, paymentTiming: e.target.value as 'before' | 'after' })}
             >
@@ -765,12 +771,12 @@ export default function RepairSales() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="pm-label">
               Deposit Amount (KES)
             </label>
             <input
               type="number"
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               placeholder="If part needs to be sourced from another location"
               value={form.depositAmount}
               onChange={(e) => {
@@ -793,7 +799,7 @@ export default function RepairSales() {
       </div>
 
       {/* Parts, accessories & services */}
-      <div className="bg-white p-6 rounded shadow space-y-4">
+      <div className="pm-card pm-pad-lg space-y-4">
         <div>
           <h3 className="text-lg font-semibold">Spare parts, accessories & services</h3>
           <p className="text-sm text-gray-600 mt-1">
@@ -803,9 +809,9 @@ export default function RepairSales() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Line type</label>
+            <label className="pm-label mb-1">Line type</label>
             <select
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               value={partLineKind}
               onChange={(e) => {
                 const v = e.target.value as RepairLineKind;
@@ -829,12 +835,12 @@ export default function RepairSales() {
         {partLineKind === "service" ? (
           <div className="space-y-3 border border-gray-200 rounded-lg p-4 bg-gray-50">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="pm-label mb-1">
                 Service description <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                className="pm-input"
                 placeholder="e.g. Software update, ultrasonic cleaning"
                 value={partName}
                 onChange={(e) => setPartName(e.target.value)}
@@ -842,9 +848,9 @@ export default function RepairSales() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="relative">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Supplier (optional)</label>
+                <label className="pm-label mb-1">Supplier (optional)</label>
                 <select
-                  className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                  className="pm-input"
                   value={selectedSupplierId}
                   onChange={(e) => {
                     if (e.target.value === "add_new") {
@@ -863,10 +869,10 @@ export default function RepairSales() {
                   <option value="add_new">+ Add new supplier</option>
                 </select>
                 {showAddSupplier && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md p-3 shadow-lg z-10">
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[var(--pm-surface)] border border-[var(--pm-border)] rounded-md p-3 shadow-lg z-10">
                     <input
                       type="text"
-                      className="border border-gray-300 rounded-md px-3 py-2 w-full mb-2"
+                      className="pm-input w-full mb-2"
                       placeholder="Supplier name"
                       value={newSupplierName}
                       onChange={(e) => setNewSupplierName(e.target.value)}
@@ -875,7 +881,7 @@ export default function RepairSales() {
                       <button
                         type="button"
                         onClick={() => void addNewSupplier()}
-                        className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                        className="pm-btn pm-btn-primary pm-btn-sm"
                       >
                         Add
                       </button>
@@ -894,10 +900,10 @@ export default function RepairSales() {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Or type supplier name</label>
+                <label className="pm-label mb-1">Or type supplier name</label>
                 <input
                   type="text"
-                  className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                  className="pm-input"
                   placeholder="Manual supplier name"
                   value={manualSupplierName}
                   onChange={(e) => setManualSupplierName(e.target.value)}
@@ -907,7 +913,7 @@ export default function RepairSales() {
             <button
               type="button"
               onClick={addPart}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="pm-btn pm-btn-primary"
             >
               Add line
             </button>
@@ -915,9 +921,9 @@ export default function RepairSales() {
         ) : (
           <div className="space-y-3 border border-gray-200 rounded-lg p-4 bg-gray-50">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Source</label>
+              <label className="pm-label mb-1">Source</label>
               <select
-                className="border border-gray-300 rounded-md px-3 py-2 w-full max-w-md"
+                className="pm-input w-full max-w-md"
                 value={partSource}
                 onChange={(e) => {
                   setPartSource(e.target.value as PartSource);
@@ -934,9 +940,9 @@ export default function RepairSales() {
 
             {partSource === "in-house" && partLineKind === "spare_part" && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Pick spare / phone part</label>
+                <label className="pm-label mb-1">Pick spare / phone part</label>
                 <select
-                  className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                  className="pm-input"
                   value={spareInventoryPickId}
                   onChange={(e) => {
                     setSpareInventoryPickId(e.target.value);
@@ -957,9 +963,9 @@ export default function RepairSales() {
 
             {partSource === "in-house" && partLineKind === "accessory" && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Pick accessory</label>
+                <label className="pm-label mb-1">Pick accessory</label>
                 <select
-                  className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                  className="pm-input"
                   value={accessoryInventoryPickId}
                   onChange={(e) => {
                     setAccessoryInventoryPickId(e.target.value);
@@ -979,13 +985,13 @@ export default function RepairSales() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="pm-label mb-1">
                 {partSource === "in-house" ? "Name (must match stock if not using pick list)" : "Item name"}{" "}
                 <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                className="pm-input"
                 placeholder={partLineKind === "accessory" ? "Accessory name" : "Spare part name"}
                 value={partName}
                 onChange={(e) => setPartName(e.target.value)}
@@ -995,9 +1001,9 @@ export default function RepairSales() {
             {partSource === "outsourced" && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+                  <label className="pm-label mb-1">Supplier</label>
                   <select
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    className="pm-input"
                     value={selectedSupplierId}
                     onChange={(e) => {
                       if (e.target.value === "add_new") {
@@ -1016,10 +1022,10 @@ export default function RepairSales() {
                     <option value="add_new">+ Add new supplier</option>
                   </select>
                   {showAddSupplier && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md p-3 shadow-lg z-10">
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-[var(--pm-surface)] border border-[var(--pm-border)] rounded-md p-3 shadow-lg z-10">
                       <input
                         type="text"
-                        className="border border-gray-300 rounded-md px-3 py-2 w-full mb-2"
+                        className="pm-input w-full mb-2"
                         placeholder="Supplier name"
                         value={newSupplierName}
                         onChange={(e) => setNewSupplierName(e.target.value)}
@@ -1028,7 +1034,7 @@ export default function RepairSales() {
                         <button
                           type="button"
                           onClick={() => void addNewSupplier()}
-                          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                          className="pm-btn pm-btn-primary pm-btn-sm"
                         >
                           Add
                         </button>
@@ -1047,10 +1053,10 @@ export default function RepairSales() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Or type supplier name</label>
+                  <label className="pm-label mb-1">Or type supplier name</label>
                   <input
                     type="text"
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    className="pm-input"
                     placeholder="If not in list"
                     value={manualSupplierName}
                     onChange={(e) => setManualSupplierName(e.target.value)}
@@ -1062,7 +1068,7 @@ export default function RepairSales() {
             <button
               type="button"
               onClick={addPart}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="pm-btn pm-btn-primary"
             >
               Add line
             </button>
@@ -1118,7 +1124,7 @@ export default function RepairSales() {
       </div>
 
       {/* Costs & Payment */}
-      <div className="bg-white p-6 rounded shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">Costs & Payment</h3>
 
         {/* Payment Section */}
@@ -1127,7 +1133,7 @@ export default function RepairSales() {
           <div className="space-y-4">
             {/* Payment Made/Not Made Option */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="pm-label">
                 Has Payment Been Made? <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-4">
@@ -1163,7 +1169,7 @@ export default function RepairSales() {
             {paymentMade === 'yes' && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment type</label>
+                  <label className="pm-label">Payment type</label>
                   <div className="flex gap-4 mb-3">
                     <label className="flex items-center">
                       <input
@@ -1204,7 +1210,7 @@ export default function RepairSales() {
                       <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Method</label>
                         <select
-                          className="border border-gray-300 rounded-md px-2 py-1.5 w-full text-sm"
+                          className="pm-select text-sm"
                           value={splitPaymentMethod}
                           onChange={(e) => setSplitPaymentMethod(e.target.value as PaymentMethod)}
                         >
@@ -1218,16 +1224,16 @@ export default function RepairSales() {
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Amount (KES)</label>
-                        <input type="number" min="1" step="1" className="border border-gray-300 rounded-md px-2 py-1.5 w-full text-sm" value={splitPaymentAmount} onChange={(e) => setSplitPaymentAmount(e.target.value)} placeholder="Amount" />
+                        <input type="number" min="1" step="1" className="pm-input text-sm" value={splitPaymentAmount} onChange={(e) => setSplitPaymentAmount(e.target.value)} placeholder="Amount" />
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Transaction code</label>
-                        <input type="text" className="border border-gray-300 rounded-md px-2 py-1.5 w-full text-sm uppercase" value={splitPaymentCode} onChange={(e) => setSplitPaymentCode(e.target.value)} placeholder="Code" />
+                        <input type="text" className="pm-input text-sm uppercase" value={splitPaymentCode} onChange={(e) => setSplitPaymentCode(e.target.value)} placeholder="Code" />
                       </div>
                       {bankMethods.includes(splitPaymentMethod) && (
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">Bank</label>
-                          <select className="border border-gray-300 rounded-md px-2 py-1.5 w-full text-sm" value={splitPaymentBank || transactionCodes.bank} onChange={(e) => setSplitPaymentBank(e.target.value)}>
+                          <select className="pm-select text-sm" value={splitPaymentBank || transactionCodes.bank} onChange={(e) => setSplitPaymentBank(e.target.value)}>
                             <option value="">Select</option>
                             <option value="KCB">KCB</option>
                             <option value="Equity">Equity</option>
@@ -1237,15 +1243,15 @@ export default function RepairSales() {
                           </select>
                         </div>
                       )}
-                      <button type="button" onClick={addSplitPayment} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">Add payment</button>
+                      <button type="button" onClick={addSplitPayment} className="pm-btn pm-btn-primary pm-btn-sm">Add payment</button>
                     </div>
                   </div>
                 ) : (
                   <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                  <label className="pm-label">Payment Method</label>
                   <select
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    className="pm-input"
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                   >
@@ -1261,12 +1267,12 @@ export default function RepairSales() {
                 {/* Cash to Deposit */}
                 {paymentMethod === 'cash_to_deposit' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="pm-label">
                       Transaction Code (Required) <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                      className="pm-input uppercase"
                       placeholder="Enter transaction code after depositing cash"
                       value={transactionCodes.cash_to_deposit}
                       onChange={(e) => setTransactionCodes({ ...transactionCodes, cash_to_deposit: e.target.value.toUpperCase() })}
@@ -1278,12 +1284,12 @@ export default function RepairSales() {
                 {/* Mpesa to Paybill */}
                 {paymentMethod === 'mpesa_to_paybill' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="pm-label">
                       MPESA Transaction Code (Required) <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                      className="pm-input uppercase"
                       placeholder="Enter MPESA transaction code"
                       value={transactionCodes.mpesa_to_paybill}
                       onChange={(e) => setTransactionCodes({ ...transactionCodes, mpesa_to_paybill: e.target.value.toUpperCase() })}
@@ -1294,12 +1300,12 @@ export default function RepairSales() {
                 {/* Mpesa to M-pesa Shop */}
                 {paymentMethod === 'mpesa_to_mpesa_shop' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="pm-label">
                       MPESA Transaction Code (Required) <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                      className="pm-input uppercase"
                       placeholder="Enter MPESA transaction code"
                       value={transactionCodes.mpesa_to_mpesa_shop}
                       onChange={(e) => setTransactionCodes({ ...transactionCodes, mpesa_to_mpesa_shop: e.target.value.toUpperCase() })}
@@ -1311,11 +1317,11 @@ export default function RepairSales() {
                 {paymentMethod === 'bank_to_mpesa_shop' && (
                   <>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="pm-label">
                         Bank <span className="text-red-500">*</span>
                       </label>
                       <select
-                        className="border border-gray-300 rounded-md px-3 py-2 w-full mb-2"
+                        className="pm-select w-full mb-2"
                         value={transactionCodes.bank === transactionCodes.customBank ? 'custom' : transactionCodes.bank}
                         onChange={(e) => {
                           const bankValue = e.target.value;
@@ -1344,7 +1350,7 @@ export default function RepairSales() {
                       {(transactionCodes.bank === transactionCodes.customBank || transactionCodes.bank === '') && (
                         <input
                           type="text"
-                          className="border border-gray-300 rounded-md px-3 py-2 w-full mt-2"
+                          className="pm-input w-full mt-2"
                           placeholder="Enter bank name"
                           value={transactionCodes.customBank}
                           onChange={(e) => setTransactionCodes({ ...transactionCodes, customBank: e.target.value, bank: e.target.value })}
@@ -1352,12 +1358,12 @@ export default function RepairSales() {
                       )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="pm-label">
                         Transaction Code (Required) <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
-                        className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                        className="pm-input uppercase"
                         placeholder="Enter transaction code"
                         value={transactionCodes.bank_to_mpesa_shop}
                         onChange={(e) => setTransactionCodes({ ...transactionCodes, bank_to_mpesa_shop: e.target.value.toUpperCase() })}
@@ -1370,11 +1376,11 @@ export default function RepairSales() {
                 {paymentMethod === 'bank_to_shop_bank' && (
                   <>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="pm-label">
                         Bank <span className="text-red-500">*</span>
                       </label>
                       <select
-                        className="border border-gray-300 rounded-md px-3 py-2 w-full mb-2"
+                        className="pm-select w-full mb-2"
                         value={transactionCodes.bank === transactionCodes.customBank ? 'custom' : transactionCodes.bank}
                         onChange={(e) => {
                           const bankValue = e.target.value;
@@ -1403,7 +1409,7 @@ export default function RepairSales() {
                       {(transactionCodes.bank === transactionCodes.customBank || transactionCodes.bank === '') && (
                         <input
                           type="text"
-                          className="border border-gray-300 rounded-md px-3 py-2 w-full mt-2"
+                          className="pm-input w-full mt-2"
                           placeholder="Enter bank name"
                           value={transactionCodes.customBank}
                           onChange={(e) => setTransactionCodes({ ...transactionCodes, customBank: e.target.value, bank: e.target.value })}
@@ -1411,12 +1417,12 @@ export default function RepairSales() {
                       )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="pm-label">
                         Transaction Code (Required) <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
-                        className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                        className="pm-input uppercase"
                         placeholder="Enter transaction code"
                         value={transactionCodes.bank_to_shop_bank}
                         onChange={(e) => setTransactionCodes({ ...transactionCodes, bank_to_shop_bank: e.target.value.toUpperCase() })}
@@ -1429,11 +1435,11 @@ export default function RepairSales() {
                 {paymentMethod === 'sacco_to_mpesa' && (
                   <>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="pm-label">
                         Sacco <span className="text-red-500">*</span>
                       </label>
                       <select
-                        className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                        className="pm-input"
                         value={transactionCodes.bank}
                         onChange={(e) => setTransactionCodes({ ...transactionCodes, bank: e.target.value })}
                       >
@@ -1447,12 +1453,12 @@ export default function RepairSales() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="pm-label">
                         Transaction Code (Required) <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
-                        className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                        className="pm-input uppercase"
                         placeholder="Enter transaction code"
                         value={transactionCodes.sacco_to_mpesa}
                         onChange={(e) => setTransactionCodes({ ...transactionCodes, sacco_to_mpesa: e.target.value.toUpperCase() })}
@@ -1525,7 +1531,7 @@ export default function RepairSales() {
           type="button"
           onClick={() => void handleCompleteRepairSale()}
           disabled={isSubmittingRepairSale}
-          className="w-full mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+          className="pm-btn pm-btn-primary w-full mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {isSubmittingRepairSale
             ? "Saving…"

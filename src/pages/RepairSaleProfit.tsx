@@ -167,7 +167,7 @@ export default function RepairSaleProfit() {
             <select
               value={selectedShopId}
               onChange={(e) => setSelectedShopId(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 bg-white"
+              className="pm-input"
             >
               <option value="all">All Shops</option>
               {shops.map(shop => (
@@ -196,21 +196,21 @@ export default function RepairSaleProfit() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-sm text-gray-600 mb-1">Total Repairs</h3>
           <p className="text-2xl font-bold text-blue-600">{profitBreakdown.summary.repairCount}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-sm text-gray-600 mb-1">Total Revenue</h3>
           <p className="text-2xl font-bold text-green-600">KES {profitBreakdown.summary.totalRevenue.toLocaleString()}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-sm text-gray-600 mb-1">{isAdmin ? 'Total Cost (Wholesale)' : 'Total Cost (Staff Base)'}</h3>
           <p className="text-2xl font-bold text-red-600">
             KES {(isAdmin ? profitBreakdown.summary.totalWholesaleCost : profitBreakdown.summary.totalStaffCost).toLocaleString()}
           </p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-sm text-gray-600 mb-1">{isAdmin ? 'Total Profit (Wholesale)' : 'Total Profit (Staff)'}</h3>
           <p className={`text-2xl font-bold ${(isAdmin ? profitBreakdown.summary.totalWholesaleProfit : profitBreakdown.summary.totalStaffProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             KES {(isAdmin ? profitBreakdown.summary.totalWholesaleProfit : profitBreakdown.summary.totalStaffProfit).toLocaleString()}
@@ -220,7 +220,7 @@ export default function RepairSaleProfit() {
 
       {isAdmin && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white p-5 rounded-lg shadow border-l-4 border-blue-500">
+          <div className="pm-card pm-pad-lg border-l-4 border-blue-500">
             <h3 className="text-sm text-gray-600 mb-1">Staff Profit View (Retail/Base)</h3>
             <p className={`text-2xl font-bold ${profitBreakdown.summary.totalStaffProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               KES {profitBreakdown.summary.totalStaffProfit.toLocaleString()}
@@ -229,7 +229,7 @@ export default function RepairSaleProfit() {
               Uses staff/base part prices.
             </p>
           </div>
-          <div className="bg-white p-5 rounded-lg shadow border-l-4 border-purple-500">
+          <div className="pm-card pm-pad-lg border-l-4 border-purple-500">
             <h3 className="text-sm text-gray-600 mb-1">Admin Profit View (Wholesale/Actual)</h3>
             <p className={`text-2xl font-bold ${profitBreakdown.summary.totalWholesaleProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               KES {profitBreakdown.summary.totalWholesaleProfit.toLocaleString()}
@@ -242,7 +242,7 @@ export default function RepairSaleProfit() {
       )}
 
       {/* Cost Breakdown */}
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">Cost Breakdown</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="border rounded p-4">
@@ -263,7 +263,7 @@ export default function RepairSaleProfit() {
       </div>
 
       {/* Detailed Repair List */}
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
+      <div className="pm-table-shell">
         <h3 className="text-lg font-semibold p-4 border-b">Detailed Repair Sales</h3>
         <table className="w-full">
           <thead className="bg-gray-100">

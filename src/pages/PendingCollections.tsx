@@ -4,6 +4,7 @@ import { useRepair, type Repair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
 import { usePayment } from "../context/PaymentContext";
 import { canMarkRepairCollected, repairToReceiptState } from "../utils/repairReceiptHelpers";
+import { repairNeedsOutsourcedCost } from "../utils/repairOutsourcedCost";
 
 type FilterType = 'all' | 'pending_collection' | 'pending_payment' | 'fully_paid';
 
@@ -135,25 +136,6 @@ export default function PendingCollections() {
     return shops.find(s => s.id === shopId)?.name || shopId;
   };
 
-  const repairNeedsOutsourcedCost = (repair: typeof repairs[0]): boolean => {
-    const hasPartNeedingCost = repair.partsUsed.some(p => {
-      const cost = p.cost ?? 0;
-      const isOutsourced = (p as { source?: string }).source === 'outsourced' || !!p.supplierName;
-      return cost === 0 || cost === null || (isOutsourced && cost <= 0);
-    });
-    if (hasPartNeedingCost) return true;
-    if (repair.additionalItems) {
-      return repair.additionalItems.some(item => {
-        if (item.source !== 'outsourced') return false;
-        const hasPartWithCost = repair.partsUsed.some(
-          p => p.itemName === item.itemName && (Number(p.cost) || 0) > 0
-        );
-        return !hasPartWithCost;
-      });
-    }
-    return false;
-  };
-
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -212,48 +194,52 @@ export default function PendingCollections() {
   }, [repairs, currentUser]);
 
   return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6">
-        {currentUser?.roles.includes('admin') 
-          ? 'Pending Collections & Payments' 
-          : 'Pending Collections'}
-      </h1>
+    <div className="space-y-6">
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Repairs Queue</p>
+          <h1 className="pm-page-title">
+            {currentUser?.roles.includes('admin') ? 'Pending Collections & Payments' : 'Pending Collections'}
+          </h1>
+          <p className="pm-page-desc">Track payment approvals and confirm phone pickup flow.</p>
+        </div>
+      </div>
       {!currentUser?.roles.includes('admin') && (
-        <p className="text-gray-600 mb-4">
+        <p className="text-[var(--pm-ink-soft)]">
           Confirm when customers collect their phones. Payment approvals are handled by admin.
         </p>
       )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-sm text-gray-600">Total Pending</p>
+        <div className="pm-card pm-pad">
+          <p className="text-sm text-[var(--pm-ink-soft)]">Total Pending</p>
           <p className="text-2xl font-bold">{stats.total}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-sm text-gray-600">Ready for Collection</p>
+        <div className="pm-card pm-pad">
+          <p className="text-sm text-[var(--pm-ink-soft)]">Ready for Collection</p>
           <p className="text-2xl font-bold text-green-600">{stats.pendingCollection}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-sm text-gray-600">Pending Payment</p>
+        <div className="pm-card pm-pad">
+          <p className="text-sm text-[var(--pm-ink-soft)]">Pending Payment</p>
           <p className="text-2xl font-bold text-red-600">{stats.pendingPayment}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-sm text-gray-600">Total Pending Amount</p>
+        <div className="pm-card pm-pad">
+          <p className="text-sm text-[var(--pm-ink-soft)]">Total Pending Amount</p>
           <p className="text-2xl font-bold text-orange-600">KES {stats.totalPendingAmount.toLocaleString()}</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded shadow mb-6">
+      <div className="pm-card pm-pad mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="pm-label">
               Search
             </label>
             <input
               type="text"
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               placeholder="Search by customer name, phone, model, or IMEI"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -263,22 +249,22 @@ export default function PendingCollections() {
       </div>
       
       {/* Current Filter Display */}
-      <div className="mb-4 bg-blue-50 border border-blue-200 rounded p-3">
-        <p className="text-sm text-gray-700">
+      <div className="mb-4 rounded p-3 border border-[var(--pm-border)] bg-[var(--pm-surface-soft)]">
+        <p className="text-sm text-[var(--pm-ink)]">
           Showing: <span className="font-semibold capitalize text-blue-800">{filter === 'pending_collection' ? 'Ready for Collection' : filter === 'pending_payment' ? 'Pending Payment' : filter === 'fully_paid' ? 'Fully Paid' : 'All'}</span>
         </p>
       </div>
 
       {/* Repairs Table */}
-      <div className="bg-white rounded shadow overflow-hidden">
+      <div className="pm-card pm-pad-0 overflow-hidden">
         {filteredRepairs.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
+          <div className="p-8 text-center text-[var(--pm-ink-soft)]">
             <p>No pending collections or payments found.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
+            <table className="min-w-full">
+              <thead>
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date
@@ -314,11 +300,11 @@ export default function PendingCollections() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody>
                 {filteredRepairs.map((repair) => (
                   <tr
                     key={repair.id}
-                    className="hover:bg-gray-50 cursor-pointer"
+                    className="hover:bg-[var(--pm-surface-soft)] cursor-pointer border-t border-[var(--pm-border)]"
                     onClick={() => setRepairRowMenu(repair)}
                   >
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -378,7 +364,7 @@ export default function PendingCollections() {
                               setPaymentMethod((repair as any).pendingTransactionCodes.paymentMethod);
                             }
                           }}
-                          className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-sm"
+                          className="pm-btn pm-btn-primary pm-btn-sm"
                         >
                           Confirm Payment
                         </button>
@@ -394,7 +380,7 @@ export default function PendingCollections() {
                               alert("Payment approved! Phone can now be released for collection.");
                             }
                           }}
-                          className="bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700 text-sm font-semibold"
+                          className="pm-btn pm-btn-secondary pm-btn-sm"
                         >
                           Approve Payment
                         </button>
@@ -416,7 +402,7 @@ export default function PendingCollections() {
                                   navigate('/receipt', { state: { sale: repairToReceiptState(repair) } });
                                 }
                               }}
-                              className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"
+                              className="pm-btn pm-btn-secondary pm-btn-sm"
                             >
                               Confirm Collection
                             </button>
@@ -462,7 +448,7 @@ export default function PendingCollections() {
                                   },
                                 });
                               }}
-                              className="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700"
+                              className="pm-btn pm-btn-secondary pm-btn-sm"
                             >
                               Reprint Receipt
                             </button>
@@ -486,19 +472,19 @@ export default function PendingCollections() {
           role="presentation"
         >
           <div
-            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+            className="pm-modal-panel max-w-md w-full p-6"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="pending-repair-action-title"
           >
-            <h3 id="pending-repair-action-title" className="text-lg font-bold text-gray-900">
+            <h3 id="pending-repair-action-title" className="text-lg font-bold text-[var(--pm-ink)]">
               Repair: {repairRowMenu.customerName}
             </h3>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm text-[var(--pm-ink-soft)] mt-1">
               {repairRowMenu.phoneModel} · KES {(repairRowMenu.totalAgreedAmount || repairRowMenu.totalCost).toLocaleString()}
             </p>
-            <p className="text-sm text-gray-700 mt-4">Choose an action:</p>
+            <p className="text-sm text-[var(--pm-ink-soft)] mt-4">Choose an action:</p>
             <div className="flex flex-col gap-3 mt-4">
               <button
                 type="button"
@@ -508,7 +494,7 @@ export default function PendingCollections() {
                     ? "Requires full payment, admin approval, and zero balance"
                     : undefined
                 }
-                className="w-full bg-green-600 text-white px-4 py-2 rounded font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="pm-btn pm-btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => {
                   if (!canMarkRepairCollected(repairRowMenu)) return;
                   if (
@@ -527,7 +513,7 @@ export default function PendingCollections() {
               </button>
               <button
                 type="button"
-                className="w-full bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700"
+                className="pm-btn pm-btn-secondary w-full"
                 onClick={() => {
                   const r = repairRowMenu;
                   if (!r) return;
@@ -565,7 +551,7 @@ export default function PendingCollections() {
               </button>
               <button
                 type="button"
-                className="w-full border border-gray-300 text-gray-800 px-4 py-2 rounded font-medium hover:bg-gray-50"
+                className="pm-btn pm-btn-secondary w-full"
                 onClick={() => setRepairRowMenu(null)}
               >
                 Cancel
@@ -578,7 +564,7 @@ export default function PendingCollections() {
       {/* Payment Confirmation Modal - ADMIN ONLY */}
       {showPaymentModal && selectedRepair && currentUser?.roles.includes('admin') && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
+          <div className="pm-modal-panel pm-pad-lg max-w-md w-full mx-4">
             <h2 className="text-2xl font-bold mb-4">Confirm Payment</h2>
             <div className="mb-4">
               <p className="text-sm text-gray-600">Customer: <strong>{selectedRepair.customerName}</strong></p>
@@ -588,9 +574,9 @@ export default function PendingCollections() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                <label className="pm-label">Payment Method</label>
                 <select
-                  className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                  className="pm-input"
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as any)}
                 >
@@ -602,12 +588,12 @@ export default function PendingCollections() {
 
               {paymentMethod === 'cash_to_mpesa' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     Transaction Code <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                    className="pm-input uppercase"
                     placeholder="Enter MPESA transaction code"
                     value={transactionCodes.cash_to_mpesa}
                     onChange={(e) => setTransactionCodes({ ...transactionCodes, cash_to_mpesa: e.target.value.toUpperCase() })}
@@ -617,12 +603,12 @@ export default function PendingCollections() {
 
               {paymentMethod === 'mpesa_to_paybill' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     MPESA Transaction Code <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                    className="pm-input uppercase"
                     placeholder="Enter MPESA transaction code"
                     value={transactionCodes.mpesa_to_paybill}
                     onChange={(e) => setTransactionCodes({ ...transactionCodes, mpesa_to_paybill: e.target.value.toUpperCase() })}
@@ -633,9 +619,9 @@ export default function PendingCollections() {
               {paymentMethod === 'bank_to_paybill' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Bank</label>
+                    <label className="pm-label">Bank</label>
                     <select
-                      className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                      className="pm-input"
                       value={transactionCodes.bank}
                       onChange={(e) => setTransactionCodes({ ...transactionCodes, bank: e.target.value })}
                     >
@@ -648,12 +634,12 @@ export default function PendingCollections() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="pm-label">
                       Transaction Code <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                      className="pm-input uppercase"
                       placeholder="Enter bank transaction code"
                       value={transactionCodes.bank_to_paybill}
                       onChange={(e) => setTransactionCodes({ ...transactionCodes, bank_to_paybill: e.target.value.toUpperCase() })}

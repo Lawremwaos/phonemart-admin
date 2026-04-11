@@ -12,17 +12,17 @@ export default function ShopSelector() {
 
   if (!availableShops || availableShops.length <= 1) {
     return (
-      <div className="bg-white p-4 rounded-lg shadow mb-4">
-        <div className="flex items-center justify-between">
+      <div className="pm-card pm-pad mb-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm text-gray-600">Current Shop</p>
-            <p className="font-semibold">{currentShop?.name || 'No shop selected'}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--pm-ink-soft)]">Current shop</p>
+            <p className="font-semibold text-[var(--pm-ink)]">{currentShop?.name || 'No shop selected'}</p>
           </div>
           {currentUser && (
-            <div className="text-right">
-              <p className="text-sm text-gray-600">Logged in as</p>
-              <p className="font-semibold">{currentUser.name}</p>
-              <p className="text-xs text-gray-500 capitalize">{currentUser.roles.join(', ')}</p>
+            <div className="text-left sm:text-right">
+              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--pm-ink-soft)]">Session</p>
+              <p className="font-semibold text-[var(--pm-ink)]">{currentUser.name}</p>
+              <p className="text-xs capitalize text-[var(--pm-ink-soft)]">{currentUser.roles.join(', ')}</p>
             </div>
           )}
         </div>
@@ -31,9 +31,9 @@ export default function ShopSelector() {
   }
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow mb-4">
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Select Shop
+    <div className="pm-card pm-pad mb-4">
+      <label className="mb-2 block text-sm font-medium text-[var(--pm-ink-soft)]">
+        Select shop
       </label>
       <select
         value={currentShop?.id || ''}
@@ -41,7 +41,7 @@ export default function ShopSelector() {
           const shop = shops.find(s => s.id === e.target.value);
           if (shop) setCurrentShop(shop);
         }}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="pm-select"
       >
         {availableShops.map((shop) => (
           <option key={shop.id} value={shop.id}>
@@ -50,8 +50,9 @@ export default function ShopSelector() {
         ))}
       </select>
       {currentUser && (
-        <div className="mt-2 text-sm text-gray-600">
-          Logged in as: <span className="font-semibold">{currentUser.name}</span> ({currentUser.roles.join(', ')})
+        <div className="mt-3 text-xs text-[var(--pm-ink-soft)]">
+          Signed in as <span className="font-semibold text-[var(--pm-ink)]">{currentUser.name}</span>
+          <span className="capitalize"> ({currentUser.roles.join(', ')})</span>
         </div>
       )}
     </div>

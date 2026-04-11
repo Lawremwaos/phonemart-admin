@@ -141,7 +141,7 @@ export default function AdminCustomerManagement() {
       <h2 className="text-2xl font-bold mb-6">Customer Data Management</h2>
       
       {/* Search and Filter */}
-      <div className="bg-white p-4 rounded shadow mb-6">
+      <div className="pm-card pm-pad mb-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <input
@@ -149,14 +149,14 @@ export default function AdminCustomerManagement() {
               placeholder="Search by customer name, phone, or ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
+              className="pm-input"
             />
           </div>
           <div>
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value as 'all' | 'repairs' | 'sales')}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
+              className="pm-input"
             >
               <option value="all">All Records</option>
               <option value="repairs">Repairs Only</option>
@@ -168,7 +168,7 @@ export default function AdminCustomerManagement() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Repairs Section */}
-        <div className="bg-white rounded shadow">
+        <div className="pm-card pm-pad">
           <h3 className="text-lg font-semibold p-4 border-b">Repair Records ({filteredRepairs.length})</h3>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             {filteredRepairs.length === 0 ? (
@@ -216,7 +216,7 @@ export default function AdminCustomerManagement() {
         </div>
 
         {/* Sales Section */}
-        <div className="bg-white rounded shadow">
+        <div className="pm-card pm-pad">
           <h3 className="text-lg font-semibold p-4 border-b">Sales Records ({filteredSales.length})</h3>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             {filteredSales.length === 0 ? (
@@ -267,14 +267,14 @@ export default function AdminCustomerManagement() {
       {/* Receipt Preview Modal */}
       {(selectedRepair || selectedSale) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="pm-modal-panel max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-bold">Receipt Preview</h3>
                 <div className="flex gap-2">
                   <button
                     onClick={handleDownloadPDF}
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                    className="pm-btn pm-btn-primary"
                   >
                     Download PDF
                   </button>

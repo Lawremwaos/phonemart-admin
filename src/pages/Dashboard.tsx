@@ -219,23 +219,34 @@ export default function Dashboard() {
   const periodLabel = (p: Period) => p === 'today' ? 'Today' : p === 'week' ? 'This Week' : 'This Month';
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Dashboard</h2>
-        {isAdmin ? (
-          <p className="text-gray-600 font-semibold">All Shops (Aggregated View)</p>
-        ) : currentShop ? (
-          <p className="text-gray-600">Shop: {currentShop.name}</p>
-        ) : null}
+    <div className="space-y-8">
+      <div className="flex flex-col gap-4 border-b border-[var(--pm-border)] pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--pm-accent)]">Overview</p>
+          <h2 className="mt-1 text-3xl font-bold tracking-tight text-[var(--pm-ink)]">Dashboard</h2>
+          <p className="mt-1 text-sm text-[var(--pm-ink-soft)]">Sales, repairs, and stock at a glance.</p>
+        </div>
+        <div className="shrink-0 text-right">
+          {isAdmin ? (
+            <span className="inline-flex items-center rounded-full bg-[var(--pm-surface-soft)] px-3 py-1 text-xs font-semibold text-[var(--pm-ink-soft)] ring-1 ring-[var(--pm-border)]">
+              All shops · aggregated
+            </span>
+          ) : currentShop ? (
+            <span className="inline-flex items-center gap-2 rounded-full bg-[var(--pm-surface-soft)] px-3 py-1 text-xs font-medium text-[var(--pm-ink-soft)] ring-1 ring-[var(--pm-border)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--pm-accent)]" />
+              {currentShop.name}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <ShopSelector />
 
       {/* Period Selector */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {(['today', 'week', 'month'] as Period[]).map(p => (
           <button key={p} onClick={() => setPeriod(p)}
-            className={`px-5 py-2 rounded-lg text-sm font-semibold transition ${period === p ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-700 border hover:bg-gray-50'}`}>
+            className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${period === p ? 'bg-gradient-to-r from-[var(--pm-accent)] to-[var(--pm-accent-strong)] text-white shadow-md shadow-[rgba(79,122,101,0.25)]' : 'border border-[var(--pm-border)] bg-[var(--pm-surface)] text-[var(--pm-ink-soft)] shadow-sm hover:bg-[var(--pm-surface-soft)] hover:text-[var(--pm-ink)]'}`}>
             {periodLabel(p)}
           </button>
         ))}
@@ -243,32 +254,32 @@ export default function Dashboard() {
 
       {/* Alerts */}
       {(pendingPhonesToCollect.length > 0 || pendingPayments.length > 0 || lowStockCount > 0 || pendingDepositsAmount > 0) && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
-          <h3 className="text-lg font-semibold text-yellow-800 mb-3">Alerts</h3>
+        <div className="rounded-2xl border border-[var(--pm-border)] bg-[var(--pm-surface)] p-5 shadow-sm">
+          <h3 className="mb-3 text-lg font-semibold text-[var(--pm-ink)]">Alerts</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {pendingPhonesToCollect.length > 0 && (
-              <div className="bg-white p-3 rounded shadow text-center">
-                <p className="text-xs text-gray-600">Phones to Collect</p>
-                <p className="text-xl font-bold text-orange-600">{pendingPhonesToCollect.length}</p>
+              <div className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-3 text-center">
+                <p className="text-xs text-[var(--pm-ink-soft)]">Phones to Collect</p>
+                <p className="text-xl font-bold text-[var(--pm-accent-strong)]">{pendingPhonesToCollect.length}</p>
               </div>
             )}
             {pendingPayments.length > 0 && (
-              <div className="bg-white p-3 rounded shadow text-center">
-                <p className="text-xs text-gray-600">Pending Payments</p>
-                <p className="text-xl font-bold text-red-600">{pendingPayments.length}</p>
-                <p className="text-xs text-gray-500">KES {pendingPaymentsAmount.toLocaleString()}</p>
+              <div className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-3 text-center">
+                <p className="text-xs text-[var(--pm-ink-soft)]">Pending Payments</p>
+                <p className="text-xl font-bold text-red-700">{pendingPayments.length}</p>
+                <p className="text-xs text-[var(--pm-ink-soft)]">KES {pendingPaymentsAmount.toLocaleString()}</p>
               </div>
             )}
             {lowStockCount > 0 && (
-              <div className="bg-white p-3 rounded shadow text-center">
-                <p className="text-xs text-gray-600">Low Stock</p>
-                <p className="text-xl font-bold text-yellow-600">{lowStockCount}</p>
+              <div className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-3 text-center">
+                <p className="text-xs text-[var(--pm-ink-soft)]">Low Stock</p>
+                <p className="text-xl font-bold text-amber-700">{lowStockCount}</p>
               </div>
             )}
             {pendingDepositsAmount > 0 && (
-              <div className="bg-white p-3 rounded shadow text-center">
-                <p className="text-xs text-gray-600">Pending Deposits</p>
-                <p className="text-xl font-bold text-blue-600">KES {pendingDepositsAmount.toLocaleString()}</p>
+              <div className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-3 text-center">
+                <p className="text-xs text-[var(--pm-ink-soft)]">Pending Deposits</p>
+                <p className="text-xl font-bold text-[var(--pm-accent-strong)]">KES {pendingDepositsAmount.toLocaleString()}</p>
               </div>
             )}
           </div>
@@ -276,30 +287,30 @@ export default function Dashboard() {
       )}
 
       {/* 1. SALES OVERVIEW */}
-      <div className="bg-white p-5 rounded-lg shadow">
-        <h3 className="text-lg font-semibold mb-4">Sales Overview - {periodLabel(period)}</h3>
+      <div className="pm-card pm-pad-lg">
+        <h3 className="mb-4 text-lg font-semibold text-[var(--pm-ink)]">Sales Overview — {periodLabel(period)}</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-            <p className="text-xs text-green-700 font-medium">Total Sales</p>
-            <p className="text-2xl font-bold text-green-800">{currentSales.totalCount}</p>
-            <p className="text-sm font-semibold text-green-700">KES {currentSales.totalRevenue.toLocaleString()}</p>
+          <div className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-4">
+            <p className="text-xs font-medium text-[var(--pm-ink-soft)]">Total Sales</p>
+            <p className="text-2xl font-bold text-[var(--pm-accent-strong)]">{currentSales.totalCount}</p>
+            <p className="text-sm font-semibold text-[var(--pm-accent-strong)]">KES {currentSales.totalRevenue.toLocaleString()}</p>
           </div>
-          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-            <p className="text-xs text-blue-700 font-medium">Accessory Sales</p>
-            <p className="text-2xl font-bold text-blue-800">{currentSales.accessoryCount}</p>
-            <p className="text-sm font-semibold text-blue-700">KES {currentSales.accessoryRevenue.toLocaleString()}</p>
+          <div className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-4">
+            <p className="text-xs font-medium text-[var(--pm-ink-soft)]">Accessory Sales</p>
+            <p className="text-2xl font-bold text-[var(--pm-ink)]">{currentSales.accessoryCount}</p>
+            <p className="text-sm font-semibold text-[var(--pm-ink)]">KES {currentSales.accessoryRevenue.toLocaleString()}</p>
           </div>
-          <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
-            <p className="text-xs text-orange-700 font-medium">Repair Sales</p>
-            <p className="text-2xl font-bold text-orange-800">{currentSales.repairCount}</p>
-            <p className="text-sm font-semibold text-orange-700">KES {currentSales.repairRevenue.toLocaleString()}</p>
+          <div className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-4">
+            <p className="text-xs font-medium text-[var(--pm-ink-soft)]">Repair Sales</p>
+            <p className="text-2xl font-bold text-[var(--pm-ink)]">{currentSales.repairCount}</p>
+            <p className="text-sm font-semibold text-[var(--pm-ink)]">KES {currentSales.repairRevenue.toLocaleString()}</p>
           </div>
         </div>
 
         {/* Day / Week / Month comparison */}
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-[var(--pm-surface-soft)]">
               <tr>
                 <th className="p-2 text-left">Period</th>
                 <th className="p-2 text-right">Total Sales</th>
@@ -310,12 +321,12 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {(['today', 'week', 'month'] as Period[]).map(p => (
-                <tr key={p} className={`border-t ${p === period ? 'bg-blue-50 font-semibold' : ''}`}>
+                <tr key={p} className={`border-t border-[var(--pm-border)] ${p === period ? 'bg-[var(--pm-accent-soft)] font-semibold' : ''}`}>
                   <td className="p-2">{periodLabel(p)}</td>
                   <td className="p-2 text-right">{salesData[p].totalCount}</td>
                   <td className="p-2 text-right">{salesData[p].accessoryCount} (KES {salesData[p].accessoryRevenue.toLocaleString()})</td>
                   <td className="p-2 text-right">{salesData[p].repairCount} (KES {salesData[p].repairRevenue.toLocaleString()})</td>
-                  <td className="p-2 text-right font-bold text-green-700">KES {salesData[p].totalRevenue.toLocaleString()}</td>
+                  <td className="p-2 text-right font-bold text-[var(--pm-accent-strong)]">KES {salesData[p].totalRevenue.toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
@@ -325,7 +336,7 @@ export default function Dashboard() {
 
       {/* 2. PHONE REPAIR vs ACCESSORIES */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white p-5 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-3">Phone Repairs - {periodLabel(period)}</h3>
           <div className="space-y-3">
             <div className="flex justify-between items-center p-3 bg-orange-50 rounded">
@@ -349,7 +360,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-3">Accessories - {periodLabel(period)}</h3>
           <div className="space-y-3">
             <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
@@ -380,7 +391,7 @@ export default function Dashboard() {
       </div>
 
       {/* 3. COST OF PARTS */}
-      <div className="bg-white p-5 rounded-lg shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">Cost of Parts</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {(['today', 'week', 'month'] as Period[]).map(p => (
@@ -394,7 +405,7 @@ export default function Dashboard() {
       </div>
 
       {/* 4. TOTAL PAID TO SUPPLIERS */}
-      <div className="bg-white p-5 rounded-lg shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">
           {isAdmin ? 'Supplier Payments' : 'Local Supplier Payments'}
         </h3>
@@ -479,7 +490,7 @@ export default function Dashboard() {
       </div>
 
       {/* 5. REVENUE OVERVIEW */}
-      <div className="bg-white p-5 rounded-lg shadow">
+      <div className="pm-card pm-pad-lg">
         <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
           <h3 className="text-lg font-semibold">Revenue Overview</h3>
           <div className="flex gap-2">
@@ -541,7 +552,7 @@ export default function Dashboard() {
       </div>
 
       {/* LOW STOCK ITEMS */}
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">Low Stock Items</h3>
         {lowStockItems.length === 0 ? (
           <p className="text-gray-500 text-center py-4">All items are well stocked!</p>
@@ -578,7 +589,7 @@ export default function Dashboard() {
       </div>
 
       {/* MOST SOLD ITEMS */}
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">Most Sold Items</h3>
         {mostSoldItems.length === 0 ? (
           <p className="text-gray-500 text-center py-4">No sales data yet.</p>
@@ -612,7 +623,7 @@ export default function Dashboard() {
 
       {/* TOP SELLING ACCESSORIES & SPARES */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-4">Top-Selling Accessories</h3>
           {topAccessories.length === 0 ? <p className="text-gray-500 text-center py-4">No accessories sold yet.</p> : (
             <div className="space-y-3">
@@ -628,7 +639,7 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-4">Top-Selling Spares</h3>
           {topSpares.length === 0 ? <p className="text-gray-500 text-center py-4">No spares sold yet.</p> : (
             <div className="space-y-3">
@@ -648,7 +659,7 @@ export default function Dashboard() {
 
       {/* TOP OUTSOURCED ITEMS */}
       {topOutsourcedItems.length > 0 && (
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-4">Top Outsourced Items (All Time)</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

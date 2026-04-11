@@ -343,12 +343,16 @@ export default function Sales() {
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">Accessories Sales</h2>
+    <div className="space-y-6">
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Sales</p>
+          <h2 className="pm-page-title">Accessories Sales</h2>
+          <p className="pm-page-desc">Record retail and wholesale accessories sales in one flow.</p>
+        </div>
         <a
           href="/repair-sales"
-          className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
+          className="pm-btn pm-btn-secondary"
         >
           Go to Repair Sales →
         </a>
@@ -356,15 +360,15 @@ export default function Sales() {
 
       <ShopSelector />
       {currentShop && (
-        <p className="text-sm text-gray-600 mb-4">You can sell from stock <strong>allocated to {currentShop.name}</strong> or from <strong>main warehouse</strong> (unallocated). Select an item and enter qty/price.</p>
+        <p className="text-sm text-[var(--pm-ink-soft)]">You can sell from stock <strong>allocated to {currentShop.name}</strong> or from <strong>main warehouse</strong> (unallocated). Select an item and enter qty/price.</p>
       )}
       {!currentShop && salesItems.length > 0 && (
-        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-4">Select a shop above to record sales under that shop; main warehouse stock is shown.</p>
+        <p className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-sm text-amber-700">Select a shop above to record sales under that shop; main warehouse stock is shown.</p>
       )}
 
       {/* Sale Type Selection */}
-      <div className="bg-white p-4 rounded shadow mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Sale Type</label>
+      <div className="pm-card pm-pad mb-6">
+        <label className="pm-label">Sale Type</label>
         <div className="flex gap-4">
           <label className="flex items-center">
             <input
@@ -392,7 +396,7 @@ export default function Sales() {
       {/* Retail Sale Section */}
       {saleType === 'retail' && (
         <>
-          <div className="bg-white p-4 rounded shadow mb-6">
+          <div className="pm-card pm-pad mb-6">
             <h3 className="text-lg font-semibold mb-4">Add Items to Sale</h3>
             <div className="flex gap-4 mb-4">
               <label className="flex items-center text-sm">
@@ -425,7 +429,7 @@ export default function Sales() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               {itemSource === 'inventory' ? (
                 <select
-                  className="border p-2 rounded"
+                  className="pm-select"
                   value={selectedItemId}
                   onChange={(e) => handleItemSelect(e.target.value)}
                   aria-label="Select item from stock"
@@ -443,7 +447,7 @@ export default function Sales() {
                 </select>
               ) : (
                 <input
-                  className="border p-2 rounded"
+                  className="pm-input"
                   type="text"
                   placeholder="Item name"
                   value={customItemName}
@@ -452,7 +456,7 @@ export default function Sales() {
               )}
 
               <input
-                className="border p-2 rounded"
+                className="pm-input"
                 type="number"
                 placeholder="Qty"
                 min="1"
@@ -462,7 +466,7 @@ export default function Sales() {
               />
 
               <input
-                className="border p-2 rounded"
+                className="pm-input"
                 type="number"
                 placeholder="Selling Price (KES)"
                 value={price || ''}
@@ -472,7 +476,7 @@ export default function Sales() {
 
               {itemSource === 'custom' && (
                 <select
-                  className="border p-2 rounded"
+                  className="pm-select"
                   value={customSupplier}
                   onChange={(e) => setCustomSupplier(e.target.value)}
                   aria-label="Select supplier for custom item"
@@ -487,24 +491,25 @@ export default function Sales() {
               )}
             </div>
             {selectedItem && (
-              <p className="text-sm text-gray-600 mb-2">
+              <p className="mb-2 text-sm text-[var(--pm-ink-soft)]">
                 Available: {Number(selectedItem.stock) ?? 0} pcs
               </p>
             )}
 
             <button
               onClick={addItemToRetailSale}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="pm-btn pm-btn-primary"
             >
               Add Item
             </button>
           </div>
 
           {saleItems.length > 0 && (
-            <div className="bg-white rounded shadow mb-6">
-              <h3 className="text-lg font-semibold p-4 border-b">Current Sale Items</h3>
-              <table className="w-full">
-                <thead className="bg-gray-100">
+            <div className="pm-card pm-pad mb-6">
+              <h3 className="border-b border-[var(--pm-border)] p-4 text-lg font-semibold">Current Sale Items</h3>
+              <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
+                <table className="w-full">
+                  <thead>
                   <tr>
                     <th className="p-3 text-left">Item</th>
                     <th className="p-3 text-center">Qty</th>
@@ -513,63 +518,64 @@ export default function Sales() {
                     <th className="p-3 text-left">Source</th>
                     <th className="p-3 text-center">Actions</th>
                   </tr>
-                </thead>
-                <tbody>
+                  </thead>
+                  <tbody>
                   {saleItems.map((item, index) => (
-                    <tr key={index} className="border-t">
+                    <tr key={index} className="border-t border-[var(--pm-border)]">
                       <td className="p-3 font-medium">{item.name}</td>
                       <td className="p-3 text-center">{item.qty}</td>
                       <td className="p-3 text-right">KES {item.price.toLocaleString()}</td>
                       <td className="p-3 text-right font-semibold">KES {(item.qty * item.price).toLocaleString()}</td>
                       <td className="p-3">
                         {item.source === 'custom' ? (
-                          <span className="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded">
+                          <span className="rounded px-2 py-0.5 text-xs bg-orange-100 text-orange-800">
                             Outsourced{item.supplier ? ` - ${item.supplier}` : ''}
                           </span>
                         ) : (
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">In Stock</span>
+                          <span className="rounded px-2 py-0.5 text-xs bg-emerald-100 text-emerald-800">In Stock</span>
                         )}
                       </td>
                       <td className="p-3 text-center">
                         <button
                           onClick={() => removeItemFromRetail(index)}
-                          className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 text-sm"
+                          className="pm-btn pm-btn-danger pm-btn-sm"
                         >
                           Remove
                         </button>
                       </td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
 
-              <div className="p-4 text-right font-bold border-t">
+              <div className="border-t border-[var(--pm-border)] p-4 text-right font-bold">
                 TOTAL: KES {retailTotal.toLocaleString()}
               </div>
 
-              <div className="p-4 border-t">
+              <div className="border-t border-[var(--pm-border)] p-4">
                 <div className="space-y-4">
-                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                    <h4 className="font-semibold text-gray-800 mb-2">Customer &amp; sale detail</h4>
-                    <p className="text-xs text-gray-600 mb-3">
+                  <div className="rounded-lg border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-4">
+                    <h4 className="mb-2 font-semibold text-[var(--pm-ink)]">Customer &amp; sale detail</h4>
+                    <p className="mb-3 text-xs text-[var(--pm-ink-soft)]">
                       Optional but recommended: record who bought and what was sold. Line items above list products; use notes for extra detail.
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Customer name</label>
+                        <label className="mb-1 block text-xs font-medium text-[var(--pm-ink-soft)]">Customer name</label>
                         <input
                           type="text"
-                          className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                          className="pm-input text-sm"
                           placeholder="Walk-in customer name"
                           value={customerName}
                           onChange={(e) => setCustomerName(e.target.value)}
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Customer phone</label>
+                        <label className="mb-1 block text-xs font-medium text-[var(--pm-ink-soft)]">Customer phone</label>
                         <input
                           type="tel"
-                          className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                          className="pm-input text-sm"
                           placeholder="+254…"
                           value={customerPhone}
                           onChange={(e) => setCustomerPhone(e.target.value)}
@@ -577,9 +583,9 @@ export default function Sales() {
                       </div>
                     </div>
                     <div className="mt-3">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Notes (accessories / items sold)</label>
+                      <label className="mb-1 block text-xs font-medium text-[var(--pm-ink-soft)]">Notes (accessories / items sold)</label>
                       <textarea
-                        className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                        className="pm-input text-sm"
                         rows={2}
                         placeholder="e.g. 2x screen protector, USB cable — or any extra detail"
                         value={saleNotes}
@@ -589,11 +595,11 @@ export default function Sales() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                    <label className="pm-label">Payment Method</label>
                     <select
                       value={paymentType}
                       onChange={(e) => setPaymentType(e.target.value as 'cash' | 'mpesa' | 'bank_deposit')}
-                      className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                      className="pm-select"
                     >
                       <option value="mpesa">MPESA</option>
                       <option value="cash">Cash</option>
@@ -604,11 +610,11 @@ export default function Sales() {
                   {paymentType === 'bank_deposit' && (
                     <>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Bank</label>
+                        <label className="pm-label">Bank</label>
                         <select
                           value={bank}
                           onChange={(e) => setBank(e.target.value)}
-                          className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                          className="pm-input"
                         >
                           <option value="">Select Bank</option>
                           <option value="KCB">KCB</option>
@@ -620,12 +626,12 @@ export default function Sales() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Deposit Reference</label>
+                        <label className="pm-label">Deposit Reference</label>
                         <input
                           type="text"
                           value={depositReference}
                           onChange={(e) => setDepositReference(e.target.value)}
-                          className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                          className="pm-input"
                           placeholder="Enter deposit reference"
                         />
                       </div>
@@ -633,22 +639,22 @@ export default function Sales() {
                   )}
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Amount Paid (KES)</label>
+                    <label className="pm-label">Amount Paid (KES)</label>
                     <input
                       type="number"
                       value={amountPaid}
                       onChange={(e) => setAmountPaid(e.target.value === '' ? '' : Number(e.target.value))}
-                      className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                      className="pm-input"
                       placeholder={`Total: KES ${retailTotal.toLocaleString()}`}
                       min={0}
                     />
                     {typeof amountPaid === 'number' && amountPaid > 0 && amountPaid < retailTotal && (
-                      <p className="text-sm text-red-600 mt-1">
+                      <p className="mt-1 text-sm text-red-700">
                         Balance: KES {(retailTotal - amountPaid).toLocaleString()}
                       </p>
                     )}
                     {(amountPaid === '' || amountPaid === 0) && (
-                      <p className="text-xs text-gray-500 mt-1">Leave empty to record as fully paid (KES {retailTotal.toLocaleString()})</p>
+                      <p className="mt-1 text-xs text-[var(--pm-ink-soft)]">Leave empty to record as fully paid (KES {retailTotal.toLocaleString()})</p>
                     )}
                   </div>
 
@@ -656,7 +662,7 @@ export default function Sales() {
                     type="button"
                     onClick={() => void completeRetailSale()}
                     disabled={isCompletingRetailSale}
-                    className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="pm-btn pm-btn-primary w-full disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {isCompletingRetailSale ? "Saving…" : "Complete Sale & Generate Receipt"}
                   </button>
@@ -670,14 +676,14 @@ export default function Sales() {
       {/* Wholesale Sale Section */}
       {saleType === 'wholesale' && (
         <>
-          <div className="bg-white p-4 rounded shadow mb-6">
+          <div className="pm-card pm-pad mb-6">
             <h3 className="text-lg font-semibold mb-4">Add Items to Wholesale Sale</h3>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="mb-4 text-sm text-[var(--pm-ink-soft)]">
               Add multiple items throughout the day. The sale will remain open until you close it at the end of the day.
             </p>
             <div className="grid grid-cols-3 gap-4 mb-4">
               <select
-                className="border p-2 rounded"
+                className="pm-select"
                 value={selectedItemId}
                 onChange={(e) => handleItemSelect(e.target.value)}
                 aria-label="Select item for wholesale"
@@ -695,7 +701,7 @@ export default function Sales() {
               </select>
 
               <input
-                className="border p-2 rounded"
+                className="pm-input"
                 type="number"
                 placeholder="Qty"
                 min="1"
@@ -705,7 +711,7 @@ export default function Sales() {
               />
 
               <input
-                className="border p-2 rounded"
+                className="pm-input"
                 type="number"
                 placeholder="Unit Price"
                 value={price}
@@ -713,14 +719,14 @@ export default function Sales() {
               />
             </div>
             {selectedItem && (
-              <p className="text-sm text-gray-600 mb-2">
+              <p className="mb-2 text-sm text-[var(--pm-ink-soft)]">
                 Available stock: {selectedItem.stock} | Default price: KES {selectedItem.price}
               </p>
             )}
 
             <button
               onClick={addItemToWholesale}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="pm-btn pm-btn-primary"
             >
               Add Item to Wholesale Sale
             </button>
@@ -728,61 +734,63 @@ export default function Sales() {
 
           {/* Open Wholesale Sale Display */}
           {openWholesaleSale && wholesaleItems.length > 0 && (
-            <div className="bg-white rounded shadow mb-6">
-              <div className="p-4 border-b bg-yellow-50">
+            <div className="pm-card pm-pad mb-6">
+              <div className="border-b border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-4">
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="text-lg font-semibold">Open Wholesale Sale</h3>
-                    <p className="text-sm text-gray-600">Started: {new Date(openWholesaleSale.date).toLocaleString()}</p>
+                    <p className="text-sm text-[var(--pm-ink-soft)]">Started: {new Date(openWholesaleSale.date).toLocaleString()}</p>
                   </div>
-                  <span className="px-3 py-1 bg-yellow-200 text-yellow-800 rounded-full text-sm font-semibold">
+                  <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-800">
                     OPEN
                   </span>
                 </div>
               </div>
 
-              <table className="w-full">
-                <thead className="bg-gray-100">
+              <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
+                <table className="w-full">
+                  <thead>
                   <tr>
                     <th className="p-3">Item</th>
                     <th className="p-3">Qty</th>
                     <th className="p-3">Amount Sold</th>
                     <th className="p-3">Total</th>
                   </tr>
-                </thead>
-                <tbody>
+                  </thead>
+                  <tbody>
                   {wholesaleItems.map((item, index) => (
-                    <tr key={index} className="border-t">
+                    <tr key={index} className="border-t border-[var(--pm-border)]">
                       <td className="p-3">{item.name}</td>
                       <td className="p-3">{item.qty}</td>
                       <td className="p-3">KES {item.price.toLocaleString()}</td>
                       <td className="p-3">KES {(item.qty * item.price).toLocaleString()}</td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
 
-              <div className="p-4 border-t bg-gray-50">
+              <div className="border-t border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-4">
                 <div className="flex justify-between items-center mb-4">
                   <div>
-                    <p className="text-sm text-gray-600">Total Quantity</p>
+                    <p className="text-sm text-[var(--pm-ink-soft)]">Total Quantity</p>
                     <p className="text-xl font-bold">{wholesaleItems.reduce((sum, item) => sum + item.qty, 0)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-gray-600">Total Amount</p>
+                    <p className="text-sm text-[var(--pm-ink-soft)]">Total Amount</p>
                     <p className="text-2xl font-bold">KES {wholesaleTotal.toLocaleString()}</p>
                   </div>
                 </div>
 
-                <div className="border-t pt-4">
+                <div className="border-t border-[var(--pm-border)] pt-4">
                   <h4 className="font-semibold mb-4">Close Sale & Enter Payment Details</h4>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                      <label className="pm-label">Payment Method</label>
                       <select
                         value={wholesalePaymentType}
                         onChange={(e) => setWholesalePaymentType(e.target.value as 'cash' | 'mpesa' | 'bank_deposit')}
-                        className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                        className="pm-input"
                       >
                         <option value="mpesa">MPESA</option>
                         <option value="cash">Cash</option>
@@ -792,11 +800,11 @@ export default function Sales() {
 
                     {wholesalePaymentType === 'bank_deposit' && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Bank</label>
+                        <label className="pm-label">Bank</label>
                         <select
                           value={wholesaleBank}
                           onChange={(e) => setWholesaleBank(e.target.value)}
-                          className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                          className="pm-input"
                         >
                           <option value="">Select Bank</option>
                           <option value="KCB">KCB</option>
@@ -810,45 +818,45 @@ export default function Sales() {
                     )}
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="pm-label">
                         Transaction Code / Reference <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
                         value={wholesaleDepositReference}
                         onChange={(e) => setWholesaleDepositReference(e.target.value.toUpperCase())}
-                        className="border border-gray-300 rounded-md px-3 py-2 w-full uppercase"
+                        className="pm-input uppercase"
                         placeholder="Enter transaction code"
                       />
                     </div>
 
-                    <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                      <h5 className="font-semibold text-gray-800 mb-2">Customer &amp; sale detail</h5>
-                      <p className="text-xs text-gray-600 mb-3">Optional: partner / customer for this wholesale ticket.</p>
+                    <div className="rounded-lg border border-[var(--pm-border)] bg-[var(--pm-surface)] p-4">
+                      <h5 className="mb-2 font-semibold text-[var(--pm-ink)]">Customer &amp; sale detail</h5>
+                      <p className="mb-3 text-xs text-[var(--pm-ink-soft)]">Optional: partner / customer for this wholesale ticket.</p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Customer / partner name</label>
+                          <label className="mb-1 block text-xs font-medium text-[var(--pm-ink-soft)]">Customer / partner name</label>
                           <input
                             type="text"
-                            className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                            className="pm-input text-sm"
                             value={wholesaleCustomerName}
                             onChange={(e) => setWholesaleCustomerName(e.target.value)}
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Phone</label>
+                          <label className="mb-1 block text-xs font-medium text-[var(--pm-ink-soft)]">Phone</label>
                           <input
                             type="tel"
-                            className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                            className="pm-input text-sm"
                             value={wholesaleCustomerPhone}
                             onChange={(e) => setWholesaleCustomerPhone(e.target.value)}
                           />
                         </div>
                       </div>
                       <div className="mt-3">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Notes (items sold)</label>
+                        <label className="mb-1 block text-xs font-medium text-[var(--pm-ink-soft)]">Notes (items sold)</label>
                         <textarea
-                          className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm"
+                          className="pm-input text-sm"
                           rows={2}
                           value={wholesaleSaleNotes}
                           onChange={(e) => setWholesaleSaleNotes(e.target.value)}
@@ -858,7 +866,7 @@ export default function Sales() {
 
                     <button
                       onClick={handleCloseWholesaleSale}
-                      className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
+                      className="pm-btn pm-btn-primary w-full"
                     >
                       Close Sale & Save
                     </button>
@@ -869,8 +877,8 @@ export default function Sales() {
           )}
 
           {!openWholesaleSale && (
-            <div className="bg-white p-6 rounded shadow text-center">
-              <p className="text-gray-600">No open wholesale sale. Start adding items to create one.</p>
+            <div className="pm-card pm-pad-lg text-center">
+              <p className="text-[var(--pm-ink-soft)]">No open wholesale sale. Start adding items to create one.</p>
             </div>
           )}
         </>

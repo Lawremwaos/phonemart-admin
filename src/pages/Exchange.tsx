@@ -107,25 +107,31 @@ export default function Exchange() {
   };
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold mb-6">Exchange Between Shops</h2>
+    <div className="space-y-6">
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Stock Movement</p>
+          <h2 className="pm-page-title">Exchange Between Shops</h2>
+          <p className="pm-page-desc">Create, confirm, and complete inter-shop stock transfers.</p>
+        </div>
+      </div>
 
       {/* Exchange Form */}
-      <div className="bg-white p-6 rounded-lg shadow mb-6">
+      <div className="pm-card pm-pad-lg mb-6">
         <h3 className="text-lg font-semibold mb-4">Create Exchange Request</h3>
         
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="pm-label">
             From Shop: <span className="font-semibold">{currentShop?.name}</span>
           </label>
         </div>
 
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">To Shop *</label>
+          <label className="pm-label">To Shop *</label>
           <select
             value={toShopId}
             onChange={(e) => setToShopId(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2"
+            className="pm-input"
           >
             <option value="">Select Destination Shop</option>
             {availableShops.map((shop) => (
@@ -138,11 +144,11 @@ export default function Exchange() {
 
         <div className="grid grid-cols-3 gap-4 mb-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Item *</label>
+            <label className="pm-label">Item *</label>
             <select
               value={selectedItemId}
               onChange={(e) => setSelectedItemId(Number(e.target.value))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
+              className="pm-input"
             >
               <option value="">Select Item</option>
               {shopItems.map((item) => (
@@ -153,12 +159,12 @@ export default function Exchange() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
+            <label className="pm-label">Quantity *</label>
             <input
               type="number"
               value={qty}
               onChange={(e) => setQty(Number(e.target.value))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
+              className="pm-input"
               min="1"
               max={shopItems.find(i => i.id === selectedItemId)?.stock || 0}
             />
@@ -166,7 +172,7 @@ export default function Exchange() {
           <div className="flex items-end">
             <button
               onClick={handleAddItem}
-              className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="pm-btn pm-btn-secondary w-full"
             >
               Add Item
             </button>
@@ -177,13 +183,13 @@ export default function Exchange() {
         {exchangeItems.length > 0 && (
           <div className="mb-4">
             <h4 className="font-semibold mb-2">Items to Exchange:</h4>
-            <div className="border rounded p-4">
+            <div className="rounded border border-[var(--pm-border)] p-4">
               {exchangeItems.map((item, index) => (
-                <div key={index} className="flex justify-between items-center py-2 border-b last:border-b-0">
+                <div key={index} className="flex items-center justify-between border-b border-[var(--pm-border)] py-2 last:border-b-0">
                   <span>{item.itemName} x {item.qty}</span>
                   <button
                     onClick={() => handleRemoveItem(index)}
-                    className="bg-red-600 text-white px-2 py-1 rounded text-sm hover:bg-red-700"
+                    className="pm-btn pm-btn-danger pm-btn-sm"
                   >
                     Remove
                   </button>
@@ -195,7 +201,7 @@ export default function Exchange() {
 
         <button
           onClick={handleCreateExchange}
-          className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
+          className="pm-btn pm-btn-primary w-full"
           disabled={!toShopId || exchangeItems.length === 0}
         >
           Create Exchange Request
@@ -203,14 +209,14 @@ export default function Exchange() {
       </div>
 
       {/* Exchange History */}
-      <div className="bg-white rounded shadow">
+      <div className="pm-card pm-pad">
         <h3 className="text-lg font-semibold p-4 border-b">Exchange History</h3>
         {filteredExchanges.length === 0 ? (
-          <p className="text-gray-600 text-center py-8">No exchanges recorded yet.</p>
+          <p className="text-[var(--pm-ink-soft)] text-center py-8">No exchanges recorded yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
             <table className="w-full">
-              <thead className="bg-gray-100">
+              <thead>
                 <tr>
                   <th className="p-3 text-left">Date</th>
                   <th className="p-3 text-left">From Shop</th>
@@ -222,7 +228,7 @@ export default function Exchange() {
               </thead>
               <tbody>
                 {filteredExchanges.map((exchange) => (
-                  <tr key={exchange.id} className="border-t">
+                  <tr key={exchange.id} className="border-t border-[var(--pm-border)]">
                     <td className="p-3">
                       {new Date(exchange.date).toLocaleDateString()}
                     </td>
@@ -255,7 +261,7 @@ export default function Exchange() {
                               confirmExchangeReceipt(exchange.id);
                             }
                           }}
-                          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                          className="pm-btn pm-btn-secondary pm-btn-sm"
                         >
                           Confirm Receipt
                         </button>
@@ -264,7 +270,7 @@ export default function Exchange() {
                       {exchange.status === 'confirmed' && currentUser?.roles.includes('admin') && (
                         <button
                           onClick={() => handleComplete(exchange.id)}
-                          className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
+                          className="pm-btn pm-btn-primary pm-btn-sm"
                         >
                           Complete Exchange
                         </button>

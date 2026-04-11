@@ -197,42 +197,46 @@ export default function RepairReport() {
   };
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
-        <h1 className="text-3xl font-bold">Repair Report</h1>
+    <div className="space-y-6">
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Reports</p>
+          <h1 className="pm-page-title">Repair Report</h1>
+          <p className="pm-page-desc">Review repair revenue, supplier costs, and profit by period.</p>
+        </div>
         <div className="flex gap-3 items-center flex-wrap">
           <div className="flex gap-2">
             {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
-                className={`px-4 py-2 rounded text-sm font-medium transition ${
-                  period === p ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                className={`pm-btn text-sm ${
+                  period === p ? 'pm-btn-primary' : 'pm-btn-secondary'
                 }`}
               >
                 {periodLabel(p)}
               </button>
             ))}
           </div>
-          <Link to="/pending-collections/fully-paid" className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 text-sm">
+          <Link to="/pending-collections/fully-paid" className="pm-btn pm-btn-secondary text-sm">
             Pending Collections
           </Link>
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Direct number (optional)</label>
-            <input type="tel" placeholder="+254712345678" value={whatsAppNumber} onChange={(e) => setWhatsAppNumber(e.target.value)} className="border border-gray-300 rounded px-3 py-2 text-sm w-40" />
+            <label className="block text-xs text-[var(--pm-ink-soft)] mb-1">Direct number (optional)</label>
+            <input type="tel" placeholder="+254712345678" value={whatsAppNumber} onChange={(e) => setWhatsAppNumber(e.target.value)} className="pm-input text-sm !w-40 max-w-none" />
           </div>
           <button onClick={handleShareWhatsApp} disabled={!canSendReport}
-            className={`px-4 py-2 rounded text-sm ${canSendReport ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-400 text-gray-600 cursor-not-allowed opacity-60'}`}
+            className={`pm-btn text-sm ${canSendReport ? 'pm-btn-primary' : 'pm-btn-secondary cursor-not-allowed opacity-60'}`}
             title={!canSendReport ? "Enter outsourced part costs first" : undefined}>
             Send to Number
           </button>
           <button onClick={handleShareToGroup} disabled={!canSendReport}
-            className={`px-4 py-2 rounded text-sm ${canSendReport ? 'bg-green-700 text-white hover:bg-green-800' : 'bg-gray-400 text-gray-600 cursor-not-allowed opacity-60'}`}
+            className={`pm-btn text-sm ${canSendReport ? 'pm-btn-secondary' : 'pm-btn-secondary cursor-not-allowed opacity-60'}`}
             title={!canSendReport ? "Enter outsourced part costs first" : undefined}>
             Send to WhatsApp Group
           </button>
           <button onClick={handleShareEmail} disabled={!canSendReport}
-            className={`px-4 py-2 rounded text-sm ${canSendReport ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-400 text-gray-600 cursor-not-allowed opacity-60'}`}
+            className={`pm-btn text-sm ${canSendReport ? 'pm-btn-secondary' : 'pm-btn-secondary cursor-not-allowed opacity-60'}`}
             title={!canSendReport ? "Enter outsourced part costs first" : undefined}>
             Email Report
           </button>
@@ -248,27 +252,27 @@ export default function RepairReport() {
               <li key={r.repairId}>{r.customerName}{r.ticket ? ` (${r.ticket})` : ""}: {r.itemNames.join(", ")}</li>
             ))}
           </ul>
-          <Link to="/cost-of-parts" className="inline-block mt-3 bg-amber-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-amber-700">
+          <Link to="/cost-of-parts" className="inline-block mt-3 pm-btn pm-btn-secondary text-sm">
             Fill in cost of outsourced items →
           </Link>
         </div>
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-xs text-gray-600">Repairs</p>
+        <div className="pm-card pm-pad">
+          <p className="text-xs text-[var(--pm-ink-soft)]">Repairs</p>
           <p className="text-xl font-bold text-blue-700">{filteredRepairs.length}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-xs text-gray-600">Revenue</p>
+        <div className="pm-card pm-pad">
+          <p className="text-xs text-[var(--pm-ink-soft)]">Revenue</p>
           <p className="text-xl font-bold text-green-700">KES {totals.revenue.toLocaleString()}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-xs text-gray-600">{isAdmin ? 'Cost (Wholesale)' : 'Cost (Staff Base)'}</p>
+        <div className="pm-card pm-pad">
+          <p className="text-xs text-[var(--pm-ink-soft)]">{isAdmin ? 'Cost (Wholesale)' : 'Cost (Staff Base)'}</p>
           <p className="text-xl font-bold text-red-700">KES {(isAdmin ? totals.wholesaleCost : totals.staffCost).toLocaleString()}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
-          <p className="text-xs text-gray-600">{isAdmin ? 'Profit (Wholesale)' : 'Profit (Staff)'}</p>
+        <div className="pm-card pm-pad">
+          <p className="text-xs text-[var(--pm-ink-soft)]">{isAdmin ? 'Profit (Wholesale)' : 'Profit (Staff)'}</p>
           <p className={`text-xl font-bold ${(isAdmin ? totals.wholesaleProfit : totals.staffProfit) >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
             KES {(isAdmin ? totals.wholesaleProfit : totals.staffProfit).toLocaleString()}
           </p>
@@ -277,14 +281,14 @@ export default function RepairReport() {
 
       {isAdmin && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
-            <p className="text-xs text-gray-600">Staff Profit View (Retail/Base)</p>
+          <div className="pm-card pm-pad border-l-4 border-blue-500">
+            <p className="text-xs text-[var(--pm-ink-soft)]">Staff Profit View (Retail/Base)</p>
             <p className={`text-xl font-bold ${totals.staffProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
               KES {totals.staffProfit.toLocaleString()}
             </p>
           </div>
-          <div className="bg-white p-4 rounded shadow border-l-4 border-purple-500">
-            <p className="text-xs text-gray-600">Admin Profit View (Wholesale/Actual)</p>
+          <div className="pm-card pm-pad border-l-4 border-purple-500">
+            <p className="text-xs text-[var(--pm-ink-soft)]">Admin Profit View (Wholesale/Actual)</p>
             <p className={`text-xl font-bold ${totals.wholesaleProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
               KES {totals.wholesaleProfit.toLocaleString()}
             </p>
@@ -292,19 +296,19 @@ export default function RepairReport() {
         </div>
       )}
 
-      <div className="bg-white p-6 rounded shadow">
+      <div className="pm-card pm-pad-lg">
         <h2 className="text-lg font-semibold mb-4">Detailed Repair Sales</h2>
         {repairAnalysis.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No repairs in this period.</p>
+          <p className="text-[var(--pm-ink-soft)] text-center py-8">No repairs in this period.</p>
         ) : (
           <div className="space-y-4">
             {repairAnalysis.map((ra) => (
-              <div key={ra.repair.id} className="border rounded-lg p-4">
+              <div key={ra.repair.id} className="border border-[var(--pm-border)] rounded-lg p-4">
                 <div className="flex justify-between items-start flex-wrap gap-2">
                   <div>
                     <p className="font-semibold">{ra.repair.customerName} - {ra.repair.phoneModel}</p>
-                    <p className="text-sm text-gray-600">{ra.repair.issue} | {new Date(ra.repair.date).toLocaleDateString()}</p>
-                    {ra.repair.ticketNumber && <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">{ra.repair.ticketNumber}</span>}
+                    <p className="text-sm text-[var(--pm-ink-soft)]">{ra.repair.issue} | {new Date(ra.repair.date).toLocaleDateString()}</p>
+                    {ra.repair.ticketNumber && <span className="text-xs font-mono bg-[var(--pm-surface-soft)] px-2 py-0.5 rounded">{ra.repair.ticketNumber}</span>}
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-green-700 font-semibold">Revenue: KES {ra.revenue.toLocaleString()}</p>
@@ -320,7 +324,7 @@ export default function RepairReport() {
                   </div>
                 </div>
                 {ra.allParts.length > 0 && (
-                  <div className="mt-2 text-sm text-gray-600">
+                  <div className="mt-2 text-sm text-[var(--pm-ink-soft)]">
                     {ra.allParts.map((p, i) => (
                       <span key={i} className="inline-block mr-2 mb-1">
                         {p.itemName} x{p.qty} {(isAdmin ? p.wholesaleTotalCost : p.staffTotalCost) > 0 ? `KES ${(isAdmin ? p.wholesaleTotalCost : p.staffTotalCost).toLocaleString()}` : '?'} ({getSupplierDisplay(p.supplier)})

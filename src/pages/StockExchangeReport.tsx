@@ -85,37 +85,39 @@ export default function StockExchangeReport() {
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6">Stock Exchange Report</h1>
+      <div className="pm-page-head mb-6">
+        <h1 className="text-3xl font-bold text-[var(--pm-ink)]">Stock Exchange Report</h1>
+      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded shadow">
+        <div className="pm-card pm-pad">
           <p className="text-sm text-gray-600">Total Exchanges</p>
           <p className="text-2xl font-bold">{filteredExchanges.length}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
+        <div className="pm-card pm-pad">
           <p className="text-sm text-gray-600">Pending</p>
           <p className="text-2xl font-bold text-yellow-600">{pendingExchanges}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
+        <div className="pm-card pm-pad">
           <p className="text-sm text-gray-600">Completed</p>
           <p className="text-2xl font-bold text-green-600">{completedExchanges}</p>
         </div>
-        <div className="bg-white p-4 rounded shadow">
+        <div className="pm-card pm-pad">
           <p className="text-sm text-gray-600">Total Items</p>
           <p className="text-2xl font-bold">{totalItemsExchanged}</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded shadow mb-6">
+      <div className="pm-card pm-pad mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="pm-label">
               Date Range
             </label>
             <select
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value as DateRange)}
             >
@@ -126,11 +128,11 @@ export default function StockExchangeReport() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="pm-label">
               Status
             </label>
             <select
-              className="border border-gray-300 rounded-md px-3 py-2 w-full"
+              className="pm-input"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as 'all' | 'pending' | 'completed')}
             >
@@ -143,7 +145,7 @@ export default function StockExchangeReport() {
       </div>
 
       {/* Exchange Table */}
-      <div className="bg-white rounded shadow overflow-hidden">
+      <div className="pm-table-shell">
         {filteredExchanges.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             <p>No stock exchanges found for the selected filters.</p>
@@ -151,7 +153,7 @@ export default function StockExchangeReport() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-[var(--pm-subtle)]">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date & Time
@@ -241,7 +243,7 @@ export default function StockExchangeReport() {
               a.download = `stock-exchanges-${dateRange}-${new Date().toISOString().split('T')[0]}.csv`;
               a.click();
             }}
-            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+            className="pm-btn pm-btn-success"
           >
             Export to CSV
           </button>

@@ -539,36 +539,38 @@ export default function SupplierManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Supplier Management</h2>
-        <button onClick={handleAdd} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-          Add Supplier
-        </button>
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Suppliers</p>
+          <h2 className="pm-page-title">Supplier Management</h2>
+          <p className="pm-page-desc">Manage suppliers, costs, and supplier payment tracking.</p>
+        </div>
+        <button onClick={handleAdd} className="pm-btn pm-btn-primary">Add Supplier</button>
       </div>
 
       {/* Add/Edit Form */}
       {(isAdding || editingId) && (
-        <div className="bg-white p-6 rounded shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-4">{editingId ? "Edit Supplier" : "Add New Supplier"}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Supplier Name <span className="text-red-500">*</span></label>
-              <input type="text" className="border border-gray-300 rounded-md px-3 py-2 w-full" placeholder="Enter supplier name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+              <label className="pm-label">Supplier Name <span className="text-red-500">*</span></label>
+              <input type="text" className="pm-input" placeholder="Enter supplier name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-              <input type="tel" className="border border-gray-300 rounded-md px-3 py-2 w-full" placeholder="+254712345678" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+              <label className="pm-label">Phone</label>
+              <input type="tel" className="pm-input" placeholder="+254712345678" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-              <input type="email" className="border border-gray-300 rounded-md px-3 py-2 w-full" placeholder="supplier@example.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+              <label className="pm-label">Email</label>
+              <input type="email" className="pm-input" placeholder="supplier@example.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
-              <input type="text" className="border border-gray-300 rounded-md px-3 py-2 w-full" placeholder="Supplier address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
+              <label className="pm-label">Address</label>
+              <input type="text" className="pm-input" placeholder="Supplier address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
             </div>
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Categories <span className="text-red-500">*</span></label>
+              <label className="pm-label">Categories <span className="text-red-500">*</span></label>
               <div className="flex gap-4">
                 <label className="flex items-center">
                   <input type="checkbox" className="mr-2" checked={formData.categories.includes('accessories')} onChange={(e) => { setFormData({ ...formData, categories: e.target.checked ? [...formData.categories, 'accessories'] : formData.categories.filter(c => c !== 'accessories') }); }} />
@@ -582,8 +584,8 @@ export default function SupplierManagement() {
             </div>
             {isAdmin && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Supplier type</label>
-                <select className="border border-gray-300 rounded-md px-3 py-2 w-full" value={formData.supplierType} onChange={(e) => setFormData({ ...formData, supplierType: e.target.value as SupplierType })} aria-label="Supplier type">
+                <label className="pm-label">Supplier type</label>
+                <select className="pm-input" value={formData.supplierType} onChange={(e) => setFormData({ ...formData, supplierType: e.target.value as SupplierType })} aria-label="Supplier type">
                   <option value="local">Local (visible to staff)</option>
                   <option value="wholesale">Wholesale (admin only)</option>
                 </select>
@@ -591,8 +593,8 @@ export default function SupplierManagement() {
             )}
           </div>
           <div className="flex gap-4 mt-4">
-            <button onClick={handleSave} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Save</button>
-            <button onClick={handleCancel} className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">Cancel</button>
+            <button onClick={handleSave} className="pm-btn pm-btn-primary">Save</button>
+            <button onClick={handleCancel} className="pm-btn pm-btn-secondary">Cancel</button>
           </div>
         </div>
       )}
@@ -600,25 +602,25 @@ export default function SupplierManagement() {
       {/* Overall Summary - Staff see only Parts Taken and Active Suppliers; Admin sees all */}
       <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'md:grid-cols-5' : 'md:grid-cols-2'}`}>
         {isAdmin && (
-          <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+          <div className="pm-card pm-pad border-l-4 border-blue-500">
             <p className="text-sm text-gray-600">Total Supplier Purchases</p>
             <p className="text-2xl font-bold text-blue-700">KES {overallStats.totalPurchases.toLocaleString()}</p>
             <p className="text-xs text-gray-500">{overallStats.totalOrders} purchase orders</p>
           </div>
         )}
-        <div className="bg-white p-4 rounded shadow border-l-4 border-orange-500">
+        <div className="pm-card pm-pad border-l-4 border-orange-500">
           <p className="text-sm text-gray-600">Repair Supplier Cost</p>
           <p className="text-2xl font-bold text-orange-700">KES {overallStats.totalRepairSupplierCost.toLocaleString()}</p>
           <p className="text-xs text-gray-500">{overallStats.totalPartsTaken} outsourced parts used in repairs</p>
         </div>
         {isAdmin && (
-          <div className="bg-white p-4 rounded shadow border-l-4 border-emerald-500">
+          <div className="pm-card pm-pad border-l-4 border-emerald-500">
             <p className="text-sm text-gray-600">Accessories Supplier Cost</p>
             <p className="text-2xl font-bold text-emerald-700">KES {overallStats.totalAccessoriesCost.toLocaleString()}</p>
             <p className="text-xs text-gray-500">Accessory purchases only</p>
           </div>
         )}
-        <div className="bg-white p-4 rounded shadow border-l-4 border-purple-500">
+        <div className="pm-card pm-pad border-l-4 border-purple-500">
           <p className="text-sm text-gray-600">Active Suppliers</p>
           <p className="text-2xl font-bold text-purple-700">{visibleSuppliers.length}</p>
           <p className="text-xs text-gray-500">
@@ -627,7 +629,7 @@ export default function SupplierManagement() {
           </p>
         </div>
         {isAdmin && (
-          <div className="bg-white p-4 rounded shadow border-l-4 border-red-500">
+          <div className="pm-card pm-pad border-l-4 border-red-500">
             <p className="text-sm text-gray-600">Outstanding Supplier Balance</p>
             <p className="text-2xl font-bold text-red-700">KES {overallStats.totalOutstandingSupplierBalance.toLocaleString()}</p>
             <p className="text-xs text-gray-500">
@@ -638,7 +640,7 @@ export default function SupplierManagement() {
       </div>
 
       {/* Supplier Records - Staff see only Parts Taken; Admin sees All / Purchases / Parts Taken */}
-      <div className="bg-white p-6 rounded shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-2">Supplier Records</h3>
         <p className="text-sm text-gray-600 mb-4">
           {isAdmin
@@ -658,7 +660,7 @@ export default function SupplierManagement() {
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={`px-4 py-2 rounded-t text-sm font-medium ${
-                  activeTab === tab ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  activeTab === tab ? 'bg-[var(--pm-accent)] text-white' : 'bg-[var(--pm-surface-soft)] text-[var(--pm-ink-soft)] hover:text-[var(--pm-ink)]'
                 }`}
               >
                 {tab === 'all' ? 'All Records' : tab === 'purchases' ? 'Purchases' : 'Parts Taken'}
@@ -688,9 +690,9 @@ export default function SupplierManagement() {
                 }
 
                 return (
-                  <div key={data.supplier.id} className="border rounded-lg overflow-hidden">
+                  <div key={data.supplier.id} className="border border-[var(--pm-border)] rounded-lg overflow-hidden">
                     <div
-                      className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition"
+                      className="p-4 bg-[var(--pm-surface-soft)] cursor-pointer hover:bg-[var(--pm-surface)] transition"
                       onClick={() => setExpandedSupplierId(isExpanded ? null : data.supplier.id)}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -710,23 +712,23 @@ export default function SupplierManagement() {
                         <div className="flex gap-6 text-sm">
                           {isAdmin && hasPurchases && (
                             <div className="text-right">
-                              <p className="text-gray-600">Purchases</p>
+                              <p className="text-[var(--pm-ink-soft)]">Purchases</p>
                               <p className="font-bold text-blue-700">KES {data.totalPurchaseCost.toLocaleString()}</p>
-                              <p className="text-xs text-gray-500">{data.supplierPurchases.length} orders</p>
+                              <p className="text-xs text-[var(--pm-ink-soft)]">{data.supplierPurchases.length} orders</p>
                             </div>
                           )}
                           {isAdmin && (
                             <div className="text-right">
-                              <p className="text-gray-600">Accessories Cost</p>
+                              <p className="text-[var(--pm-ink-soft)]">Accessories Cost</p>
                               <p className="font-bold text-emerald-700">KES {data.accessoryPurchaseCost.toLocaleString()}</p>
-                              <p className="text-xs text-gray-500">Accessory purchases</p>
+                              <p className="text-xs text-[var(--pm-ink-soft)]">Accessory purchases</p>
                             </div>
                           )}
                           {hasParts && (
                             <div className="text-right">
-                              <p className="text-gray-600">Repair Supplier Cost</p>
+                              <p className="text-[var(--pm-ink-soft)]">Repair Supplier Cost</p>
                               <p className="font-bold text-orange-700">KES {data.totalPartsCost.toLocaleString()}</p>
-                              <p className="text-xs text-gray-500">{data.partsTaken.length} parts</p>
+                              <p className="text-xs text-[var(--pm-ink-soft)]">{data.partsTaken.length} parts</p>
                             </div>
                           )}
                         </div>
@@ -882,7 +884,7 @@ export default function SupplierManagement() {
                                                     min="0"
                                                     step="0.01"
                                                     aria-label="Payment amount in Kenya shillings"
-                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    className="pm-input py-1.5 text-sm"
                                                     value={paymentForm.amount}
                                                     onChange={(e) => setPaymentForm((prev) => ({ ...prev, amount: e.target.value }))}
                                                     placeholder={`Max ${paymentInfo.balance.toLocaleString()}`}
@@ -892,7 +894,7 @@ export default function SupplierManagement() {
                                                   <label className="block text-xs font-medium text-gray-700 mb-1">Method</label>
                                                   <select
                                                     aria-label="Payment method"
-                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    className="pm-input py-1.5 text-sm"
                                                     value={paymentForm.method}
                                                     onChange={(e) => setPaymentForm((prev) => ({ ...prev, method: e.target.value as PaymentMethod }))}
                                                   >
@@ -907,7 +909,7 @@ export default function SupplierManagement() {
                                                   <input
                                                     type="date"
                                                     aria-label="Date the supplier was paid"
-                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    className="pm-input py-1.5 text-sm"
                                                     value={paymentForm.paymentDate}
                                                     onChange={(e) => setPaymentForm((prev) => ({ ...prev, paymentDate: e.target.value }))}
                                                   />
@@ -917,7 +919,7 @@ export default function SupplierManagement() {
                                                   <input
                                                     type="text"
                                                     aria-label="Payment notes"
-                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    className="pm-input py-1.5 text-sm"
                                                     value={paymentForm.notes}
                                                     onChange={(e) => setPaymentForm((prev) => ({ ...prev, notes: e.target.value }))}
                                                     placeholder="Txn code, bank ref, etc."
@@ -1059,7 +1061,7 @@ export default function SupplierManagement() {
                                               type="number"
                                               min="0"
                                               step="0.01"
-                                              className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                              className="pm-input py-1.5 text-sm"
                                               value={bulkRepairPaymentForm.amount}
                                               onChange={(e) => setBulkRepairPaymentForm((prev) => ({ ...prev, amount: e.target.value }))}
                                               placeholder={`Max ${supplierRepairBalance.toLocaleString()}`}
@@ -1068,7 +1070,7 @@ export default function SupplierManagement() {
                                           <div>
                                             <label className="block text-xs font-medium text-gray-700 mb-1">Method</label>
                                             <select
-                                              className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                              className="pm-input py-1.5 text-sm"
                                               value={bulkRepairPaymentForm.method}
                                               onChange={(e) => setBulkRepairPaymentForm((prev) => ({ ...prev, method: e.target.value as PaymentMethod }))}
                                             >
@@ -1082,7 +1084,7 @@ export default function SupplierManagement() {
                                             <label className="block text-xs font-medium text-gray-700 mb-1">Payment Date</label>
                                             <input
                                               type="date"
-                                              className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                              className="pm-input py-1.5 text-sm"
                                               value={bulkRepairPaymentForm.paymentDate}
                                               onChange={(e) => setBulkRepairPaymentForm((prev) => ({ ...prev, paymentDate: e.target.value }))}
                                             />
@@ -1091,7 +1093,7 @@ export default function SupplierManagement() {
                                             <label className="block text-xs font-medium text-gray-700 mb-1">Notes (Optional)</label>
                                             <input
                                               type="text"
-                                              className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                              className="pm-input py-1.5 text-sm"
                                               value={bulkRepairPaymentForm.notes}
                                               onChange={(e) => setBulkRepairPaymentForm((prev) => ({ ...prev, notes: e.target.value }))}
                                               placeholder="Reference / reason"
@@ -1286,7 +1288,7 @@ export default function SupplierManagement() {
                                                     min="0"
                                                     step="0.01"
                                                     aria-label="Payment amount"
-                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    className="pm-input py-1.5 text-sm"
                                                     value={paymentForm.amount}
                                                     onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))}
                                                     placeholder={`Max ${rpInfo.balance.toLocaleString()}`}
@@ -1296,7 +1298,7 @@ export default function SupplierManagement() {
                                                   <label className="block text-xs font-medium text-gray-700 mb-1">Method</label>
                                                   <select
                                                     aria-label="Payment method"
-                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    className="pm-input py-1.5 text-sm"
                                                     value={paymentForm.method}
                                                     onChange={(e) => setPaymentForm(f => ({ ...f, method: e.target.value as PaymentMethod }))}
                                                   >
@@ -1311,7 +1313,7 @@ export default function SupplierManagement() {
                                                   <input
                                                     type="date"
                                                     aria-label="Payment date"
-                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    className="pm-input py-1.5 text-sm"
                                                     value={paymentForm.paymentDate}
                                                     onChange={(e) => setPaymentForm(f => ({ ...f, paymentDate: e.target.value }))}
                                                   />
@@ -1321,7 +1323,7 @@ export default function SupplierManagement() {
                                                   <input
                                                     type="text"
                                                     aria-label="Payment notes"
-                                                    className="border border-gray-300 rounded-md px-2 py-1 w-full text-sm"
+                                                    className="pm-input py-1.5 text-sm"
                                                     value={paymentForm.notes}
                                                     onChange={(e) => setPaymentForm(f => ({ ...f, notes: e.target.value }))}
                                                     placeholder="Txn code, ref, etc."
@@ -1373,22 +1375,22 @@ export default function SupplierManagement() {
                         )}
 
                         {/* Summary for this supplier - Admin: all; Staff: Parts Taken only */}
-                        <div className="bg-gray-50 rounded p-4 border">
+                        <div className="bg-[var(--pm-surface-soft)] rounded p-4 border border-[var(--pm-border)]">
                           <h5 className="font-semibold mb-2">Summary: {data.supplier.name}</h5>
                           <div className={`grid grid-cols-1 text-sm ${isAdmin ? 'md:grid-cols-3 gap-4' : ''}`}>
                             {isAdmin && (
                               <div>
-                                <p className="text-gray-600">Purchase Orders</p>
+                                <p className="text-[var(--pm-ink-soft)]">Purchase Orders</p>
                                 <p className="text-lg font-bold text-blue-700">KES {data.totalPurchaseCost.toLocaleString()}</p>
                               </div>
                             )}
                             <div>
-                              <p className="text-gray-600">Parts Taken (Outsourced)</p>
+                              <p className="text-[var(--pm-ink-soft)]">Parts Taken (Outsourced)</p>
                               <p className="text-lg font-bold text-orange-700">KES {data.totalPartsCost.toLocaleString()}</p>
                             </div>
                             {isAdmin && (
                               <div>
-                                <p className="text-gray-600">Grand Total</p>
+                                <p className="text-[var(--pm-ink-soft)]">Grand Total</p>
                                 <p className="text-lg font-bold text-red-700">KES {data.grandTotal.toLocaleString()}</p>
                               </div>
                             )}
@@ -1438,14 +1440,14 @@ export default function SupplierManagement() {
       </div>
 
       {/* Suppliers List */}
-      <div className="bg-white p-6 rounded shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">All Suppliers</h3>
         {suppliers.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">No suppliers added yet.</p>
+          <p className="text-[var(--pm-ink-soft)] text-center py-4">No suppliers added yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
             <table className="w-full">
-              <thead className="bg-gray-100">
+              <thead>
                 <tr>
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Name</th>
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Phone</th>
@@ -1468,12 +1470,12 @@ export default function SupplierManagement() {
                 {visibleSuppliers.map((supplier) => {
                   const data = supplierData.find(d => d.supplier.id === supplier.id);
                   return (
-                    <tr key={supplier.id} className="border-t hover:bg-gray-50">
+                    <tr key={supplier.id} className="border-t border-[var(--pm-border)] hover:bg-[var(--pm-surface-soft)]">
                       <td className="p-3 text-sm font-medium">{supplier.name}</td>
-                      <td className="p-3 text-sm text-gray-600">{supplier.phone || "-"}</td>
-                      <td className="p-3 text-sm text-gray-600">{supplier.email || "-"}</td>
-                      <td className="p-3 text-sm text-gray-600">{supplier.address || "-"}</td>
-                      <td className="p-3 text-sm text-gray-600">
+                      <td className="p-3 text-sm text-[var(--pm-ink-soft)]">{supplier.phone || "-"}</td>
+                      <td className="p-3 text-sm text-[var(--pm-ink-soft)]">{supplier.email || "-"}</td>
+                      <td className="p-3 text-sm text-[var(--pm-ink-soft)]">{supplier.address || "-"}</td>
+                      <td className="p-3 text-sm text-[var(--pm-ink-soft)]">
                         <div className="flex flex-wrap gap-1">
                           {supplier.categories.map((cat) => (
                             <span key={cat} className={`px-2 py-1 text-xs rounded ${cat === 'spare_parts' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}`}>

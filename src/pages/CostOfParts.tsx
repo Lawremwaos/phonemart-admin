@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useRepair } from "../context/RepairContext";
 import { useShop } from "../context/ShopContext";
+import { getOutsourcedItemsNeedingCostForRepair } from "../utils/repairOutsourcedCost";
 
 export default function CostOfParts() {
   const { repairs, updatePartCost } = useRepair();
@@ -9,58 +10,6 @@ export default function CostOfParts() {
   const [searchTerm, setSearchTerm] = useState("");
   const [costInputs, setCostInputs] = useState<Record<string, string>>({});
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
-
-  // Get outsourced items for a repair that still need cost input
-  // Include: parts with cost 0 or null, parts with source 'outsourced', and additional outsourced items
-  function getOutsourcedItemsForRepair(repair: typeof repairs[0]) {
-    const items: Array<{
-      itemName: string;
-      qty: number;
-      source: 'part' | 'additional';
-      currentCost: number;
-      supplierName?: string;
-    }> = [];
-
-    // Parts that are outsourced or have zero/null cost (cost not yet entered)
-    repair.partsUsed
-      .filter(p => {
-        const cost = p.cost ?? 0;
-        const isOutsourced = (p as { source?: string }).source === 'outsourced' || !!p.supplierName;
-        return cost === 0 || cost === null || (isOutsourced && cost <= 0);
-      })
-      .forEach(part => {
-        items.push({
-          itemName: part.itemName,
-          qty: part.qty,
-          source: 'part',
-          currentCost: Number(part.cost) || 0,
-          supplierName: part.supplierName,
-        });
-      });
-
-    // Additional outsourced items not already covered in partsUsed
-    if (repair.additionalItems) {
-      repair.additionalItems
-        .filter(item => item.source === 'outsourced')
-        .forEach(item => {
-          const alreadyInParts = items.some(i => i.itemName === item.itemName);
-          const hasPartWithCost = repair.partsUsed.some(
-            p => p.itemName === item.itemName && (Number(p.cost) || 0) > 0
-          );
-          if (!alreadyInParts && !hasPartWithCost) {
-            items.push({
-              itemName: item.itemName,
-              qty: 1,
-              source: 'additional',
-              currentCost: 0,
-              supplierName: item.supplierName,
-            });
-          }
-        });
-    }
-
-    return items;
-  }
 
   // Repairs that have outsourced parts needing cost input
   const repairsNeedingCosts = useMemo(() => {
@@ -81,7 +30,7 @@ export default function CostOfParts() {
     }
 
     return filtered.filter(repair => {
-      const outsourcedItems = getOutsourcedItemsForRepair(repair);
+      const outsourcedItems = getOutsourcedItemsNeedingCostForRepair(repair);
       return outsourcedItems.length > 0;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [repairs, currentUser, searchTerm]);
@@ -97,7 +46,7 @@ export default function CostOfParts() {
     return filtered.filter(repair => {
       const hasOutsourcedParts = repair.additionalItems?.some(i => i.source === 'outsourced') ||
         repair.partsUsed.some(p => p.cost > 0);
-      const allCostsFilled = getOutsourcedItemsForRepair(repair).length === 0;
+      const allCostsFilled = getOutsourcedItemsNeedingCostForRepair(repair).length === 0;
       return hasOutsourcedParts && allCostsFilled;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 20);
@@ -151,13 +100,15 @@ export default function CostOfParts() {
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold mb-2">Cost of Parts</h1>
-      <p className="text-gray-600 mb-4">
-        Enter the actual cost of outsourced parts used in repairs. After admin approves payment and the repair is back with staff for collection, fill costs here so profit is calculated and the daily report can be sent.
-      </p>
+      <div className="pm-page-head mb-4">
+        <h1 className="text-3xl font-bold text-[var(--pm-ink)] mb-2">Cost of Parts</h1>
+        <p className="text-gray-600">
+          Enter the actual cost of outsourced parts used in repairs. After admin approves payment and the repair is back with staff for collection, fill costs here so profit is calculated and the daily report can be sent.
+        </p>
+      </div>
 
       {/* Repair sale workflow */}
-      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
+      <div className="pm-card pm-pad mb-6">
         <h3 className="font-semibold text-indigo-900 mb-2">Repair sale workflow</h3>
         <ol className="list-decimal list-inside text-sm text-indigo-800 space-y-1">
           <li>Staff fills in customer details and completes repair sale, assigns a ticket.</li>
@@ -169,18 +120,18 @@ export default function CostOfParts() {
         </ol>
       </div>
 
-      <div className="bg-white p-4 rounded shadow mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Search Repairs</label>
+      <div className="pm-card pm-pad mb-6">
+        <label className="pm-label">Search Repairs</label>
         <input
           type="text"
-          className="border border-gray-300 rounded-md px-3 py-2 w-full"
+          className="pm-input"
           placeholder="Search by customer name, phone, model, or ticket number"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
-      <div className="mb-4 bg-blue-50 border border-blue-200 rounded p-3">
+      <div className="pm-card pm-pad mb-4">
         <p className="text-sm text-blue-800">
           Showing <span className="font-semibold">{repairsNeedingCosts.length}</span> repair(s) with outsourced parts needing cost input
         </p>
@@ -190,24 +141,24 @@ export default function CostOfParts() {
       <div className="space-y-4 mb-8">
         <h2 className="text-xl font-semibold text-gray-800">Enter cost of outsourced items</h2>
         {repairsNeedingCosts.length === 0 ? (
-          <div className="bg-white p-8 rounded shadow border border-gray-200 text-center text-gray-600">
+          <div className="pm-card pm-pad-xl border border-slate-200 text-center text-slate-600">
             <p className="text-lg font-medium mb-2">No repairs needing cost input right now</p>
             <p className="text-sm mb-4">All outsourced part costs have been entered, or there are no repairs with outsourced parts.</p>
             <p className="text-sm mb-2">When you complete a repair sale with outsourced parts, the repair will appear here so you can enter each part’s cost.</p>
             <div className="flex flex-wrap justify-center gap-3 mt-4">
-              <Link to="/repair-sales" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium">Repair Sale</Link>
-              <Link to="/pending-collections" className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 text-sm font-medium">Pending Collections</Link>
-              <Link to="/repair-report" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm font-medium">Repair Report</Link>
-              <Link to="/accessories-report" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm font-medium">Accessories Report</Link>
+              <Link to="/repair-sales" className="pm-btn pm-btn-primary text-sm">Repair Sale</Link>
+              <Link to="/pending-collections" className="pm-btn pm-btn-secondary text-sm">Pending Collections</Link>
+              <Link to="/repair-report" className="pm-btn pm-btn-success text-sm">Repair Report</Link>
+              <Link to="/accessories-report" className="pm-btn pm-btn-success text-sm">Accessories Report</Link>
             </div>
           </div>
         ) : (
           repairsNeedingCosts.map((repair) => {
-            const outsourcedItems = getOutsourcedItemsForRepair(repair);
+            const outsourcedItems = getOutsourcedItemsNeedingCostForRepair(repair);
             const status = getStatusLabel(repair);
             return (
-              <div key={repair.id} className="bg-white rounded shadow overflow-hidden border border-gray-200">
-                <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+              <div key={repair.id} className="pm-card overflow-hidden">
+                <div className="bg-[var(--pm-subtle)] px-6 py-4 border-b border-[var(--pm-border)]">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">
@@ -254,7 +205,7 @@ export default function CostOfParts() {
                               placeholder="Cost per unit"
                               value={costInputs[key] || ''}
                               onChange={(e) => handleCostInputChange(key, e.target.value)}
-                              className="border-2 border-orange-300 rounded-md px-3 py-2 w-36 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-200 bg-white text-gray-900"
+                              className="pm-input w-36 text-sm"
                               min="0"
                               step="1"
                               disabled={isSaving}
@@ -265,9 +216,7 @@ export default function CostOfParts() {
                             <button
                               onClick={() => handleSaveCost(repair.id, item.itemName, item.qty)}
                               disabled={isSaving}
-                              className={`px-4 py-2 rounded text-sm font-semibold ${
-                                isSaving ? 'bg-gray-400 cursor-wait' : 'bg-green-600 hover:bg-green-700'
-                              } text-white`}
+                              className={`pm-btn pm-btn-success text-sm ${isSaving ? 'opacity-70 cursor-wait' : ''}`}
                             >
                               {isSaving ? 'Saving...' : 'Save Cost'}
                             </button>
@@ -285,9 +234,9 @@ export default function CostOfParts() {
 
       {/* Recently completed costs */}
       {repairsWithCosts.length > 0 && (
-        <div className="bg-white p-6 rounded shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-4">Recently Completed Cost Entries</h3>
-          <div className="overflow-x-auto">
+          <div className="pm-table-shell overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
@@ -330,7 +279,7 @@ export default function CostOfParts() {
         </div>
       )}
 
-      <div className="mt-6 bg-blue-50 border border-blue-200 rounded p-4">
+      <div className="pm-card pm-pad mt-6">
         <h3 className="font-semibold text-blue-900 mb-2">How it Works:</h3>
         <ol className="list-decimal list-inside text-sm text-blue-800 space-y-1">
           <li>After completing a repair sale with outsourced parts, the repair appears here</li>

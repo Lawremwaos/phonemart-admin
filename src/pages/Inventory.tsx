@@ -147,12 +147,16 @@ export default function Inventory() {
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">Inventory</h2>
+    <div className="space-y-6">
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Stock</p>
+          <h2 className="pm-page-title">Inventory</h2>
+          <p className="pm-page-desc">Monitor stock balance, low inventory, and manager approvals.</p>
+        </div>
         <Link
           to="/inventory/manage"
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          className="pm-btn pm-btn-primary"
         >
           Manage Inventory
         </Link>
@@ -164,11 +168,11 @@ export default function Inventory() {
       </div>
 
       {isAdmin && pendingManagerApprovals.length > 0 && (
-        <div className="mb-6 bg-yellow-50 border border-yellow-300 rounded p-4">
-          <h3 className="font-semibold text-yellow-900 mb-3">Manager Approval Queue</h3>
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <h3 className="mb-3 font-semibold text-amber-900">Manager Approval Queue</h3>
           <div className="space-y-2">
             {pendingManagerApprovals.map((req) => (
-              <div key={req.id} className="bg-white border rounded p-3 flex items-center justify-between gap-3">
+              <div key={req.id} className="flex items-center justify-between gap-3 rounded border border-[var(--pm-border)] bg-[var(--pm-surface)] p-3">
                 <div>
                   <p className="font-medium text-sm">
                     {req.action === "inventory_update"
@@ -177,7 +181,7 @@ export default function Inventory() {
                       ? "Inventory Delete"
                       : "Stock Allocation"}
                   </p>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-[var(--pm-ink-soft)]">
                     Requested by {req.requestedBy || "Unknown"} on {new Date(req.requestedAt).toLocaleString()}
                   </p>
                 </div>
@@ -185,14 +189,14 @@ export default function Inventory() {
                   <button
                     type="button"
                     onClick={() => void approveManagerApproval(req.id)}
-                    className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700"
+                    className="pm-btn pm-btn-success pm-btn-sm"
                   >
                     Approve
                   </button>
                   <button
                     type="button"
                     onClick={() => void rejectManagerApproval(req.id, "Rejected by admin")}
-                    className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700"
+                    className="pm-btn pm-btn-danger pm-btn-sm"
                   >
                     Reject
                   </button>
@@ -203,7 +207,7 @@ export default function Inventory() {
         </div>
       )}
 
-      <div className="bg-white rounded shadow overflow-x-auto">
+      <div className="pm-table-shell">
         <table className="w-full">
           <thead className="bg-gray-100">
             <tr>
@@ -222,9 +226,9 @@ export default function Inventory() {
               const lowStock = item.stock <= item.reorderLevel;
               const math = getStockMath(item.id);
               return (
-                <tr 
+                <tr
                   key={item.id} 
-                  className={`border-t ${lowStock ? 'bg-red-50' : ''}`}
+                  className={`border-t border-[var(--pm-border)] ${lowStock ? 'bg-red-50' : ''}`}
                 >
                   <td className="p-3">{item.name}</td>
                   <td className="p-3">{item.category}</td>
@@ -255,7 +259,7 @@ export default function Inventory() {
                         <button
                           type="button"
                           onClick={() => openEdit(item)}
-                          className="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700"
+                          className="pm-btn pm-btn-secondary pm-btn-sm"
                         >
                           Edit
                         </button>
@@ -263,7 +267,7 @@ export default function Inventory() {
                           <button
                             type="button"
                             onClick={() => handleDelete(item.id)}
-                            className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700"
+                              className="pm-btn pm-btn-danger pm-btn-sm"
                           >
                             Delete
                           </button>
@@ -280,7 +284,7 @@ export default function Inventory() {
 
       {canEditStock && editingItemId && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6">
+          <div className="pm-modal-panel w-full max-w-2xl p-6">
             <h3 className="text-xl font-bold mb-4">Edit Stock Item</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
@@ -289,7 +293,7 @@ export default function Inventory() {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="pm-input"
                 />
               </div>
               <div>
@@ -299,7 +303,7 @@ export default function Inventory() {
                   onChange={(e) =>
                     setFormData({ ...formData, category: e.target.value as "Phone" | "Spare" | "Accessory" })
                   }
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="pm-input"
                 >
                   <option value="Phone">Phone</option>
                   <option value="Spare">Spare</option>
@@ -312,7 +316,7 @@ export default function Inventory() {
                   type="text"
                   value={formData.itemType}
                   onChange={(e) => setFormData({ ...formData, itemType: e.target.value })}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="pm-input"
                 />
               </div>
               <div>
@@ -322,7 +326,7 @@ export default function Inventory() {
                   min="0"
                   value={formData.stock}
                   onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) })}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="pm-input"
                 />
               </div>
               <div>
@@ -332,7 +336,7 @@ export default function Inventory() {
                   min="0"
                   value={formData.price}
                   onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="pm-input"
                 />
               </div>
               <div>
@@ -342,7 +346,7 @@ export default function Inventory() {
                   min="0"
                   value={formData.reorderLevel}
                   onChange={(e) => setFormData({ ...formData, reorderLevel: Number(e.target.value) })}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="pm-input"
                 />
               </div>
               <div>
@@ -351,7 +355,7 @@ export default function Inventory() {
                   type="text"
                   value={formData.supplier}
                   onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="pm-input"
                 />
               </div>
               <div>
@@ -361,7 +365,7 @@ export default function Inventory() {
                   min="0"
                   value={formData.costPrice}
                   onChange={(e) => setFormData({ ...formData, costPrice: Number(e.target.value) })}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="pm-input"
                 />
               </div>
               <div className="md:col-span-2">
@@ -369,7 +373,7 @@ export default function Inventory() {
                 <select
                   value={formData.shopId}
                   onChange={(e) => setFormData({ ...formData, shopId: e.target.value })}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="pm-input"
                 >
                   <option value="">Unassigned</option>
                   {shops.map((shop) => (
@@ -384,14 +388,14 @@ export default function Inventory() {
               <button
                 type="button"
                 onClick={closeEdit}
-                className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300"
+                className="pm-btn pm-btn-secondary"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSave}
-                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                className="pm-btn pm-btn-primary"
               >
                 Save Changes
               </button>

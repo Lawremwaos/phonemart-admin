@@ -231,11 +231,15 @@ export default function Returns() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Returns & Warranty Tracking</h2>
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Warranty</p>
+          <h2 className="pm-page-title">Returns & Warranty Tracking</h2>
+          <p className="pm-page-desc">Track faulty returns and supplier warranty outcomes.</p>
+        </div>
         <button
           onClick={handleAdd}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          className="pm-btn pm-btn-primary"
         >
           + Record Return
         </button>
@@ -243,47 +247,47 @@ export default function Returns() {
 
       {/* Add Return Form */}
       {isAdding && (
-        <div className="bg-white p-6 rounded shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-4">Record New Return</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="pm-label">
                 Customer Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                className="pm-input"
                 value={formData.customerName}
                 onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
                 placeholder="Customer name"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Customer Phone</label>
+              <label className="pm-label">Customer Phone</label>
               <input
                 type="tel"
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                className="pm-input"
                 value={formData.customerPhone}
                 onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
                 placeholder="+254712345678"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="pm-label">
                 Phone Model <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                className="pm-input"
                 value={formData.phoneModel}
                 onChange={(e) => setFormData({ ...formData, phoneModel: e.target.value })}
                 placeholder="e.g., iPhone 13, Samsung A12"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Repair ID (Optional)</label>
+              <label className="pm-label">Repair ID (Optional)</label>
               <select
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                className="pm-input"
                 value={formData.repairId}
                 onChange={(e) => {
                   setFormData({ ...formData, repairId: e.target.value });
@@ -308,23 +312,23 @@ export default function Returns() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="pm-label">
                 Item Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                className="pm-input"
                 value={formData.itemName}
                 onChange={(e) => setFormData({ ...formData, itemName: e.target.value })}
                 placeholder="e.g., iPhone 14 Screen"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="pm-label">
                 Item Type <span className="text-red-500">*</span>
               </label>
               <select
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                className="pm-input"
                 value={formData.itemType}
                 onChange={(e) => setFormData({ ...formData, itemType: e.target.value as ReturnRecord['itemType'] })}
               >
@@ -338,11 +342,11 @@ export default function Returns() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="pm-label">
                 Supplier Name <span className="text-red-500">*</span>
               </label>
               <select
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                className="pm-input"
                 value={formData.supplierId}
                 onChange={(e) => {
                   const supplier = suppliers.find(s => s.id === e.target.value);
@@ -363,10 +367,10 @@ export default function Returns() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Cost Price (KES)</label>
+              <label className="pm-label">Cost Price (KES)</label>
               <input
                 type="number"
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                className="pm-input"
                 value={formData.costPrice}
                 onChange={(e) => setFormData({ ...formData, costPrice: Number(e.target.value) })}
                 min="0"
@@ -374,11 +378,11 @@ export default function Returns() {
               />
             </div>
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="pm-label">
                 Fault Description <span className="text-red-500">*</span>
               </label>
               <textarea
-                className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                className="pm-input"
                 value={formData.faultDescription}
                 onChange={(e) => setFormData({ ...formData, faultDescription: e.target.value })}
                 rows={3}
@@ -389,13 +393,13 @@ export default function Returns() {
           <div className="flex gap-4 mt-4">
             <button
               onClick={handleSave}
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+              className="pm-btn pm-btn-primary"
             >
               Save
             </button>
             <button
               onClick={handleCancel}
-              className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+              className="pm-btn pm-btn-secondary"
             >
               Cancel
             </button>
@@ -404,14 +408,14 @@ export default function Returns() {
       )}
 
       {/* Returns List */}
-      <div className="bg-white p-6 rounded shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">All Returns</h3>
         {filteredReturns.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">No returns recorded yet.</p>
+          <p className="text-[var(--pm-ink-soft)] text-center py-4">No returns recorded yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
             <table className="w-full">
-              <thead className="bg-gray-100">
+              <thead>
                 <tr>
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Date</th>
                   <th className="p-3 text-left text-sm font-semibold text-gray-700">Customer</th>
@@ -426,7 +430,7 @@ export default function Returns() {
               </thead>
               <tbody>
                 {filteredReturns.map((returnRecord) => (
-                  <tr key={returnRecord.id} className="border-t hover:bg-gray-50">
+                  <tr key={returnRecord.id} className="border-t border-[var(--pm-border)] hover:bg-[var(--pm-surface-soft)]">
                     <td className="p-3 text-sm">
                       {new Date(returnRecord.date).toLocaleDateString()}
                     </td>

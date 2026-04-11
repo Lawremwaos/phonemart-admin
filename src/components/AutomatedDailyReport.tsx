@@ -455,7 +455,7 @@ export default function AutomatedDailyReport() {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow">
+    <div className="pm-card pm-pad-lg">
       <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
         <h3 className="text-lg font-semibold">End-of-Day Report (Two Parts)</h3>
         <div className="flex flex-wrap gap-2">

@@ -236,10 +236,16 @@ export default function StockAllocation() {
     // Admin/Manager view: Allocate stock from unallocated inventory
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl font-bold">Stock Allocation Management</h2>
+        <div className="pm-page-head">
+          <div>
+            <p className="pm-eyebrow">Allocation</p>
+            <h2 className="pm-page-title">Stock Allocation Management</h2>
+            <p className="pm-page-desc">Distribute and approve stock movement across shops.</p>
+          </div>
+        </div>
 
         {pendingAllocationsForMyShop.length > 0 && (
-          <div className="bg-white p-6 rounded shadow border-2 border-blue-200">
+        <div className="pm-card pm-pad-lg border-2 border-[var(--pm-border)]">
             <h3 className="text-lg font-semibold mb-2 text-blue-800">Incoming Allocations To Accept</h3>
             <p className="text-sm text-gray-600 mb-4">
               Stock assigned to your current shop still needs acceptance before it appears in inventory.
@@ -249,7 +255,7 @@ export default function StockAllocation() {
                 const myAlloc = allocation.allocations.find((a) => a.shopId === currentShop?.id && !a.accepted);
                 if (!myAlloc) return null;
                 return (
-                  <div key={allocation.id} className="border rounded-lg p-4 bg-blue-50">
+                  <div key={allocation.id} className="rounded-lg border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-4">
                     <div className="flex justify-between items-center">
                       <div>
                         <p className="font-semibold text-lg">{allocation.itemName}</p>
@@ -257,7 +263,7 @@ export default function StockAllocation() {
                       </div>
                       <button
                         onClick={() => handleAcceptAllocation(allocation.id)}
-                        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
+                        className="pm-btn pm-btn-primary"
                       >
                         Accept Stock
                       </button>
@@ -270,7 +276,7 @@ export default function StockAllocation() {
         )}
 
         {/* Admin: Allocate Stock from Purchases */}
-        <div className="bg-white p-6 rounded shadow border-2 border-blue-200">
+        <div className="pm-card pm-pad-lg border-2 border-[var(--pm-border)]">
           <h3 className="text-lg font-semibold mb-2 text-blue-800">Allocate Stock to Shops</h3>
           <p className="text-sm text-gray-600 mb-4">
             Distribute stock from confirmed purchases to shops/staff.
@@ -286,7 +292,7 @@ export default function StockAllocation() {
           ) : (
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="pm-label">
                   Step 1: Select Purchase *
                 </label>
                 <select
@@ -296,7 +302,7 @@ export default function StockAllocation() {
                     setAdminSelectedItemId("");
                     setAdminAllocationQty(0);
                   }}
-                  className="w-full border-2 border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                  className="pm-input"
                 >
                   <option value="">-- Select a purchase --</option>
                   {purchases
@@ -312,7 +318,7 @@ export default function StockAllocation() {
               {adminSelectedPurchaseId && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="pm-label">
                       Step 2: Select Item *
                     </label>
                     <select
@@ -321,7 +327,7 @@ export default function StockAllocation() {
                         setAdminSelectedItemId(Number(e.target.value));
                         setAdminAllocationQty(0);
                       }}
-                      className="w-full border-2 border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                      className="pm-input"
                     >
                       <option value="">-- Select item --</option>
                       {adminAvailableItemsFromPurchase.map((item) => (
@@ -335,7 +341,7 @@ export default function StockAllocation() {
                   {adminSelectedItemId && (
                     <>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="pm-label">
                           Step 3: Select Shop/Staff *
                         </label>
                         <select
@@ -344,7 +350,7 @@ export default function StockAllocation() {
                             setAdminSelectedShopId(e.target.value);
                             setAdminAllocationQty(0);
                           }}
-                          className="w-full border-2 border-gray-300 rounded-md px-3 py-2 bg-white text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                          className="pm-input"
                         >
                           <option value="">-- Select shop --</option>
                           {shops.map((shop) => (
@@ -358,14 +364,14 @@ export default function StockAllocation() {
                       {adminSelectedShopId && (
                         <>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                            <label className="pm-label">
                               Step 4: Enter Quantity to Allocate *
                             </label>
                             <input
                               type="number"
                               value={adminAllocationQty || ""}
                               onChange={(e) => setAdminAllocationQty(Number(e.target.value))}
-                              className="w-full border-2 border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                              className="pm-input"
                               min="1"
                               max={
                                 adminAvailableItemsFromPurchase.find(i => i.itemId === adminSelectedItemId)?.available || 0
@@ -379,11 +385,7 @@ export default function StockAllocation() {
 
                           <button
                             onClick={handleAdminAllocateStock}
-                            className={`w-full px-4 py-3 rounded font-semibold text-lg transition-colors ${
-                              !adminSelectedPurchaseId || !adminSelectedItemId || !adminSelectedShopId || adminAllocationQty <= 0
-                                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
-                            }`}
+                            className="pm-btn pm-btn-primary w-full text-base disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={!adminSelectedPurchaseId || !adminSelectedItemId || !adminSelectedShopId || adminAllocationQty <= 0}
                           >
                             ✓ Allocate Stock to Shop
@@ -404,14 +406,14 @@ export default function StockAllocation() {
         </div>
 
         {/* Dedicated transfer history table */}
-        <div className="bg-white p-6 rounded shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-4">Transfer History</h3>
           {transferHistory.length === 0 ? (
             <p className="text-gray-500 text-center py-4">No transfer history yet.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
               <table className="w-full">
-                <thead className="bg-gray-100">
+                <thead>
                   <tr>
                     <th className="p-3 text-left">Date</th>
                     <th className="p-3 text-left">Action</th>
@@ -424,7 +426,7 @@ export default function StockAllocation() {
                 </thead>
                 <tbody>
                   {transferHistory.map((log) => (
-                    <tr key={log.id} className="border-t">
+                    <tr key={log.id} className="border-t border-[var(--pm-border)]">
                       <td className="p-3 text-sm">{new Date(log.createdAt).toLocaleString()}</td>
                       <td className="p-3">
                         <span
@@ -462,11 +464,17 @@ export default function StockAllocation() {
   // Staff view: Accept allocations and transfer only their own stock
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">My Stock Transfers</h2>
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Allocation</p>
+          <h2 className="pm-page-title">My Stock Transfers</h2>
+          <p className="pm-page-desc">Accept incoming stock and request transfers to other shops.</p>
+        </div>
+      </div>
 
       {/* Accept Pending Allocations */}
       {pendingAllocationsForMyShop.length > 0 ? (
-        <div className="bg-white p-6 rounded shadow border-2 border-blue-200">
+        <div className="pm-card pm-pad-lg border-2 border-[var(--pm-border)]">
           <h3 className="text-lg font-semibold mb-2 text-blue-800">Accept Allocated Stock</h3>
           <p className="text-sm text-gray-600 mb-4">
             Admin has allocated stock to you. Accept it to add it to your inventory.
@@ -476,7 +484,7 @@ export default function StockAllocation() {
               const myAlloc = allocation.allocations.find(a => a.shopId === currentShop?.id && !a.accepted);
               if (!myAlloc) return null;
               return (
-                <div key={allocation.id} className="border rounded-lg p-4 bg-blue-50">
+                <div key={allocation.id} className="rounded-lg border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-4">
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="font-semibold text-lg">{allocation.itemName}</p>
@@ -487,7 +495,7 @@ export default function StockAllocation() {
                     </div>
                     <button
                       onClick={() => handleAcceptAllocation(allocation.id)}
-                      className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
+                      className="pm-btn pm-btn-primary"
                     >
                       Accept Stock
                     </button>
@@ -498,7 +506,7 @@ export default function StockAllocation() {
           </div>
         </div>
       ) : (
-        <div className="bg-white p-6 rounded shadow border border-gray-200">
+        <div className="pm-card pm-pad-lg border border-slate-200">
           <h3 className="text-lg font-semibold mb-2 text-gray-800">Incoming Stock</h3>
           <p className="text-sm text-gray-600">
             No stock is waiting for your acceptance right now. When admin/manager allocates stock to your shop,
@@ -508,7 +516,7 @@ export default function StockAllocation() {
       )}
 
       {/* Allocate my stock to other staff/shops */}
-      <div className="bg-white p-6 rounded shadow border border-purple-200">
+      <div className="pm-card pm-pad-lg border border-[var(--pm-border)]">
         <h3 className="text-lg font-semibold mb-2 text-purple-800">Allocate My Stock to Other Staff</h3>
         <p className="text-sm text-gray-600 mb-4">
           Use this when you have already received stock and need to share it with another shop/staff.
@@ -518,14 +526,14 @@ export default function StockAllocation() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">My Item</label>
+              <label className="pm-label mb-1">My Item</label>
               <select
                 value={myAllocateItemId}
                 onChange={(e) => {
                   setMyAllocateItemId(e.target.value ? Number(e.target.value) : "");
                   setMyAllocateQty(0);
                 }}
-                className="w-full border border-gray-300 rounded px-3 py-2"
+                className="pm-input"
               >
                 <option value="">Select item</option>
                 {myStockItems.map(item => (
@@ -536,11 +544,11 @@ export default function StockAllocation() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Destination Shop/Staff</label>
+              <label className="pm-label mb-1">Destination Shop/Staff</label>
               <select
                 value={myAllocateTargetShopId}
                 onChange={(e) => setMyAllocateTargetShopId(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2"
+                className="pm-input"
               >
                 <option value="">Select destination</option>
                 {shops
@@ -553,21 +561,21 @@ export default function StockAllocation() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+              <label className="pm-label mb-1">Quantity</label>
               <input
                 type="number"
                 min="1"
                 max={myStockItems.find(i => i.id === myAllocateItemId)?.stock || 0}
                 value={myAllocateQty || ""}
                 onChange={(e) => setMyAllocateQty(Number(e.target.value))}
-                className="w-full border border-gray-300 rounded px-3 py-2"
+                className="pm-input"
                 placeholder="Qty"
               />
             </div>
             <button
               type="button"
               onClick={handleAllocateMyStock}
-              className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 font-semibold"
+              className="pm-btn pm-btn-primary"
             >
               Submit Allocation
             </button>
@@ -576,7 +584,7 @@ export default function StockAllocation() {
       </div>
 
       {/* My Accepted Allocations */}
-      <div className="bg-white p-6 rounded shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">My Accepted Allocations</h3>
         {stockAllocations.filter(a => 
           a.status === 'approved' && 
@@ -584,9 +592,9 @@ export default function StockAllocation() {
         ).length === 0 ? (
           <p className="text-gray-500 text-center py-4">No accepted allocations yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
             <table className="w-full">
-              <thead className="bg-gray-100">
+              <thead>
                 <tr>
                   <th className="p-3 text-left">Date</th>
                   <th className="p-3 text-left">Item</th>
@@ -603,7 +611,7 @@ export default function StockAllocation() {
                   .map((allocation) => {
                     const myAlloc = allocation.allocations.find(a => a.shopId === currentShop?.id);
                     return (
-                      <tr key={allocation.id} className="border-t">
+                      <tr key={allocation.id} className="border-t border-[var(--pm-border)]">
                         <td className="p-3 text-sm">
                           {allocation.approvedDate?.toLocaleDateString() || allocation.requestedDate.toLocaleDateString()}
                         </td>
@@ -624,14 +632,14 @@ export default function StockAllocation() {
       </div>
 
       {/* Dedicated transfer history table */}
-      <div className="bg-white p-6 rounded shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">Transfer History</h3>
         {transferHistory.length === 0 ? (
           <p className="text-gray-500 text-center py-4">No transfer history yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
             <table className="w-full">
-              <thead className="bg-gray-100">
+              <thead>
                 <tr>
                   <th className="p-3 text-left">Date</th>
                   <th className="p-3 text-left">Action</th>
@@ -644,7 +652,7 @@ export default function StockAllocation() {
               </thead>
               <tbody>
                 {transferHistory.map((log) => (
-                  <tr key={log.id} className="border-t">
+                  <tr key={log.id} className="border-t border-[var(--pm-border)]">
                     <td className="p-3 text-sm">{new Date(log.createdAt).toLocaleString()}</td>
                     <td className="p-3">
                       <span

@@ -151,7 +151,7 @@ export default function StaffPurchases() {
       {tableError && <div className="bg-red-50 text-red-700 p-4 rounded border border-red-200">{tableError}</div>}
 
       {isAdding && (
-        <div className="bg-white rounded-lg shadow p-5 border space-y-4">
+        <div className="pm-card pm-pad-lg border border-slate-200/80 space-y-4">
           <h2 className="text-lg font-semibold">New Purchase Entry</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -238,7 +238,7 @@ export default function StaffPurchases() {
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow p-4 border text-center">
+        <div className="pm-card pm-pad text-center border border-slate-200/80">
           <p className="text-sm text-gray-500">Total Submitted</p>
           <p className="text-xl font-bold">{myCounts.length}</p>
         </div>

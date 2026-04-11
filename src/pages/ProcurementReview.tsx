@@ -222,7 +222,7 @@ export default function ProcurementReview() {
 
   if (!isAdmin) {
     return (
-      <div className="text-center py-16">
+      <div className="pm-card pm-pad-xl text-center py-16">
         <h1 className="text-2xl font-bold text-gray-700">Access Denied</h1>
         <p className="text-gray-500 mt-2">This page is only available to admins.</p>
       </div>
@@ -238,30 +238,30 @@ export default function ProcurementReview() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold">Procurement Review</h1>
+      <div className="pm-page-head flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-[var(--pm-ink)]">Procurement Review</h1>
       </div>
       <p className="text-sm text-gray-500">Review items submitted by staff, approve or reject them, and track supplier payments. Items marked as "Future Stock" can be sold later.</p>
       {tableError && <div className="bg-red-50 text-red-700 p-4 rounded border border-red-200">{tableError}</div>}
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <div className="bg-yellow-50 rounded-lg shadow p-4 border text-center">
+        <div className="pm-card pm-pad text-center">
           <p className="text-sm text-yellow-700">Pending Review</p>
           <p className="text-xl font-bold text-yellow-700">{procurements.filter((p) => p.status === "pending").length}</p>
         </div>
-        <div className="bg-green-50 rounded-lg shadow p-4 border text-center">
+        <div className="pm-card pm-pad text-center">
           <p className="text-sm text-green-700">Approved</p>
           <p className="text-xl font-bold text-green-700">{procurements.filter((p) => p.status === "approved").length}</p>
         </div>
-        <div className="bg-blue-50 rounded-lg shadow p-4 border text-center">
+        <div className="pm-card pm-pad text-center">
           <p className="text-sm text-blue-700">Sold</p>
           <p className="text-xl font-bold text-blue-700">{procurements.filter((p) => p.status === "sold").length}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 border text-center">
+        <div className="pm-card pm-pad text-center border border-slate-200/80">
           <p className="text-sm text-gray-500">Total Cost</p>
           <p className="text-xl font-bold">KES {procurements.filter((p) => p.status !== "rejected").reduce((s, p) => s + p.cost, 0).toLocaleString()}</p>
         </div>
-        <div className="bg-red-50 rounded-lg shadow p-4 border text-center">
+        <div className="pm-card pm-pad text-center">
           <p className="text-sm text-red-700">Outstanding Balance</p>
           <p className="text-xl font-bold text-red-700">KES {totalOutstanding.toLocaleString()}</p>
         </div>
@@ -269,7 +269,7 @@ export default function ProcurementReview() {
 
       <div className="flex gap-2 flex-wrap">
         {(["all", "pending", "approved", "rejected", "sold"] as const).map((s) => (
-          <button key={s} onClick={() => setFilterStatus(s)} className={"px-3 py-1 text-sm rounded-full border transition-colors " + (filterStatus === s ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50")}>
+          <button key={s} onClick={() => setFilterStatus(s)} className={"px-3 py-1 text-sm rounded-full border transition-colors " + (filterStatus === s ? "bg-[var(--pm-accent)] text-white border-[var(--pm-accent)]" : "bg-[var(--pm-surface)] text-gray-700 border-[var(--pm-border)] hover:bg-[var(--pm-subtle)]")}>
             {s === "all" ? "All (" + procurements.length + ")" : statusLabel(s) + " (" + procurements.filter((pp) => pp.status === s).length + ")"}
           </button>
         ))}
@@ -283,7 +283,7 @@ export default function ProcurementReview() {
             const pi = getPaymentInfo(p.id, p.cost);
             const isExpanded = expandedRow === p.id;
             return (
-              <div key={p.id} className="bg-white rounded-lg shadow border">
+              <div key={p.id} className="pm-card">
                 <div className="p-4 cursor-pointer hover:bg-gray-50" onClick={() => setExpandedRow(isExpanded ? null : p.id)}>
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3">
@@ -316,21 +316,21 @@ export default function ProcurementReview() {
 
                     {p.status === "pending" && (
                       <div className="flex gap-3 flex-wrap items-start">
-                        <button onClick={() => handleApprove(p.id)} className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700 font-medium">Approve</button>
+                        <button onClick={() => handleApprove(p.id)} className="pm-btn pm-btn-success text-sm">Approve</button>
                         {rejectingId === p.id ? (
                           <div className="flex gap-2 items-start">
-                            <input className="border rounded p-2 text-sm w-64" placeholder="Reason for rejection..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
-                            <button onClick={() => handleReject(p.id)} className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700">Confirm Reject</button>
-                            <button onClick={() => { setRejectingId(null); setRejectReason(""); }} className="bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm">Cancel</button>
+                            <input className="pm-input text-sm w-64" placeholder="Reason for rejection..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+                            <button onClick={() => handleReject(p.id)} className="pm-btn pm-btn-danger text-sm">Confirm Reject</button>
+                            <button onClick={() => { setRejectingId(null); setRejectReason(""); }} className="pm-btn pm-btn-secondary text-sm">Cancel</button>
                           </div>
                         ) : (
-                          <button onClick={() => setRejectingId(p.id)} className="bg-red-100 text-red-700 px-4 py-2 rounded text-sm hover:bg-red-200 font-medium">Reject</button>
+                          <button onClick={() => setRejectingId(p.id)} className="pm-btn pm-btn-danger text-sm">Reject</button>
                         )}
                       </div>
                     )}
 
                     {p.status === "approved" && p.category === "future_stock" && (
-                      <button onClick={() => handleMarkSold(p.id)} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 font-medium">Mark as Sold</button>
+                      <button onClick={() => handleMarkSold(p.id)} className="pm-btn pm-btn-primary text-sm">Mark as Sold</button>
                     )}
 
                     {p.status === "rejected" && p.rejectReason && (
@@ -346,10 +346,10 @@ export default function ProcurementReview() {
                         <div className="flex items-center justify-between">
                           <h3 className="font-semibold text-sm">Supplier Payment</h3>
                           <div className="flex gap-2">
-                            <button onClick={() => { setActivePaymentId(activePaymentId === p.id ? null : p.id); resetPaymentForm(); }} className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700">
+                            <button onClick={() => { setActivePaymentId(activePaymentId === p.id ? null : p.id); resetPaymentForm(); }} className="pm-btn pm-btn-success pm-btn-sm text-xs">
                               {activePaymentId === p.id ? "Cancel" : "Record Payment"}
                             </button>
-                            <button onClick={() => setPaymentHistoryId(paymentHistoryId === p.id ? null : p.id)} className="text-xs bg-gray-200 text-gray-700 px-3 py-1 rounded hover:bg-gray-300">
+                            <button onClick={() => setPaymentHistoryId(paymentHistoryId === p.id ? null : p.id)} className="pm-btn pm-btn-secondary pm-btn-sm text-xs">
                               {"History (" + pi.itemPayments.length + ")"}
                             </button>
                           </div>
@@ -371,15 +371,15 @@ export default function ProcurementReview() {
                         </div>
 
                         {activePaymentId === p.id && pi.balance > 0 && (
-                          <div className="bg-blue-50 rounded p-4 space-y-3">
+                          <div className="pm-card pm-pad space-y-3">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <div>
                                 <label className="block text-xs font-medium mb-1">Amount (KES) *</label>
-                                <input type="number" min="1" className="w-full border rounded p-2 text-sm" placeholder={"Max: " + pi.balance.toLocaleString()} value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
+                                <input type="number" min="1" className="pm-input text-sm" placeholder={"Max: " + pi.balance.toLocaleString()} value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium mb-1">Method *</label>
-                                <select className="w-full border rounded p-2 text-sm" value={paymentForm.method} onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value as PaymentMethod })} aria-label="Payment method">
+                                <select className="pm-input text-sm" value={paymentForm.method} onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value as PaymentMethod })} aria-label="Payment method">
                                   <option value="mpesa">M-Pesa</option>
                                   <option value="bank">Bank Transfer</option>
                                   <option value="cash">Cash</option>
@@ -388,14 +388,14 @@ export default function ProcurementReview() {
                               </div>
                               <div>
                                 <label className="block text-xs font-medium mb-1">Payment Date *</label>
-                                <input type="date" className="w-full border rounded p-2 text-sm" value={paymentForm.paymentDate} onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })} />
+                                <input type="date" className="pm-input text-sm" value={paymentForm.paymentDate} onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })} />
                               </div>
                               <div>
                                 <label className="block text-xs font-medium mb-1">Notes</label>
-                                <input className="w-full border rounded p-2 text-sm" placeholder="Optional notes..." value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} />
+                                <input className="pm-input text-sm" placeholder="Optional notes..." value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} />
                               </div>
                             </div>
-                            <button onClick={() => handleRecordPayment(p)} className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700 font-medium">Save Payment</button>
+                            <button onClick={() => handleRecordPayment(p)} className="pm-btn pm-btn-success text-sm">Save Payment</button>
                           </div>
                         )}
 
@@ -414,7 +414,7 @@ export default function ProcurementReview() {
 
       {paymentHistoryId && historyProc && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+          <div className="pm-modal-panel max-w-lg w-full max-h-[80vh] overflow-y-auto">
             <div className="p-5 border-b">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold">Payment History</h2>

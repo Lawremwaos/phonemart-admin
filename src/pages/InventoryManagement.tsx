@@ -290,14 +290,14 @@ export default function InventoryManagement() {
             <div className="flex flex-wrap gap-1">
               {isAdmin && (
                 <>
-                  <button onClick={() => handleEdit(item)} className="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700">Edit</button>
-                  <button onClick={() => handleDelete(item.id)} className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">Delete</button>
+                  <button onClick={() => handleEdit(item)} className="pm-btn pm-btn-primary pm-btn-sm text-xs">Edit</button>
+                  <button onClick={() => handleDelete(item.id)} className="pm-btn pm-btn-danger pm-btn-sm text-xs">Delete</button>
                 </>
               )}
               {isAdmin && item.stock > 0 && (
                 <button
                   onClick={() => openAllocateForm(item)}
-                  className="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700"
+                  className="pm-btn pm-btn-secondary pm-btn-sm text-xs"
                 >
                   Allocate
                 </button>
@@ -305,7 +305,7 @@ export default function InventoryManagement() {
               {!isAdmin && item.stock <= 0 && (
                 <button
                   onClick={() => { setRequestingItemId(item.id); setRequestQty(1); }}
-                  className="bg-yellow-600 text-white px-2 py-1 rounded text-xs hover:bg-yellow-700"
+                  className="pm-btn pm-btn-secondary pm-btn-sm text-xs"
                 >
                   Request Stock
                 </button>
@@ -316,14 +316,14 @@ export default function InventoryManagement() {
 
         {/* Allocation form row */}
         {allocatingItemId === item.id && (
-          <tr className="bg-purple-50 border-t">
+          <tr className="bg-[var(--pm-subtle)] border-t">
             <td colSpan={isAdmin ? 11 : 9} className="p-4">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="font-semibold text-purple-800">
                     Allocate &quot;{item.name}&quot; (Available: {item.stock})
                   </h4>
-                  <button onClick={() => setAllocatingItemId(null)} className="text-gray-500 hover:text-gray-700 text-sm">Cancel</button>
+                  <button onClick={() => setAllocatingItemId(null)} className="pm-btn pm-btn-secondary pm-btn-sm text-sm">Cancel</button>
                 </div>
                 {allocRows.map((row, ri) => (
                   <div key={ri} className="flex gap-3 items-end">
@@ -337,7 +337,7 @@ export default function InventoryManagement() {
                           updated[ri].shopId = e.target.value;
                           setAllocRows(updated);
                         }}
-                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                        className="pm-input text-sm"
                       >
                         <option value="">Select Shop</option>
                         {shops.map(s => (
@@ -358,12 +358,12 @@ export default function InventoryManagement() {
                           updated[ri].qty = Number(e.target.value);
                           setAllocRows(updated);
                         }}
-                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                        className="pm-input text-sm"
                       />
                     </div>
                     <button
                       onClick={() => setAllocRows(allocRows.filter((_, i) => i !== ri))}
-                      className="text-red-600 hover:text-red-800 text-xs font-semibold px-2 py-1"
+                    className="pm-btn pm-btn-danger pm-btn-sm text-xs"
                     >
                       Remove
                     </button>
@@ -372,7 +372,7 @@ export default function InventoryManagement() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setAllocRows([...allocRows, { shopId: "", qty: 1 }])}
-                    className="text-purple-700 hover:text-purple-900 text-xs font-semibold border border-purple-300 px-3 py-1 rounded hover:bg-purple-50"
+                    className="pm-btn pm-btn-secondary pm-btn-sm text-xs"
                   >
                     + Add Shop
                   </button>
@@ -382,7 +382,7 @@ export default function InventoryManagement() {
                 </div>
                 <button
                   onClick={handleAllocate}
-                  className="bg-purple-600 text-white px-4 py-2 rounded text-sm hover:bg-purple-700"
+                  className="pm-btn pm-btn-primary text-sm"
                 >
                   Submit Allocation
                 </button>
@@ -393,7 +393,7 @@ export default function InventoryManagement() {
 
         {/* Request stock form row (staff only) */}
         {requestingItemId === item.id && (
-          <tr className="bg-yellow-50 border-t">
+          <tr className="bg-[var(--pm-subtle)] border-t">
             <td colSpan={isAdmin ? 11 : 9} className="p-4">
               <div className="flex items-center gap-4">
                 <h4 className="font-semibold text-yellow-800">
@@ -406,18 +406,18 @@ export default function InventoryManagement() {
                     min="1"
                     value={requestQty}
                     onChange={(e) => setRequestQty(Number(e.target.value))}
-                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                    className="pm-input text-sm"
                   />
                 </div>
                 <button
                   onClick={() => handleRequestStock(item)}
-                  className="bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700"
+                  className="pm-btn pm-btn-primary text-sm"
                 >
                   Submit Request
                 </button>
                 <button
                   onClick={() => setRequestingItemId(null)}
-                  className="text-gray-500 hover:text-gray-700 text-sm"
+                  className="pm-btn pm-btn-secondary text-sm"
                 >
                   Cancel
                 </button>
@@ -431,25 +431,25 @@ export default function InventoryManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Inventory Management</h2>
+      <div className="pm-page-head flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-[var(--pm-ink)]">Inventory Management</h2>
         <div className="flex gap-2">
           <button
             onClick={handleAdd}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
+            className="pm-btn pm-btn-primary text-sm"
           >
             + Add Item
           </button>
         </div>
       </div>
 
-      <div className="flex gap-2 border-b pb-2">
+      <div className="flex gap-2 border-b border-[var(--pm-border)] pb-2">
         {(['inventory', 'allocations'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 rounded-t text-sm font-medium ${
-              activeTab === tab ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              activeTab === tab ? 'bg-[var(--pm-accent)] text-white' : 'bg-[var(--pm-subtle)] text-gray-700 hover:bg-[var(--pm-subtle-2)]'
             }`}
           >
             {tab === 'inventory' ? 'Inventory Items' : `Stock Allocations (${stockAllocations.length})`}
@@ -460,7 +460,7 @@ export default function InventoryManagement() {
       {activeTab === 'inventory' && <>
       {/* Admin: Categorized inventory view */}
       {isAdmin && (
-        <div className="bg-white p-4 rounded-lg shadow mb-4 border border-gray-200">
+        <div className="pm-card pm-pad mb-4">
           <h3 className="text-sm font-semibold text-gray-700 mb-2">Inventory by Shop</h3>
           <div className="flex gap-4 flex-wrap">
             <div className="text-sm">
@@ -481,30 +481,30 @@ export default function InventoryManagement() {
 
       {/* Add/Edit Form */}
       {(isAdding || editingId) && (
-        <div className="bg-white p-6 rounded-lg shadow mb-6">
+        <div className="pm-card pm-pad-lg mb-6">
           <h3 className="text-lg font-semibold mb-4">
             {editingId ? "Edit Item" : "Add New Item"}
           </h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Item Name *</label>
+              <label className="pm-label mb-1">Item Name *</label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                className="pm-input"
                 placeholder="e.g., iPhone 14"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+              <label className="pm-label mb-1">Category *</label>
               <select
                 value={formData.category}
               onChange={(e) => {
                 const newCategory = e.target.value as 'Phone' | 'Spare' | 'Accessory';
                 setFormData({ ...formData, category: newCategory, itemType: "", itemTypeDetail: "" }); // Reset itemType when category changes
               }}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                className="pm-input"
               >
                 <option value="Phone">Phone</option>
                 <option value="Spare">Spare</option>
@@ -514,14 +514,14 @@ export default function InventoryManagement() {
             {/* Item Type field based on category */}
             {formData.category === 'Accessory' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type of Accessory *</label>
+                <label className="pm-label mb-1">Type of Accessory *</label>
                 <select
                   value={formData.itemType}
                   onChange={(e) => {
                     const selectedType = e.target.value;
                     setFormData({ ...formData, itemType: selectedType, itemTypeDetail: "" });
                   }}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="pm-input"
                 >
                   <option value="">Select Type</option>
                   <option value="Charger">Charger</option>
@@ -535,7 +535,7 @@ export default function InventoryManagement() {
                     type="text"
                     value={formData.itemTypeDetail}
                     onChange={(e) => setFormData({ ...formData, itemTypeDetail: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2"
+                    className="pm-input mt-2"
                     placeholder="e.g., USB-C Charger, Lightning Charger, Wireless Charger"
                   />
                 )}
@@ -544,7 +544,7 @@ export default function InventoryManagement() {
                     type="text"
                     value={formData.itemTypeDetail}
                     onChange={(e) => setFormData({ ...formData, itemTypeDetail: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2"
+                    className="pm-input mt-2"
                     placeholder="e.g., Tempered Glass, Film Protector, Privacy Protector"
                   />
                 )}
@@ -553,7 +553,7 @@ export default function InventoryManagement() {
                     type="text"
                     value={formData.itemTypeDetail}
                     onChange={(e) => setFormData({ ...formData, itemTypeDetail: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2"
+                    className="pm-input mt-2"
                     placeholder="Enter accessory type"
                   />
                 )}
@@ -561,14 +561,14 @@ export default function InventoryManagement() {
             )}
             {formData.category === 'Spare' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type of Spare Part *</label>
+                <label className="pm-label mb-1">Type of Spare Part *</label>
                 <select
                   value={formData.itemType}
                   onChange={(e) => {
                     const selectedType = e.target.value;
                     setFormData({ ...formData, itemType: selectedType, itemTypeDetail: "" });
                   }}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="pm-input"
                 >
                   <option value="">Select Type</option>
                   <option value="Screen">Screen</option>
@@ -582,7 +582,7 @@ export default function InventoryManagement() {
                     type="text"
                     value={formData.itemTypeDetail}
                     onChange={(e) => setFormData({ ...formData, itemTypeDetail: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2"
+                    className="pm-input mt-2"
                     placeholder="e.g., LCD Screen, OLED Screen, Touch Screen, Display Assembly"
                   />
                 )}
@@ -591,7 +591,7 @@ export default function InventoryManagement() {
                     type="text"
                     value={formData.itemTypeDetail}
                     onChange={(e) => setFormData({ ...formData, itemTypeDetail: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2"
+                    className="pm-input mt-2"
                     placeholder="Enter spare part type"
                   />
                 )}
@@ -599,34 +599,34 @@ export default function InventoryManagement() {
             )}
             {formData.category === 'Phone' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Type</label>
+                <label className="pm-label mb-1">Phone Type</label>
                 <input
                   type="text"
                   value={formData.itemType}
                   onChange={(e) => setFormData({ ...formData, itemType: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="pm-input"
                   placeholder="e.g., Smartphone, Feature Phone"
                 />
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Stock *</label>
+              <label className="pm-label mb-1">Stock *</label>
               <input
                 type="number"
                 value={formData.stock}
                 onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                className="pm-input"
                 min="0"
               />
             </div>
             {currentUser?.roles.includes('admin') && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount Sold (KES) *</label>
+                <label className="pm-label mb-1">Amount Sold (KES) *</label>
                 <input
                   type="number"
                   value={formData.price}
                   onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="pm-input"
                   min="0"
                   placeholder="Enter amount staff sold this item for"
                 />
@@ -634,33 +634,33 @@ export default function InventoryManagement() {
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reorder Level *</label>
+              <label className="pm-label mb-1">Reorder Level *</label>
               <input
                 type="number"
                 value={formData.reorderLevel}
                 onChange={(e) => setFormData({ ...formData, reorderLevel: Number(e.target.value) })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                className="pm-input"
                 min="0"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+              <label className="pm-label mb-1">Supplier</label>
               <input
                 type="text"
                 value={formData.supplier}
                 onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                className="pm-input"
                 placeholder="Supplier name"
               />
             </div>
             {currentUser?.roles.includes('admin') && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price (KES) - Admin Only *</label>
+                <label className="pm-label mb-1">Cost Price (KES) - Admin Only *</label>
                 <input
                   type="number"
                   value={formData.costPrice}
                   onChange={(e) => setFormData({ ...formData, costPrice: Number(e.target.value) })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="pm-input"
                   min="0.01"
                   step="0.01"
                   placeholder="Admin: required purchase cost"
@@ -673,13 +673,13 @@ export default function InventoryManagement() {
           <div className="flex gap-2 mt-4">
             <button
               onClick={handleSave}
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+              className="pm-btn pm-btn-success"
             >
               Save
             </button>
             <button
               onClick={handleCancel}
-              className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
+              className="pm-btn pm-btn-secondary"
             >
               Cancel
             </button>
@@ -692,7 +692,7 @@ export default function InventoryManagement() {
         <div className="space-y-6">
           {/* Shop 1 Inventory */}
           {categorizedItems.shop1.length > 0 && (
-            <div className="bg-white rounded shadow overflow-x-auto">
+            <div className="pm-table-shell">
               <div className="bg-blue-100 px-4 py-2 border-b">
                 <h3 className="text-lg font-semibold text-blue-800">Shop 1 Inventory ({categorizedItems.shop1.length} items)</h3>
               </div>
@@ -723,7 +723,7 @@ export default function InventoryManagement() {
 
           {/* Shop 2 Inventory */}
           {categorizedItems.shop2.length > 0 && (
-            <div className="bg-white rounded shadow overflow-x-auto">
+            <div className="pm-table-shell">
               <div className="bg-green-100 px-4 py-2 border-b">
                 <h3 className="text-lg font-semibold text-green-800">Shop 2 Inventory ({categorizedItems.shop2.length} items)</h3>
               </div>
@@ -754,7 +754,7 @@ export default function InventoryManagement() {
 
           {/* Other Shops Inventory */}
           {categorizedItems.other.length > 0 && (
-            <div className="bg-white rounded shadow overflow-x-auto">
+            <div className="pm-table-shell">
               <div className="bg-purple-100 px-4 py-2 border-b">
                 <h3 className="text-lg font-semibold text-purple-800">Other Shops Inventory ({categorizedItems.other.length} items)</h3>
               </div>
@@ -785,7 +785,7 @@ export default function InventoryManagement() {
 
           {/* Unallocated Items */}
           {categorizedItems.unallocated.length > 0 && (
-            <div className="bg-white rounded shadow overflow-x-auto">
+            <div className="pm-table-shell">
               <div className="bg-gray-100 px-4 py-2 border-b">
                 <h3 className="text-lg font-semibold text-gray-800">Unallocated Items ({categorizedItems.unallocated.length} items)</h3>
               </div>
@@ -815,7 +815,7 @@ export default function InventoryManagement() {
           )}
         </div>
       ) : (
-        <div className="bg-white rounded shadow overflow-x-auto">
+        <div className="pm-table-shell">
           <table className="w-full">
             <thead className="bg-gray-100">
               <tr>
@@ -843,11 +843,11 @@ export default function InventoryManagement() {
         <div className="space-y-4">
           {/* Pending requests (admin can approve/reject) */}
           {isAdmin && stockAllocations.filter(a => a.status === 'pending').length > 0 && (
-            <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4">
+            <div className="pm-card pm-pad">
               <h3 className="font-semibold text-yellow-800 mb-3">Pending Allocation Requests</h3>
               <div className="space-y-3">
                 {stockAllocations.filter(a => a.status === 'pending').map(alloc => (
-                  <div key={alloc.id} className="bg-white rounded p-4 border shadow-sm">
+                  <div key={alloc.id} className="pm-card pm-pad">
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="font-semibold text-lg">{alloc.itemName}</p>
@@ -867,13 +867,13 @@ export default function InventoryManagement() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => approveStockAllocation(alloc.id)}
-                          className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
+                          className="pm-btn pm-btn-success text-sm"
                         >
                           Approve
                         </button>
                         <button
                           onClick={() => rejectStockAllocation(alloc.id)}
-                          className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+                          className="pm-btn pm-btn-danger text-sm"
                         >
                           Reject
                         </button>
@@ -886,7 +886,7 @@ export default function InventoryManagement() {
           )}
 
           {/* All allocations history */}
-          <div className="bg-white rounded-lg shadow p-4">
+          <div className="pm-card pm-pad">
             <h3 className="font-semibold text-lg mb-3">Allocation History</h3>
             {stockAllocations.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No stock allocations yet. Use the "Allocate" button on any inventory item to distribute stock to shops.</p>
@@ -945,7 +945,7 @@ export default function InventoryManagement() {
 
           {/* Unallocated stock summary (admin view) */}
           {isAdmin && unassignedItems.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-4">
+            <div className="pm-card pm-pad">
               <h3 className="font-semibold text-lg mb-3">Unallocated Stock</h3>
               <p className="text-sm text-gray-600 mb-3">These items have stock but are not assigned to any shop. Use "Allocate" from the Inventory tab to distribute.</p>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -956,7 +956,7 @@ export default function InventoryManagement() {
                     <p className="text-lg font-bold text-purple-700 mt-1">{item.stock} pcs</p>
                     <button
                       onClick={() => { setActiveTab('inventory'); openAllocateForm(item); }}
-                      className="mt-2 text-purple-700 hover:text-purple-900 text-xs font-semibold border border-purple-300 px-2 py-1 rounded hover:bg-purple-50 w-full"
+                      className="mt-2 pm-btn pm-btn-secondary pm-btn-sm text-xs w-full"
                     >
                       Allocate Now
                     </button>

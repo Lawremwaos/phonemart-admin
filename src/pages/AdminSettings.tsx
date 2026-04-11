@@ -155,17 +155,23 @@ export default function AdminSettings() {
   };
 
   return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6">Admin Settings</h1>
+    <div className="space-y-6">
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Admin</p>
+          <h1 className="pm-page-title">Admin Settings</h1>
+          <p className="pm-page-desc">Manage shops, staff accounts, and system-level controls.</p>
+        </div>
+      </div>
 
       {/* Tabs */}
-      <div className="flex space-x-4 mb-6 border-b">
+      <div className="flex space-x-4 border-b border-[var(--pm-border)]">
         <button
           onClick={() => setActiveTab('shops')}
           className={`px-4 py-2 font-semibold ${
             activeTab === 'shops'
-              ? 'border-b-2 border-blue-600 text-blue-600'
-              : 'text-gray-600 hover:text-gray-800'
+              ? 'border-b-2 border-[var(--pm-accent)] text-[var(--pm-accent-strong)]'
+              : 'text-[var(--pm-ink-soft)] hover:text-[var(--pm-ink)]'
           }`}
         >
           Shops
@@ -174,8 +180,8 @@ export default function AdminSettings() {
           onClick={() => setActiveTab('staff')}
           className={`px-4 py-2 font-semibold ${
             activeTab === 'staff'
-              ? 'border-b-2 border-blue-600 text-blue-600'
-              : 'text-gray-600 hover:text-gray-800'
+              ? 'border-b-2 border-[var(--pm-accent)] text-[var(--pm-accent-strong)]'
+              : 'text-[var(--pm-ink-soft)] hover:text-[var(--pm-ink)]'
           }`}
         >
           Staff Management
@@ -193,72 +199,72 @@ export default function AdminSettings() {
                 setShopForm({ name: '', address: '', phone: '', email: '', whatsappGroup: '' });
                 setShowShopForm(true);
               }}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="pm-btn pm-btn-primary"
             >
               + Add New Shop
             </button>
           </div>
 
           {showShopForm && (
-            <div className="bg-white p-6 rounded shadow mb-6">
+            <div className="pm-card pm-pad-lg mb-6">
               <h3 className="text-xl font-semibold mb-4">
                 {editingShop ? 'Edit Shop' : 'Add New Shop'}
               </h3>
               <form onSubmit={handleShopSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     Shop Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    className="pm-input"
                     value={shopForm.name}
                     onChange={(e) => setShopForm({ ...shopForm, name: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     Address/Location <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    className="pm-input"
                     value={shopForm.address}
                     onChange={(e) => setShopForm({ ...shopForm, address: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     Phone <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    className="pm-input"
                     value={shopForm.phone}
                     onChange={(e) => setShopForm({ ...shopForm, phone: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     Email
                   </label>
                   <input
                     type="email"
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    className="pm-input"
                     value={shopForm.email}
                     onChange={(e) => setShopForm({ ...shopForm, email: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     WhatsApp Group Link
                   </label>
                   <input
                     type="url"
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    className="pm-input"
                     value={shopForm.whatsappGroup}
                     onChange={(e) => setShopForm({ ...shopForm, whatsappGroup: e.target.value })}
                   />
@@ -266,7 +272,7 @@ export default function AdminSettings() {
                 <div className="flex space-x-4">
                   <button
                     type="submit"
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                    className="pm-btn pm-btn-primary"
                   >
                     {editingShop ? 'Update Shop' : 'Add Shop'}
                   </button>
@@ -276,7 +282,7 @@ export default function AdminSettings() {
                       setShowShopForm(false);
                       setEditingShop(null);
                     }}
-                    className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
+                    className="pm-btn pm-btn-secondary"
                   >
                     Cancel
                   </button>
@@ -285,40 +291,40 @@ export default function AdminSettings() {
             </div>
           )}
 
-          <div className="bg-white rounded shadow overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="pm-table-shell">
+            <table className="min-w-full">
+              <thead>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Shop Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Location
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Phone
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Email
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody>
                 {shops.map((shop) => (
-                  <tr key={shop.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <tr key={shop.id} className="border-t border-[var(--pm-border)]">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       {shop.name}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--pm-ink-soft)]">
                       {shop.address}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--pm-ink-soft)]">
                       {shop.phone}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--pm-ink-soft)]">
                       {shop.email || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -341,14 +347,14 @@ export default function AdminSettings() {
             </table>
           </div>
 
-          <div className="bg-white rounded shadow mt-6 p-4">
+          <div className="pm-card pm-pad mt-6">
             <h3 className="text-lg font-semibold mb-3">Staff Account History</h3>
             {staffAuditLogs.length === 0 ? (
               <p className="text-sm text-gray-500">No staff account changes logged yet.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-100">
+                  <thead className="bg-[var(--pm-surface-soft)]">
                     <tr>
                       <th className="p-2 text-left">Date</th>
                       <th className="p-2 text-left">Action</th>
@@ -359,7 +365,7 @@ export default function AdminSettings() {
                   </thead>
                   <tbody>
                     {staffAuditLogs.map((log) => (
-                      <tr key={log.id} className="border-t">
+                      <tr key={log.id} className="border-t border-[var(--pm-border)]">
                         <td className="p-2">{new Date(log.createdAt).toLocaleString()}</td>
                         <td className="p-2">{log.action.replace("staff_", "").toUpperCase()}</td>
                         <td className="p-2">{log.targetName || "-"}</td>
@@ -386,51 +392,51 @@ export default function AdminSettings() {
                 setStaffForm({ name: '', email: '', password: '', shopId: '', roles: ['technician'], managerScope: 'both' });
                 setShowStaffForm(true);
               }}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="pm-btn pm-btn-primary"
             >
               + Add New Staff
             </button>
           </div>
 
           {showStaffForm && (
-            <div className="bg-white p-6 rounded shadow mb-6">
+            <div className="pm-card pm-pad-lg mb-6">
               <h3 className="text-xl font-semibold mb-4">
                 {editingUser ? 'Edit Staff Member' : 'Add New Staff Member'}
               </h3>
               <form onSubmit={handleStaffSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     Full Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    className="pm-input"
                     value={staffForm.name}
                     onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     Email <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="email"
                     required
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    className="pm-input"
                     value={staffForm.email}
                     onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     Password {!editingUser && <span className="text-red-500">*</span>}
                   </label>
                   <div className="relative flex items-center">
                     <input
                       type={showStaffPassword ? 'text' : 'password'}
                       required={!editingUser}
-                      className="border border-gray-300 rounded-md px-3 py-2 w-full pr-10"
+                      className="pm-input pr-10"
                       value={staffForm.password}
                       onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })}
                       placeholder={editingUser ? "Leave empty to keep current password" : ""}
@@ -453,12 +459,12 @@ export default function AdminSettings() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     Shop <span className="text-red-500">*</span>
                   </label>
                   <select
                     required
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                    className="pm-input"
                     value={staffForm.shopId}
                     onChange={(e) => setStaffForm({ ...staffForm, shopId: e.target.value })}
                   >
@@ -471,7 +477,7 @@ export default function AdminSettings() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="pm-label">
                     Roles <span className="text-red-500">*</span> (Select multiple)
                   </label>
                   <div className="space-y-2">
@@ -507,11 +513,11 @@ export default function AdminSettings() {
                 </div>
                 {staffForm.roles.includes('manager') && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="pm-label">
                       Manager Assignment
                     </label>
                     <select
-                      className="border border-gray-300 rounded-md px-3 py-2 w-full"
+                      className="pm-input"
                       value={staffForm.managerScope}
                       onChange={(e) =>
                         setStaffForm({
@@ -532,7 +538,7 @@ export default function AdminSettings() {
                 <div className="flex space-x-4">
                   <button
                     type="submit"
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                    className="pm-btn pm-btn-primary"
                   >
                     {editingUser ? 'Update Staff' : 'Add Staff'}
                   </button>
@@ -542,7 +548,7 @@ export default function AdminSettings() {
                       setShowStaffForm(false);
                       setEditingUser(null);
                     }}
-                    className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
+                    className="pm-btn pm-btn-secondary"
                   >
                     Cancel
                   </button>
@@ -551,40 +557,40 @@ export default function AdminSettings() {
             </div>
           )}
 
-          <div className="bg-white rounded shadow overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="pm-table-shell">
+            <table className="min-w-full">
+              <thead>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Email
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Shop
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Role
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Manager Type
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody>
                 {users.map((user) => (
-                  <tr key={user.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <tr key={user.id} className="border-t border-[var(--pm-border)]">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       {user.name}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--pm-ink-soft)]">
                       {user.email}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--pm-ink-soft)]">
                       {shops.find(s => s.id === user.shopId)?.name || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -603,7 +609,7 @@ export default function AdminSettings() {
                         ))}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--pm-ink-soft)]">
                       {user.roles.includes('manager')
                         ? user.managerScope === 'accessories'
                           ? 'Accessories'
@@ -637,7 +643,7 @@ export default function AdminSettings() {
       )}
 
       {/* Danger Zone: Clear All Data */}
-      <div className="mt-10 border-t pt-8">
+      <div className="mt-10 border-t border-[var(--pm-border)] pt-8">
         <h2 className="text-xl font-bold text-red-700 mb-2">Danger Zone</h2>
         <div className="bg-red-50 border border-red-300 rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -649,7 +655,7 @@ export default function AdminSettings() {
           <button
             onClick={handleClearAllData}
             disabled={clearing}
-            className="bg-red-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-red-700 disabled:opacity-50 whitespace-nowrap"
+            className="pm-btn pm-btn-danger whitespace-nowrap disabled:opacity-50"
           >
             {clearing ? 'Clearing…' : 'Delete All Data'}
           </button>

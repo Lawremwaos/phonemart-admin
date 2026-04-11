@@ -176,7 +176,7 @@ export default function AccessoryProfit() {
             <select
               value={selectedShopId}
               onChange={(e) => setSelectedShopId(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 bg-white"
+              className="pm-input"
             >
               <option value="all">All Shops</option>
               {shops.map(shop => (
@@ -205,19 +205,19 @@ export default function AccessoryProfit() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-sm text-gray-600 mb-1">Total Sales</h3>
           <p className="text-2xl font-bold text-blue-600">{profitBreakdown.summary.saleCount}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-sm text-gray-600 mb-1">Items Sold</h3>
           <p className="text-2xl font-bold text-blue-600">{profitBreakdown.summary.itemCount}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-sm text-gray-600 mb-1">Total Revenue</h3>
           <p className="text-2xl font-bold text-green-600">KES {profitBreakdown.summary.totalRevenue.toLocaleString()}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-sm text-gray-600 mb-1">
             {isAdmin ? 'Real Profit' : 'Performance Profit'}
           </h3>
@@ -233,7 +233,7 @@ export default function AccessoryProfit() {
 
       {/* Admin-only: Real Profit vs Performance Profit */}
       {isAdmin && (
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-4">Profit Comparison</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="border rounded p-4">
@@ -259,7 +259,7 @@ export default function AccessoryProfit() {
       )}
 
       {/* Detailed Sales List */}
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
+      <div className="pm-table-shell">
         <h3 className="text-lg font-semibold p-4 border-b">Detailed Accessory Sales</h3>
         <table className="w-full">
           <thead className="bg-gray-100">

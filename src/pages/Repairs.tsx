@@ -144,14 +144,18 @@ export default function Repairs() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center flex-wrap gap-4">
-        <h2 className="text-2xl font-bold">Repairs Management</h2>
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Repairs</p>
+          <h2 className="pm-page-title">Repairs Management</h2>
+          <p className="pm-page-desc">Track repair status, payments, and collection confirmation.</p>
+        </div>
         <div className="flex gap-3 items-center">
           {isAdmin && (
             <select
               value={selectedShopFilter}
               onChange={(e) => setSelectedShopFilter(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 bg-white"
+              className="pm-input"
             >
               <option value="all">All Shops</option>
               {shops.map(shop => (
@@ -162,7 +166,7 @@ export default function Repairs() {
           )}
           <button
             onClick={() => navigate('/repair-sales')}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            className="pm-btn pm-btn-primary"
           >
             + New Repair
           </button>
@@ -171,13 +175,13 @@ export default function Repairs() {
 
       {/* Shop Summary (Admin Only) */}
       {isAdmin && selectedShopFilter === 'all' && Object.keys(repairsByShop).length > 0 && (
-        <div className="bg-white rounded shadow p-4">
+        <div className="pm-card pm-pad">
           <h3 className="text-lg font-semibold mb-3">Repairs by Shop</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {Object.entries(repairsByShop).map(([shopId, shopRepairs]) => (
-              <div key={shopId} className="border rounded p-3">
-                <div className="font-semibold text-blue-700">{getShopName(shopId)}</div>
-                <div className="text-sm text-gray-600 mt-1">{shopRepairs.length} repair{shopRepairs.length !== 1 ? 's' : ''}</div>
+              <div key={shopId} className="rounded-lg border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-3">
+                <div className="font-semibold text-[var(--pm-accent-strong)]">{getShopName(shopId)}</div>
+                <div className="mt-1 text-sm text-[var(--pm-ink-soft)]">{shopRepairs.length} repair{shopRepairs.length !== 1 ? 's' : ''}</div>
               </div>
             ))}
           </div>
@@ -185,7 +189,7 @@ export default function Repairs() {
       )}
 
       {/* Repairs Table */}
-      <div className="bg-white rounded shadow overflow-x-auto">
+      <div className="pm-table-shell">
         <table className="w-full">
           <thead className="bg-gray-100">
             <tr>
@@ -208,7 +212,7 @@ export default function Repairs() {
           <tbody>
             {filteredRepairs.length === 0 ? (
               <tr>
-                <td colSpan={isAdmin ? 14 : 12} className="p-4 text-center text-gray-500">
+                <td colSpan={isAdmin ? 14 : 12} className="p-4 text-center text-[var(--pm-ink-soft)]">
                   No repairs found
                 </td>
               </tr>
@@ -216,19 +220,19 @@ export default function Repairs() {
               filteredRepairs.map((repair) => (
                 <tr
                   key={repair.id}
-                  className={`border-t hover:bg-gray-50 ${isAdmin ? 'cursor-pointer' : ''}`}
+                  className={`border-t border-[var(--pm-border)] hover:bg-[var(--pm-surface-soft)] ${isAdmin ? 'cursor-pointer' : ''}`}
                   onClick={() => {
                     if (isAdmin) setRepairRowAction(repair);
                   }}
                 >
                   {isAdmin && (
                     <td className="p-3">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-medium">
+                      <span className="rounded bg-[var(--pm-accent-soft)] px-2 py-1 text-xs font-medium text-[var(--pm-accent-strong)]">
                         {getShopName(repair.shopId)}
                       </span>
                     </td>
                   )}
-                  <td className="p-3 text-sm text-gray-600">{formatDate(repair.date)}</td>
+                  <td className="p-3 text-sm text-[var(--pm-ink-soft)]">{formatDate(repair.date)}</td>
                   <td className="p-3">{repair.customerName}</td>
                   <td className="p-3">{repair.phoneNumber}</td>
                   <td className="p-3">{repair.phoneModel}</td>
@@ -267,7 +271,7 @@ export default function Repairs() {
                               handlePayment(repair.id, Number(amount), paymentType, bank, depositRef);
                             }
                           }}
-                          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                          className="pm-btn pm-btn-secondary pm-btn-sm"
                         >
                           Add Payment
                         </button>
@@ -278,7 +282,7 @@ export default function Repairs() {
                           e.stopPropagation();
                           goToPaymentFlow(repair);
                         }}
-                        className="ml-2 bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700"
+                        className="pm-btn pm-btn-primary pm-btn-sm ml-2"
                       >
                         Confirm Payment
                       </button>
@@ -298,19 +302,19 @@ export default function Repairs() {
           role="presentation"
         >
           <div
-            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+            className="pm-modal-panel max-w-md w-full p-6"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="repair-action-title"
           >
-            <h3 id="repair-action-title" className="text-lg font-bold text-gray-900">
+            <h3 id="repair-action-title" className="text-lg font-bold text-[var(--pm-ink)]">
               Repair: {repairRowAction.customerName}
             </h3>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="mt-1 text-sm text-[var(--pm-ink-soft)]">
               {repairRowAction.phoneModel} · KES {(repairRowAction.totalAgreedAmount || repairRowAction.totalCost).toLocaleString()}
             </p>
-            <p className="text-sm text-gray-700 mt-4">What do you want to do?</p>
+            <p className="mt-4 text-sm text-[var(--pm-ink-soft)]">What do you want to do?</p>
             <div className="flex flex-col gap-3 mt-4">
               <button
                 type="button"
@@ -320,7 +324,7 @@ export default function Repairs() {
                     ? "Requires full payment, admin approval, and zero balance"
                     : undefined
                 }
-                className="w-full bg-green-600 text-white px-4 py-2 rounded font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="pm-btn pm-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => {
                   if (!canMarkRepairCollected(repairRowAction)) return;
                   if (
@@ -339,7 +343,7 @@ export default function Repairs() {
               </button>
               <button
                 type="button"
-                className="w-full bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700"
+                className="pm-btn pm-btn-secondary w-full"
                 onClick={() => {
                   setRepairRowAction(null);
                   navigate("/pending-collections");
@@ -349,7 +353,7 @@ export default function Repairs() {
               </button>
               <button
                 type="button"
-                className="w-full bg-purple-600 text-white px-4 py-2 rounded font-semibold hover:bg-purple-700"
+                className="pm-btn pm-btn-primary w-full"
                 onClick={() => {
                   setRepairRowAction(null);
                   goToPaymentFlow(repairRowAction);
@@ -359,7 +363,7 @@ export default function Repairs() {
               </button>
               <button
                 type="button"
-                className="w-full border border-gray-300 text-gray-800 px-4 py-2 rounded font-medium hover:bg-gray-50"
+                className="pm-btn pm-btn-secondary w-full"
                 onClick={() => setRepairRowAction(null)}
               >
                 Cancel

@@ -320,11 +320,12 @@ export default function DailyReport() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="pm-page-head">
         <div>
-          <h2 className="text-2xl font-bold">Daily Sales Report</h2>
-          <p className="text-gray-600 text-sm mt-1">
-            {currentUser?.roles.includes('admin') ? 'All Shops' : currentShop?.name || 'Select Shop'}
+          <p className="pm-eyebrow">Reports</p>
+          <h2 className="pm-page-title">Daily Sales Report</h2>
+          <p className="pm-page-desc">
+            {currentUser?.roles.includes('admin') ? 'All shops overview' : currentShop?.name || 'Select Shop'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -333,12 +334,12 @@ export default function DailyReport() {
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="border border-gray-300 rounded px-3 py-2 text-sm"
+              className="pm-input w-auto text-sm"
               max={new Date().toISOString().split('T')[0]}
             />
             <button
               onClick={handleGenerateToday}
-              className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 text-sm"
+              className="pm-btn pm-btn-secondary text-sm"
             >
               Today
             </button>
@@ -346,7 +347,7 @@ export default function DailyReport() {
           <button
             onClick={handleShareWhatsApp}
             disabled={hasMissingCosts}
-            className={`text-white px-4 py-2 rounded flex items-center gap-2 ${hasMissingCosts ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+            className={`pm-btn flex items-center gap-2 ${hasMissingCosts ? 'pm-btn-secondary cursor-not-allowed opacity-60' : 'pm-btn-primary'}`}
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
               <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.982 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
@@ -356,7 +357,7 @@ export default function DailyReport() {
           <button
             onClick={handleShareEmail}
             disabled={hasMissingCosts}
-            className={`text-white px-4 py-2 rounded flex items-center gap-2 ${hasMissingCosts ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+            className={`pm-btn flex items-center gap-2 ${hasMissingCosts ? 'pm-btn-secondary cursor-not-allowed opacity-60' : 'pm-btn-secondary'}`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -384,22 +385,22 @@ export default function DailyReport() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <p className="text-gray-600 text-sm">Total Revenue</p>
+        <div className="pm-card pm-pad-lg">
+          <p className="text-[var(--pm-ink-soft)] text-sm">Total Revenue</p>
           <p className="text-2xl font-bold text-green-600">KES {dailyRevenue.toLocaleString()}</p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <p className="text-gray-600 text-sm">Items Sold</p>
+        <div className="pm-card pm-pad-lg">
+          <p className="text-[var(--pm-ink-soft)] text-sm">Items Sold</p>
           <p className="text-2xl font-bold text-blue-600">{totalItemsSold}</p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <p className="text-gray-600 text-sm">Transactions</p>
+        <div className="pm-card pm-pad-lg">
+          <p className="text-[var(--pm-ink-soft)] text-sm">Transactions</p>
           <p className="text-2xl font-bold text-purple-600">{dailySales.length}</p>
         </div>
       </div>
 
       {/* Revenue Chart */}
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">Revenue Trend (Last 7 Days)</h3>
         <ResponsiveContainer width="100%" height={250} className="min-h-[250px]">
           <LineChart data={revenueData}>
@@ -420,10 +421,10 @@ export default function DailyReport() {
       </div>
 
       {/* Items Sold Chart */}
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">Items Sold - {formatDate(selectedDate)}</h3>
         {itemsSoldByProduct.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No items sold on this date.</p>
+          <p className="text-[var(--pm-ink-soft)] text-center py-8">No items sold on this date.</p>
         ) : (
           <ResponsiveContainer width="100%" height={300} className="min-h-[300px]">
             <BarChart data={itemsSoldByProduct}>
@@ -441,7 +442,7 @@ export default function DailyReport() {
       {/* Inventory Status Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Inventory Status Pie Chart */}
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-4">Inventory Status Overview</h3>
           <ResponsiveContainer width="100%" height={250} className="min-h-[250px]">
             <PieChart>
@@ -465,7 +466,7 @@ export default function DailyReport() {
         </div>
 
         {/* Inventory by Category */}
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-4">Inventory by Category</h3>
           <ResponsiveContainer width="100%" height={250} className="min-h-[250px]">
             <BarChart data={inventoryByCategory}>
@@ -482,14 +483,14 @@ export default function DailyReport() {
       </div>
 
       {/* Sales List */}
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="pm-card pm-pad-lg">
         <h3 className="text-lg font-semibold mb-4">Transactions - {formatDate(selectedDate)}</h3>
         {dailySales.length === 0 ? (
-          <p className="text-gray-600 text-center py-8">No sales recorded on this date.</p>
+          <p className="text-[var(--pm-ink-soft)] text-center py-8">No sales recorded on this date.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
             <table className="w-full">
-              <thead className="bg-gray-100">
+              <thead>
                 <tr>
                   <th className="p-3 text-left">Receipt #</th>
                   <th className="p-3 text-left">Time</th>
@@ -499,7 +500,7 @@ export default function DailyReport() {
               </thead>
               <tbody>
                 {dailySales.map((sale) => (
-                  <tr key={sale.id} className="border-t">
+                  <tr key={sale.id} className="border-t border-[var(--pm-border)]">
                     <td className="p-3">{sale.id.substring(0, 8)}</td>
                     <td className="p-3">
                       {new Date(sale.date).toLocaleTimeString('en-US', {
@@ -521,7 +522,7 @@ export default function DailyReport() {
 
       {/* Admin Only: Repair Tickets Report */}
       {currentUser?.roles.includes('admin') && (
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="pm-card pm-pad-lg">
           <h3 className="text-lg font-semibold mb-4">Repair Tickets Report - {formatDate(selectedDate)}</h3>
           {(() => {
             // Filter repairs with tickets (exclude deposits)
@@ -564,29 +565,29 @@ export default function DailyReport() {
             const totalTickets = ticketsWithRepairs.length;
 
             if (ticketsWithRepairs.length === 0) {
-              return <p className="text-gray-600 text-center py-8">No repair tickets for this date.</p>;
+              return <p className="text-[var(--pm-ink-soft)] text-center py-8">No repair tickets for this date.</p>;
             }
 
             return (
               <div className="space-y-6">
                 {/* Combined Summary */}
-                <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="bg-[var(--pm-surface-soft)] p-4 rounded-lg border border-[var(--pm-border)]">
                   <h4 className="font-semibold text-lg mb-3">All Shops Combined</h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
-                      <p className="text-sm text-gray-600">Total Tickets</p>
+                      <p className="text-sm text-[var(--pm-ink-soft)]">Total Tickets</p>
                       <p className="text-xl font-bold">{totalTickets}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Total Revenue</p>
+                      <p className="text-sm text-[var(--pm-ink-soft)]">Total Revenue</p>
                       <p className="text-xl font-bold text-green-600">KES {combinedRevenue.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Gross Profit</p>
+                      <p className="text-sm text-[var(--pm-ink-soft)]">Gross Profit</p>
                       <p className="text-xl font-bold text-blue-600">KES {combinedGrossProfit.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Net Profit</p>
+                      <p className="text-sm text-[var(--pm-ink-soft)]">Net Profit</p>
                       <p className="text-xl font-bold text-purple-600">KES {combinedNetProfit.toLocaleString()}</p>
                     </div>
                   </div>

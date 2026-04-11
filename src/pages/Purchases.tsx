@@ -228,16 +228,22 @@ export default function Purchases() {
   };
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold mb-6">Purchase Tracking</h2>
+    <div className="space-y-6">
+      <div className="pm-page-head">
+        <div>
+          <p className="pm-eyebrow">Procurement</p>
+          <h2 className="pm-page-title">Purchase Tracking</h2>
+          <p className="pm-page-desc">Record incoming stock and confirm supplier purchases.</p>
+        </div>
+      </div>
 
       {/* Purchase Form */}
-      <div className="bg-white p-6 rounded-lg shadow mb-6">
+      <div className="pm-card pm-pad-lg mb-6">
         <h3 className="text-lg font-semibold mb-4">Record New Purchase</h3>
         
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Supplier *</label>
+            <label className="pm-label">Supplier *</label>
             <select
               value={supplierId}
               onChange={(e) => {
@@ -245,7 +251,7 @@ export default function Purchases() {
                 const sup = suppliers.find(s => s.id === e.target.value);
                 setSupplierName(sup ? sup.name : "");
               }}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
+              className="pm-input"
             >
               <option value="">Select supplier</option>
               {suppliers.map((sup) => (
@@ -254,7 +260,7 @@ export default function Purchases() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Or Add New Supplier</label>
+            <label className="pm-label">Or Add New Supplier</label>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -283,7 +289,7 @@ export default function Purchases() {
                     // Silent on blur; user can retry with Save Supplier button
                   }
                 }}
-                className="flex-1 border border-gray-300 rounded-md px-3 py-2"
+                className="pm-input flex-1"
                 placeholder="Enter supplier name (auto-saves)"
               />
               {supplierName.trim() && !supplierId && (
@@ -311,13 +317,13 @@ export default function Purchases() {
                       alert(`Could not save supplier: ${err?.message || "Unknown error"}. Please try again.`);
                     }
                   }}
-                  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 whitespace-nowrap"
+                  className="pm-btn pm-btn-primary whitespace-nowrap"
                 >
                   Save Supplier
                 </button>
               )}
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="mt-1 text-xs text-[var(--pm-ink-soft)]">
               {supplierName && !supplierId 
                 ? "Supplier will be saved automatically or click 'Save Supplier' button"
                 : "All suppliers are shared across the system."}
@@ -327,57 +333,57 @@ export default function Purchases() {
 
         <div className="grid grid-cols-4 gap-4 mb-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Item Name *</label>
+            <label className="pm-label">Item Name *</label>
             <input
               type="text"
               value={itemName}
               onChange={(e) => setItemName(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
+              className="pm-input"
               placeholder="Enter item name"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
+            <label className="pm-label">Category *</label>
             <select
               value={itemCategory}
               onChange={(e) => setItemCategory(e.target.value as 'Spare' | 'Accessory')}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
+              className="pm-input"
             >
               <option value="Spare">Spare Parts</option>
               <option value="Accessory">Accessories</option>
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
+            <label className="pm-label">Quantity *</label>
             <input
               type="number"
               value={qty}
               onChange={(e) => setQty(Number(e.target.value))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
+              className="pm-input"
               min="1"
             />
           </div>
           {currentUser?.roles.includes('admin') && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Actual cost (KES) *</label>
+                <label className="pm-label">Actual cost (KES) *</label>
                 <input
                   type="number"
                   value={costPrice}
                   onChange={(e) => setCostPrice(Number(e.target.value))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="pm-input"
                   min="0"
                   placeholder="Your purchase cost (hidden from staff)"
                 />
                 <p className="text-xs text-gray-500 mt-1">This cost is only visible to you. Staff will see their own cost.</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Staff selling price (KES) *</label>
+                <label className="pm-label">Staff selling price (KES) *</label>
                 <input
                   type="number"
                   value={staffSellingPrice}
                   onChange={(e) => setStaffSellingPrice(Number(e.target.value))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="pm-input"
                   min="0"
                   placeholder="Price staff will use when selling"
                 />
@@ -388,7 +394,7 @@ export default function Purchases() {
           <div className="flex items-end">
             <button
               onClick={handleAddItem}
-              className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="pm-btn pm-btn-secondary w-full"
             >
               Add Item
             </button>
@@ -399,13 +405,13 @@ export default function Purchases() {
         {purchaseItems.length > 0 && (
           <div className="mb-4">
             <h4 className="font-semibold mb-2">Purchase Items:</h4>
-            <div className="border rounded p-4">
+            <div className="rounded border border-[var(--pm-border)] p-4">
               {purchaseItems.map((item, index) => (
-                <div key={index} className="flex justify-between items-center py-2 border-b last:border-b-0">
+                <div key={index} className="flex items-center justify-between border-b border-[var(--pm-border)] py-2 last:border-b-0">
                   <div className="flex-1">
                     <div className="font-medium">{item.itemName} x {item.qty}</div>
                     {currentUser?.roles.includes('admin') && (
-                      <div className="text-xs text-gray-600 mt-1">
+                      <div className="mt-1 text-xs text-[var(--pm-ink-soft)]">
                         <span>Cost: KES {item.costPrice.toLocaleString()}</span>
                         <span className="ml-3">Staff Price: KES {item.staffSellingPrice.toLocaleString()}</span>
                       </div>
@@ -417,7 +423,7 @@ export default function Purchases() {
                     )}
                     <button
                       onClick={() => handleRemoveItem(index)}
-                      className="bg-red-600 text-white px-2 py-1 rounded text-sm hover:bg-red-700"
+                      className="pm-btn pm-btn-danger pm-btn-sm"
                     >
                       Remove
                     </button>
@@ -425,7 +431,7 @@ export default function Purchases() {
                 </div>
               ))}
               {currentUser?.roles.includes('admin') && (
-                <div className="mt-2 pt-2 border-t font-bold text-right">
+                <div className="mt-2 border-t border-[var(--pm-border)] pt-2 text-right font-bold">
                   Total: KES {purchaseItems.reduce((sum, item) => sum + (item.qty * item.costPrice), 0).toLocaleString()}
                 </div>
               )}
@@ -435,7 +441,7 @@ export default function Purchases() {
 
         <button
           onClick={handleCompletePurchase}
-          className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
+          className="pm-btn pm-btn-primary w-full"
           disabled={(!supplierId && !supplierName) || purchaseItems.length === 0}
         >
           Complete Purchase
@@ -443,14 +449,14 @@ export default function Purchases() {
       </div>
 
       {/* Purchase History */}
-      <div className="bg-white rounded shadow">
+      <div className="pm-card pm-pad">
         <h3 className="text-lg font-semibold p-4 border-b">Purchase History</h3>
         {filteredPurchases.length === 0 ? (
-          <p className="text-gray-600 text-center py-8">No purchases recorded yet.</p>
+          <p className="py-8 text-center text-[var(--pm-ink-soft)]">No purchases recorded yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
             <table className="w-full">
-              <thead className="bg-gray-100">
+              <thead>
                 <tr>
                   <th className="p-3 text-left">Date</th>
                   <th className="p-3 text-left">Supplier</th>
@@ -466,7 +472,7 @@ export default function Purchases() {
               </thead>
               <tbody>
                 {filteredPurchases.map((purchase) => (
-                  <tr key={purchase.id} className={`border-t ${purchase.confirmed ? 'bg-green-50' : ''}`}>
+                  <tr key={purchase.id} className={`border-t border-[var(--pm-border)] ${purchase.confirmed ? 'bg-green-50' : ''}`}>
                     <td className="p-3">
                       {new Date(purchase.date).toLocaleDateString()}
                     </td>
@@ -503,12 +509,12 @@ export default function Purchases() {
                                     confirmPurchase(purchase.id);
                                   }
                                 }}
-                                className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
+                                className="pm-btn pm-btn-success pm-btn-sm"
                               >
                                 Confirm Purchase
                               </button>
                             ) : (
-                              <span className="text-sm text-gray-500">
+                              <span className="text-sm text-[var(--pm-ink-soft)]">
                                 Confirmed by {purchase.confirmedBy || 'admin'} on {purchase.confirmedDate ? new Date(purchase.confirmedDate).toLocaleDateString() : 'N/A'}
                               </span>
                             )}
@@ -519,7 +525,7 @@ export default function Purchases() {
                                   alert("Purchase deleted successfully");
                                 }
                               }}
-                              className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+                              className="pm-btn pm-btn-danger pm-btn-sm"
                             >
                               Delete Purchase
                             </button>
@@ -536,7 +542,7 @@ export default function Purchases() {
       </div>
 
       {currentUser?.roles.includes('admin') && supplierStats.length > 0 && (
-        <div className="bg-white rounded shadow mt-6">
+        <div className="pm-card pm-pad mt-6">
           <h3 className="text-lg font-semibold p-4 border-b">Supplier Spend Overview</h3>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -554,7 +560,7 @@ export default function Purchases() {
                     <td className="p-3 font-medium">{row.supplier}</td>
                     <td className="p-3 text-right font-semibold">KES {row.total.toLocaleString()}</td>
                     <td className="p-3 text-right">{row.orders}</td>
-                    <td className="p-3 text-sm text-gray-700">{row.topItem}</td>
+                    <td className="p-3 text-sm text-[var(--pm-ink-soft)]">{row.topItem}</td>
                   </tr>
                 ))}
               </tbody>
