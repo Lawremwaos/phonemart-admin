@@ -149,8 +149,13 @@ export default function Sales() {
       return;
     }
 
-    if (selectedItem.stock < qty) {
-      alert(`Not enough stock! Available: ${selectedItem.stock}`);
+    const alreadyInOpenWholesale = (openWholesaleSale?.items || [])
+      .filter((line) => line.itemId === selectedItem.id)
+      .reduce((sum, line) => sum + line.qty, 0);
+    if (selectedItem.stock < alreadyInOpenWholesale + qty) {
+      alert(
+        `Not enough stock! Available: ${selectedItem.stock} (${alreadyInOpenWholesale} already in this wholesale ticket)`
+      );
       return;
     }
 
@@ -163,7 +168,6 @@ export default function Sales() {
         adminBasePrice: selectedItem.adminCostPrice ?? selectedItem.costPrice,
         actualCost: selectedItem.actualCost,
       }, currentShop?.id);
-      deductStockById(selectedItem.id, qty);
 
       // Clear form
       setSelectedItemId("");
@@ -295,7 +299,7 @@ export default function Sales() {
   }
 
   // Handle wholesale sale closure
-  function handleCloseWholesaleSale() {
+  async function handleCloseWholesaleSale() {
     if (!openWholesaleSale || wholesaleItems.length === 0) {
       alert("No open wholesale sale to close");
       return;
@@ -311,12 +315,39 @@ export default function Sales() {
       return;
     }
 
+    const qtyByInventoryId = new Map<number, number>();
+    for (const item of wholesaleItems) {
+      if (item.itemId != null) {
+        qtyByInventoryId.set(item.itemId, (qtyByInventoryId.get(item.itemId) ?? 0) + item.qty);
+      }
+    }
+
+    for (const [itemId, need] of qtyByInventoryId) {
+      const inv = items.find((i) => i.id === itemId);
+      if (!inv || inv.stock < need) {
+        alert(
+          inv
+            ? `Not enough stock for ${inv.name}. Need ${need}, available ${inv.stock}.`
+            : "An inventory line is invalid. Refresh and try again."
+        );
+        return;
+      }
+    }
+
     // Close the wholesale sale (persists customer details if columns exist in DB)
-    closeWholesaleSale(wholesalePaymentType, wholesaleDepositReference, wholesaleBank, {
+    const closed = await closeWholesaleSale(wholesalePaymentType, wholesaleDepositReference, wholesaleBank, {
       customerName: wholesaleCustomerName.trim() || undefined,
       customerPhone: wholesaleCustomerPhone.trim() || undefined,
       saleNotes: wholesaleSaleNotes.trim() || undefined,
     });
+    if (!closed) {
+      alert("Failed to close wholesale sale. Please try again.");
+      return;
+    }
+
+    for (const [itemId, need] of qtyByInventoryId) {
+      deductStockById(itemId, need);
+    }
 
     // Add payment record
     addPayment({

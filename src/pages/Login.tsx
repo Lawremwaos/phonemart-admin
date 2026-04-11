@@ -107,17 +107,6 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-8 border-t border-[var(--pm-border)] pt-6">
-            <p className="mb-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--pm-ink-soft)]">Demo</p>
-            <div className="space-y-1.5 text-center text-xs text-[var(--pm-ink-soft)]">
-              <p>
-                <span className="font-semibold text-[var(--pm-ink)]">Admin</span> — admin@phonemart.com / admin123
-              </p>
-              <p>
-                <span className="font-semibold text-[var(--pm-ink)]">Technician</span> — tech1@phonemart.com / tech123
-              </p>
-            </div>
-          </div>
         </div>
       </div>
     </div>

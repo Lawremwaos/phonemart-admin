@@ -35,7 +35,7 @@ type SplitPaymentEntry = {
 
 export default function RepairSales() {
   const navigate = useNavigate();
-  const { items, addStock } = useInventory();
+  const { items, deductStockById } = useInventory();
   const { addRepair } = useRepair();
   const { addRepairAccessorySale } = useSales();
   // Payments are recorded after admin approval on the Pending Payment Approval page
@@ -222,8 +222,8 @@ export default function RepairSales() {
         }
         selectedItemId = inventoryItem.id;
         itemName = inventoryItem.name;
-        cost = inventoryItem.adminCostPrice || inventoryItem.costPrice || 0;
-        addStock(inventoryItem.id, -1);
+        // Staff/base cost for profit view should use the configured staff-facing cost.
+        cost = inventoryItem.costPrice || 0;
       } else {
         if (!itemName) {
           alert("Enter the spare part name.");
@@ -251,8 +251,8 @@ export default function RepairSales() {
         }
         selectedItemId = inventoryItem.id;
         itemName = inventoryItem.name;
-        cost = inventoryItem.adminCostPrice || inventoryItem.costPrice || 0;
-        addStock(inventoryItem.id, -1);
+        // Staff/base cost for profit view should use the configured staff-facing cost.
+        cost = inventoryItem.costPrice || 0;
       } else {
         if (!itemName) {
           alert("Enter the accessory name.");
@@ -286,13 +286,6 @@ export default function RepairSales() {
   }
 
   function removePart(index: number) {
-    const part = selectedParts[index];
-    if (part.source === "in-house" && part.lineKind !== "service") {
-      const item = items.find((i) => i.id === part.itemId);
-      if (item) {
-        addStock(item.id, part.qty);
-      }
-    }
     setSelectedParts((prev) => prev.filter((_, i) => i !== index));
   }
 
@@ -434,6 +427,25 @@ export default function RepairSales() {
       return;
     }
 
+    const stockNeeded = new Map<number, number>();
+    for (const part of selectedParts) {
+      if (part.source === "in-house" && part.lineKind !== "service") {
+        stockNeeded.set(part.itemId, (stockNeeded.get(part.itemId) ?? 0) + part.qty);
+      }
+    }
+
+    for (const [itemId, qtyNeeded] of stockNeeded) {
+      const inventoryItem = items.find((i) => i.id === itemId);
+      if (!inventoryItem || inventoryItem.stock < qtyNeeded) {
+        alert(
+          inventoryItem
+            ? `Not enough stock for ${inventoryItem.name}. Need ${qtyNeeded}, available ${inventoryItem.stock}.`
+            : "One selected stock item is no longer valid. Refresh and try again."
+        );
+        return;
+      }
+    }
+
     repairSaleSubmitLock.current = true;
     setIsSubmittingRepairSale(true);
 
@@ -506,6 +518,10 @@ export default function RepairSales() {
     if (!repairId) {
       alert("Failed to save repair. Please try again.");
       return;
+    }
+
+    for (const [itemId, qtyNeeded] of stockNeeded) {
+      deductStockById(itemId, qtyNeeded);
     }
 
 

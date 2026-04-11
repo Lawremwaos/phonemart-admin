@@ -68,11 +68,20 @@ export default function RepairReport() {
   };
 
   const repairAnalysis = useMemo(() => {
+    const isOutsourcedPart = (part: (typeof filteredRepairs)[number]["partsUsed"][number]) =>
+      part.source === 'outsourced' || Boolean(part.supplierName?.trim());
+
     return filteredRepairs.map(repair => {
       const revenue = repair.totalAgreedAmount || repair.totalCost;
       const partsBreakdown = repair.partsUsed.map(part => {
-        const staffCostPerUnit = part.cost > 0 ? part.cost : getStaffCostPrice(part.itemName);
-        const wholesaleCostPerUnit = part.cost > 0 ? part.cost : getWholesaleCostPrice(part.itemName);
+        // Staff view must use staff/base configured cost for in-house items,
+        // and entered outsourced cost for outsourced items.
+        const staffCostPerUnit = isOutsourcedPart(part)
+          ? (part.cost > 0 ? part.cost : 0)
+          : getStaffCostPrice(part.itemName);
+        const wholesaleCostPerUnit = isOutsourcedPart(part)
+          ? (part.cost > 0 ? part.cost : 0)
+          : getWholesaleCostPrice(part.itemName);
         const supplier = getSupplierForItem(part.itemName, part.supplierName);
         return {
           itemName: part.itemName,

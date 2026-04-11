@@ -61,7 +61,7 @@ type SalesContextType = {
     depositReference?: string,
     bank?: string,
     customer?: { customerName?: string; customerPhone?: string; saleNotes?: string }
-  ) => void;
+  ) => Promise<boolean>;
   deleteSale: (saleId: string) => void;
   getDailyRevenue: () => number;
   getWeeklyRevenue: () => number;
@@ -390,14 +390,13 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
     })();
   }, [openWholesaleSale, addSale]);
 
-  const closeWholesaleSale = useCallback((
+  const closeWholesaleSale = useCallback(async (
     paymentType: 'cash' | 'mpesa' | 'bank_deposit',
     depositReference?: string,
     bank?: string,
     customer?: { customerName?: string; customerPhone?: string; saleNotes?: string }
-  ) => {
-    (async () => {
-      if (!openWholesaleSale) return;
+  ): Promise<boolean> => {
+      if (!openWholesaleSale) return false;
 
       const updatePayload: Record<string, unknown> = {
         status: 'closed',
@@ -413,7 +412,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
         .eq("id", openWholesaleSale.id);
       if (error) {
         console.error("Error closing wholesale sale:", error);
-        return;
+        return false;
       }
       
       const closedSale: Sale = {
@@ -434,7 +433,7 @@ export const SalesProvider = ({ children }: { children: React.ReactNode }) => {
       lastLocalUpdateRef.current = Date.now();
       setSales((prev) => [closedSale, ...prev]);
       setOpenWholesaleSale(null);
-    })();
+      return true;
   }, [openWholesaleSale]);
 
   const getDailyRevenue = useCallback(() => {
