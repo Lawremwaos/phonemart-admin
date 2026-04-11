@@ -173,6 +173,101 @@ export default function Dashboard() {
   const currentCategory = categoryData[period];
   const currentCost = costData[period];
   const currentSupplier = supplierData[period];
+  const wholesaleProfitData = useMemo(() => {
+    if (!isAdmin) {
+      return {
+        totalQty: 0,
+        totalRevenue: 0,
+        totalSupplierCost: 0,
+        totalProfit: 0,
+        byItem: [] as Array<{
+          name: string;
+          qty: number;
+          avgSellPrice: number;
+          supplierCostPerUnit: number;
+          totalRevenue: number;
+          totalSupplierCost: number;
+          totalProfit: number;
+        }>,
+      };
+    }
+
+    const periodSales = shopSales.filter((sale) => inPeriod(sale.date, period));
+    const byItem = new Map<
+      string,
+      {
+        name: string;
+        qty: number;
+        totalRevenue: number;
+        totalSupplierCost: number;
+      }
+    >();
+
+    const getSupplierCostPerUnit = (saleItem: (typeof periodSales)[number]["items"][number]) => {
+      if (saleItem.actualCost != null) return saleItem.actualCost;
+      const inventoryItem = saleItem.itemId != null
+        ? items.find((inv) => inv.id === saleItem.itemId)
+        : items.find((inv) => inv.name.toLowerCase() === saleItem.name.toLowerCase());
+      return inventoryItem?.actualCost ?? inventoryItem?.adminCostPrice ?? inventoryItem?.costPrice ?? 0;
+    };
+
+    for (const sale of periodSales) {
+      for (const saleItem of sale.items) {
+        const supplierCostPerUnit = getSupplierCostPerUnit(saleItem);
+        const revenue = saleItem.qty * saleItem.price;
+        const supplierCost = saleItem.qty * supplierCostPerUnit;
+        const existing = byItem.get(saleItem.name);
+
+        if (existing) {
+          existing.qty += saleItem.qty;
+          existing.totalRevenue += revenue;
+          existing.totalSupplierCost += supplierCost;
+        } else {
+          byItem.set(saleItem.name, {
+            name: saleItem.name,
+            qty: saleItem.qty,
+            totalRevenue: revenue,
+            totalSupplierCost: supplierCost,
+          });
+        }
+      }
+    }
+
+    const rows = Array.from(byItem.values())
+      .map((row) => {
+        const avgSellPrice = row.qty > 0 ? row.totalRevenue / row.qty : 0;
+        const supplierCostPerUnit = row.qty > 0 ? row.totalSupplierCost / row.qty : 0;
+        const totalProfit = row.totalRevenue - row.totalSupplierCost;
+        return {
+          ...row,
+          avgSellPrice,
+          supplierCostPerUnit,
+          totalProfit,
+        };
+      })
+      .sort((a, b) => b.totalProfit - a.totalProfit);
+
+    return {
+      totalQty: rows.reduce((sum, row) => sum + row.qty, 0),
+      totalRevenue: rows.reduce((sum, row) => sum + row.totalRevenue, 0),
+      totalSupplierCost: rows.reduce((sum, row) => sum + row.totalSupplierCost, 0),
+      totalProfit: rows.reduce((sum, row) => sum + row.totalProfit, 0),
+      byItem: rows,
+    };
+  }, [isAdmin, items, period, shopSales]);
+  const wholesaleSummaryCards = useMemo(
+    () => [
+      { label: "Units Sold", value: wholesaleProfitData.totalQty.toLocaleString(), tone: "text-[var(--pm-ink)]" },
+      { label: "Revenue", value: `KES ${wholesaleProfitData.totalRevenue.toLocaleString()}`, tone: "text-blue-700" },
+      { label: "Supplier Cost", value: `KES ${wholesaleProfitData.totalSupplierCost.toLocaleString()}`, tone: "text-red-700" },
+      {
+        label: "Wholesale Profit",
+        value: `KES ${wholesaleProfitData.totalProfit.toLocaleString()}`,
+        tone: wholesaleProfitData.totalProfit >= 0 ? "text-emerald-700" : "text-red-700",
+      },
+    ],
+    [wholesaleProfitData]
+  );
   // --- EXISTING DATA (kept) ---
   const lowStockItems = shopItems.filter(item => item.stock <= item.reorderLevel);
   const lowStockCount = lowStockItems.length;
@@ -550,6 +645,61 @@ export default function Dashboard() {
           </table>
         </div>
       </div>
+
+      {isAdmin && (
+        <div className="pm-card pm-pad-lg">
+          <h3 className="text-lg font-semibold mb-2">Wholesale Profit View</h3>
+          <p className="text-sm text-[var(--pm-ink-soft)] mb-4">
+            Profit is calculated as <strong>Selling price - Supplier cost</strong> (e.g. 100 - 40 = 60).
+          </p>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            {wholesaleSummaryCards.map((card) => (
+              <div key={card.label} className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface-soft)] p-3 text-center">
+                <p className="text-xs text-[var(--pm-ink-soft)]">{card.label}</p>
+                <p className={`text-xl font-bold ${card.tone}`}>{card.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="pm-table-shell rounded-none border-x-0 border-b-0 border-t-0 shadow-none">
+            <table className="w-full text-sm">
+              <thead>
+                <tr>
+                  <th className="p-3 text-left">Item</th>
+                  <th className="p-3 text-right">Qty</th>
+                  <th className="p-3 text-right">Avg Sold Price</th>
+                  <th className="p-3 text-right">Supplier Cost / Unit</th>
+                  <th className="p-3 text-right">Revenue</th>
+                  <th className="p-3 text-right">Profit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {wholesaleProfitData.byItem.length === 0 ? (
+                  <tr className="border-t border-[var(--pm-border)]">
+                    <td colSpan={6} className="p-4 text-center text-[var(--pm-ink-soft)]">
+                      No sales for {periodLabel(period)}.
+                    </td>
+                  </tr>
+                ) : (
+                  wholesaleProfitData.byItem.slice(0, 12).map((row) => (
+                    <tr key={row.name} className="border-t border-[var(--pm-border)] hover:bg-[var(--pm-surface-soft)]">
+                      <td className="p-3 font-medium">{row.name}</td>
+                      <td className="p-3 text-right">{row.qty}</td>
+                      <td className="p-3 text-right">KES {Math.round(row.avgSellPrice).toLocaleString()}</td>
+                      <td className="p-3 text-right">KES {Math.round(row.supplierCostPerUnit).toLocaleString()}</td>
+                      <td className="p-3 text-right text-blue-700">KES {row.totalRevenue.toLocaleString()}</td>
+                      <td className={`p-3 text-right font-semibold ${row.totalProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                        KES {row.totalProfit.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* LOW STOCK ITEMS */}
       <div className="pm-card pm-pad-lg">
