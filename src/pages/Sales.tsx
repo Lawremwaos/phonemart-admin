@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useInventory } from "../context/InventoryContext";
+import { supabase } from "../lib/supabaseClient";
 import { useSales, type SaleItemInput } from "../context/SalesContext";
 import { useShop } from "../context/ShopContext";
 import { usePayment } from "../context/PaymentContext";
@@ -18,7 +19,7 @@ type SaleItem = {
 
 export default function Sales() {
   const navigate = useNavigate();
-  const { deductStockById, addStock, items } = useInventory();
+  const { deductStockById, addStock, items, refreshStockMovements } = useInventory();
   const { addSale, openWholesaleSale, addItemToWholesaleSale, closeWholesaleSale } = useSales();
   const { currentShop, currentUser } = useShop();
   const { addPayment } = usePayment();
@@ -236,8 +237,12 @@ export default function Sales() {
         }
       }
 
+      const saleCheckoutRef =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? `sale:${crypto.randomUUID()}`
+          : `sale:${Date.now()}`;
       for (const [itemId, need] of qtyByInventoryId) {
-        deductStockById(itemId, need);
+        await deductStockById(itemId, need, { saleReferenceId: saleCheckoutRef });
       }
 
       const saleId = await addSale(itemsForSale, retailTotal, currentShop?.id, 'retail', undefined, {
@@ -251,6 +256,16 @@ export default function Sales() {
         }
         alert("Failed to save sale. Inventory was restored. Please try again.");
         return;
+      }
+
+      const { error: linkMovementsErr } = await supabase
+        .from("inventory_stock_movements")
+        .update({ reference_id: saleId })
+        .eq("reference_id", saleCheckoutRef);
+      if (linkMovementsErr) {
+        console.warn("Could not link stock movements to sale id:", linkMovementsErr.message);
+      } else {
+        await refreshStockMovements();
       }
 
       const sale = {
@@ -345,9 +360,11 @@ export default function Sales() {
       return;
     }
 
+    const wholesaleSaleId = openWholesaleSale.id;
     for (const [itemId, need] of qtyByInventoryId) {
-      deductStockById(itemId, need);
+      await deductStockById(itemId, need, { saleReferenceId: wholesaleSaleId });
     }
+    await refreshStockMovements();
 
     // Add payment record
     addPayment({

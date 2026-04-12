@@ -17,6 +17,7 @@ WHERE table_schema = 'public'
     'inventory_audit_logs',
     'inventory_manager_approvals',
     'inventory_stock_movements',
+    'inventory_stock_lots',
     'staff_audit_logs',
     'returns',
     'repairs',

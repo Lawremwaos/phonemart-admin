@@ -56,19 +56,38 @@ export default function AdminSettings() {
     setShopForm({ name: '', address: '', phone: '', email: '', whatsappGroup: '' });
   };
 
-  const handleStaffSubmit = (e: React.FormEvent) => {
+  const handleStaffSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (staffForm.roles.length === 0) {
+      alert("Select at least one role (e.g. Admin, Technician, or Manager).");
+      return;
+    }
     if (editingUser) {
-      // When editing, only send password if user entered a new one
       const { password, ...rest } = staffForm;
       const payload = password.trim() ? staffForm : { ...rest };
-      updateUser(editingUser.id, payload);
-    } else {
-      if (!staffForm.password.trim()) {
-        alert('Password is required when adding a new staff member.');
+      const result = await updateUser(editingUser.id, payload);
+      if (!result.ok) {
+        alert(
+          result.error
+            ? `Could not update staff: ${result.error}\n\nIf you use Supabase Row Level Security on the users table, run supabase/fix_users_anon_writes.sql so the app can save role changes.`
+            : "Could not update staff. Check the browser console."
+        );
         return;
       }
-      addUser(staffForm);
+    } else {
+      if (!staffForm.password.trim()) {
+        alert("Password is required when adding a new staff member.");
+        return;
+      }
+      const result = await addUser(staffForm);
+      if (!result.ok) {
+        alert(
+          result.error
+            ? `Could not add staff: ${result.error}\n\nIf you use Supabase Row Level Security on the users table, run supabase/fix_users_anon_writes.sql so the app can insert users.`
+            : "Could not add staff. Check the browser console."
+        );
+        return;
+      }
     }
     setShowStaffForm(false);
     setEditingUser(null);

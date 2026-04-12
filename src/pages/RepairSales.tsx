@@ -521,7 +521,7 @@ export default function RepairSales() {
     }
 
     for (const [itemId, qtyNeeded] of stockNeeded) {
-      deductStockById(itemId, qtyNeeded);
+      await deductStockById(itemId, qtyNeeded, { saleReferenceId: `repair:${repairId}` });
     }
 
 

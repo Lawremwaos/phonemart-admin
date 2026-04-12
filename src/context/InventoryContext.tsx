@@ -2,6 +2,28 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from "../lib/supabaseClient";
 import { useShop } from "./ShopContext";
 
+/** Match inbound purchase lines to an existing inventory row (name + category + shop preference). */
+function findPurchaseMergeTarget(
+  inventory: InventoryItem[],
+  itemName: string,
+  category: "Phone" | "Spare" | "Accessory" | undefined,
+  purchaseShopId?: string
+): InventoryItem | undefined {
+  const nameLc = itemName.trim().toLowerCase();
+  const sameName = inventory.filter((i) => i.name.trim().toLowerCase() === nameLc);
+  if (sameName.length === 0) return undefined;
+  const cat = category ?? "Spare";
+  const byCat = sameName.filter((i) => i.category === cat);
+  const pool = byCat.length > 0 ? byCat : sameName;
+  if (purchaseShopId) {
+    const shopHit = pool.find((i) => i.shopId === purchaseShopId);
+    if (shopHit) return shopHit;
+  }
+  const unassigned = pool.find((i) => !i.shopId);
+  if (unassigned) return unassigned;
+  return pool[0];
+}
+
 export type StockAllocation = {
   id: string;
   itemId: number;
@@ -114,6 +136,8 @@ export type StockMovement = {
   reason: 'initial_stock' | 'manual_edit' | 'manual_delete' | 'sale' | 'allocation_out' | 'allocation_in' | 'purchase_in' | 'adjustment';
   actor?: string;
   referenceId?: string;
+  /** When a sale consumes FIFO stock from a tracked purchase batch (admin trail). */
+  sourcePurchaseId?: string;
   createdAt: Date;
 };
 
@@ -126,12 +150,20 @@ type InventoryContextType = {
   managerApprovals: InventoryManagerApproval[];
   stockMovements: StockMovement[];
   addItem: (item: AddInventoryItemInput) => void;
-  updateItem: (id: number, updates: Partial<InventoryItem>) => void;
+  updateItem: (
+    id: number,
+    updates: Partial<InventoryItem>,
+    movementOpts?: {
+      stockDeltaReason?: StockMovement["reason"];
+      stockDeltaReferenceId?: string;
+      sourcePurchaseId?: string;
+    }
+  ) => Promise<void>;
   removeItem: (id: number) => void;
   addStock: (itemId: number, qty: number) => void;
   deductStock: (name: string, qty: number, shopId?: string) => void;
   /** Deduct stock by inventory row id (preferred for sales — avoids name/shop mismatches). */
-  deductStockById: (itemId: number, qty: number) => void;
+  deductStockById: (itemId: number, qty: number, opts?: { saleReferenceId?: string }) => Promise<void>;
   addPurchase: (purchase: Omit<Purchase, 'id' | 'date'>) => Promise<void>;
   confirmPurchase: (purchaseId: string) => void;
   deletePurchase: (purchaseId: string) => void;
@@ -142,6 +174,8 @@ type InventoryContextType = {
   approveStockAllocation: (allocationId: string, shopId?: string) => void;
   rejectStockAllocation: (allocationId: string) => void;
   refreshStockAllocations: () => Promise<void>;
+  /** Reload stock movement ledger from Supabase (e.g. after linking sale ids). */
+  refreshStockMovements: () => Promise<void>;
   addAuditLog: (entry: Omit<InventoryAuditLog, 'id' | 'createdAt'>) => Promise<void>;
   requestManagerApproval: (request: Omit<InventoryManagerApproval, 'id' | 'status' | 'requestedAt'>) => Promise<void>;
   approveManagerApproval: (requestId: string) => Promise<void>;
@@ -296,9 +330,19 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
       reason: row.reason as StockMovement['reason'],
       actor: row.actor || undefined,
       referenceId: row.reference_id || undefined,
+      sourcePurchaseId: row.source_purchase_id || undefined,
       createdAt: new Date(row.created_at),
     }));
   }, []);
+
+  const refreshStockMovements = useCallback(async (): Promise<void> => {
+    try {
+      const rows = await loadStockMovements();
+      setStockMovements(rows);
+    } catch (e) {
+      console.warn("refreshStockMovements failed:", e);
+    }
+  }, [loadStockMovements]);
 
   const recordStockMovement = useCallback(async (movement: Omit<StockMovement, 'id' | 'createdAt'>): Promise<void> => {
     const local: StockMovement = {
@@ -308,17 +352,22 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     };
     setStockMovements((prev) => [local, ...prev].slice(0, 2000));
 
+    const insertPayload: Record<string, unknown> = {
+      item_id: movement.itemId,
+      item_name: movement.itemName,
+      shop_id: movement.shopId || null,
+      delta: movement.delta,
+      reason: movement.reason,
+      actor: movement.actor || currentUser?.name || null,
+      reference_id: movement.referenceId || null,
+    };
+    if (movement.sourcePurchaseId) {
+      insertPayload.source_purchase_id = movement.sourcePurchaseId;
+    }
+
     const { data, error } = await supabase
       .from("inventory_stock_movements")
-      .insert({
-        item_id: movement.itemId,
-        item_name: movement.itemName,
-        shop_id: movement.shopId || null,
-        delta: movement.delta,
-        reason: movement.reason,
-        actor: movement.actor || currentUser?.name || null,
-        reference_id: movement.referenceId || null,
-      })
+      .insert(insertPayload)
       .select("*")
       .single();
 
@@ -338,6 +387,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
           reason: data.reason as StockMovement['reason'],
           actor: data.actor || undefined,
           referenceId: data.reference_id || undefined,
+          sourcePurchaseId: data.source_purchase_id || undefined,
           createdAt: new Date(data.created_at),
         },
         ...prev.filter((m) => m.id !== local.id),
@@ -705,49 +755,61 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
     })();
   }, [currentUser?.name, recordStockMovement]);
 
-  const updateItem = useCallback((id: number, updates: Partial<InventoryItem>) => {
-    (async () => {
-      const currentItem = items.find((item) => item.id === id);
-      if (!currentItem) return;
-      const payload: any = {};
-      if (updates.name !== undefined) payload.name = updates.name;
-      if (updates.category !== undefined) payload.category = updates.category;
-      if (updates.itemType !== undefined) payload.item_type = updates.itemType;
-      if (updates.stock !== undefined) payload.stock = updates.stock;
-      if (updates.price !== undefined) payload.price = updates.price;
-      if (updates.reorderLevel !== undefined) payload.reorder_level = updates.reorderLevel;
-      if (updates.initialStock !== undefined) payload.initial_stock = updates.initialStock;
-      if (updates.shopId !== undefined) payload.shop_id = updates.shopId || null;
-      if (updates.supplier !== undefined) payload.supplier = updates.supplier || null;
-      if (updates.costPrice !== undefined) payload.cost_price = updates.costPrice || null;
-      if (updates.adminCostPrice !== undefined) payload.admin_cost_price = updates.adminCostPrice || null;
-      if (updates.actualCost !== undefined) payload.actual_cost = updates.actualCost ?? null;
-      if (updates.pendingAllocation !== undefined) payload.pending_allocation = updates.pendingAllocation;
+  type UpdateItemStockMovementOpts = {
+    stockDeltaReason?: StockMovement["reason"];
+    stockDeltaReferenceId?: string;
+    sourcePurchaseId?: string;
+  };
 
-      const { error } = await supabase.from("inventory_items").update(payload).eq("id", id);
-      if (error) {
-        console.error("Error updating inventory item:", error);
-        return;
-      }
-      lastLocalUpdateRef.current = Date.now();
-      setItems((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
-      );
-      if (updates.stock !== undefined) {
-        const delta = updates.stock - currentItem.stock;
-        if (delta !== 0) {
-          await recordStockMovement({
-            itemId: currentItem.id,
-            itemName: updates.name || currentItem.name,
-            shopId: updates.shopId !== undefined ? updates.shopId : currentItem.shopId,
-            delta,
-            reason: 'manual_edit',
-            actor: currentUser?.name,
-          });
+  const updateItem = useCallback(
+    (id: number, updates: Partial<InventoryItem>, movementOpts?: UpdateItemStockMovementOpts): Promise<void> => {
+      return (async () => {
+        const currentItem = items.find((item) => item.id === id);
+        if (!currentItem) return;
+        const payload: Record<string, unknown> = {};
+        if (updates.name !== undefined) payload.name = updates.name;
+        if (updates.category !== undefined) payload.category = updates.category;
+        if (updates.itemType !== undefined) payload.item_type = updates.itemType;
+        if (updates.stock !== undefined) payload.stock = updates.stock;
+        if (updates.price !== undefined) payload.price = updates.price;
+        if (updates.reorderLevel !== undefined) payload.reorder_level = updates.reorderLevel;
+        if (updates.initialStock !== undefined) payload.initial_stock = updates.initialStock;
+        if (updates.shopId !== undefined) payload.shop_id = updates.shopId || null;
+        if (updates.supplier !== undefined) payload.supplier = updates.supplier || null;
+        if (updates.costPrice !== undefined) payload.cost_price = updates.costPrice || null;
+        if (updates.adminCostPrice !== undefined) payload.admin_cost_price = updates.adminCostPrice || null;
+        if (updates.actualCost !== undefined) payload.actual_cost = updates.actualCost ?? null;
+        if (updates.pendingAllocation !== undefined) payload.pending_allocation = updates.pendingAllocation;
+
+        const { error } = await supabase.from("inventory_items").update(payload).eq("id", id);
+        if (error) {
+          console.error("Error updating inventory item:", error);
+          return;
         }
-      }
-    })();
-  }, [currentUser?.name, items, recordStockMovement]);
+        lastLocalUpdateRef.current = Date.now();
+        setItems((prev) =>
+          prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
+        );
+        if (updates.stock !== undefined) {
+          const delta = updates.stock - currentItem.stock;
+          if (delta !== 0) {
+            const reason = movementOpts?.stockDeltaReason ?? "manual_edit";
+            await recordStockMovement({
+              itemId: currentItem.id,
+              itemName: updates.name || currentItem.name,
+              shopId: updates.shopId !== undefined ? updates.shopId : currentItem.shopId,
+              delta,
+              reason,
+              actor: currentUser?.name,
+              referenceId: movementOpts?.stockDeltaReferenceId,
+              sourcePurchaseId: movementOpts?.sourcePurchaseId,
+            });
+          }
+        }
+      })();
+    },
+    [currentUser?.name, items, recordStockMovement]
+  );
 
   const removeItem = useCallback((id: number) => {
     (async () => {
@@ -787,62 +849,198 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
   }, [items, updateItem]);
 
   const deductStockById = useCallback(
-    (itemId: number, qty: number) => {
+    async (itemId: number, qty: number, opts?: { saleReferenceId?: string }) => {
       const item = items.find((i) => i.id === itemId);
       if (!item || qty <= 0) return;
-      updateItem(itemId, { stock: Math.max(0, item.stock - qty) });
+
+      const saleRef = opts?.saleReferenceId;
+      const newStock = Math.max(0, item.stock - qty);
+
+      const { data: lots, error: lotsErr } = await supabase
+        .from("inventory_stock_lots")
+        .select("id, purchase_id, qty_remaining, created_at")
+        .eq("item_id", itemId)
+        .gt("qty_remaining", 0)
+        .order("created_at", { ascending: true });
+
+      if (lotsErr || !lots?.length) {
+        await updateItem(
+          itemId,
+          { stock: newStock },
+          saleRef
+            ? { stockDeltaReason: "sale", stockDeltaReferenceId: saleRef }
+            : undefined
+        );
+        return;
+      }
+
+      let remaining = qty;
+      for (const lot of lots) {
+        if (remaining <= 0) break;
+        const take = Math.min(Number(lot.qty_remaining) || 0, remaining);
+        if (take <= 0) continue;
+        const nextRem = Number(lot.qty_remaining) - take;
+        const { error: lotUpdErr } = await supabase
+          .from("inventory_stock_lots")
+          .update({ qty_remaining: nextRem })
+          .eq("id", lot.id);
+        if (lotUpdErr) {
+          console.warn("inventory_stock_lots update failed:", lotUpdErr.message);
+          continue;
+        }
+        remaining -= take;
+        await recordStockMovement({
+          itemId,
+          itemName: item.name,
+          shopId: item.shopId,
+          delta: -take,
+          reason: "sale",
+          actor: currentUser?.name,
+          referenceId: saleRef,
+          sourcePurchaseId: lot.purchase_id || undefined,
+        });
+      }
+
+      if (remaining > 0) {
+        await recordStockMovement({
+          itemId,
+          itemName: item.name,
+          shopId: item.shopId,
+          delta: -remaining,
+          reason: "sale",
+          actor: currentUser?.name,
+          referenceId: saleRef,
+        });
+      }
+
+      const { error: invErr } = await supabase
+        .from("inventory_items")
+        .update({ stock: newStock })
+        .eq("id", itemId);
+      if (invErr) {
+        console.error("Error updating inventory stock after sale:", invErr);
+        return;
+      }
+      lastLocalUpdateRef.current = Date.now();
+      setItems((prev) =>
+        prev.map((row) => (row.id === itemId ? { ...row, stock: newStock } : row))
+      );
     },
-    [items, updateItem]
+    [currentUser?.name, items, recordStockMovement, updateItem]
   );
 
-  const addPurchase = useCallback(async (purchaseData: Omit<Purchase, 'id' | 'date'>): Promise<void> => {
-    // Resolve new items (negative itemId) to real inventory IDs by creating them first
-    const resolvedItems: Array<{ itemId: number; itemName: string; qty: number; costPrice: number; actualCost?: number; staffSellingPrice?: number }> = [];
-    for (const item of purchaseData.items) {
-      const existingItem = items.find((i) => i.id === item.itemId);
-      if (existingItem && item.itemId > 0) {
-        resolvedItems.push({
-          itemId: item.itemId,
-          itemName: item.itemName,
-          qty: item.qty,
-          costPrice: item.costPrice,
-          actualCost: item.actualCost,
-          staffSellingPrice: item.staffSellingPrice,
-        });
-      } else {
+  const addPurchase = useCallback(
+    async (purchaseData: Omit<Purchase, "id" | "date">): Promise<void> => {
+      type ResolvedLine = {
+        itemId: number;
+        itemName: string;
+        qty: number;
+        costPrice: number;
+        actualCost?: number;
+        staffSellingPrice?: number;
+        category?: "Phone" | "Spare" | "Accessory";
+        isNewInventoryRow: boolean;
+      };
+
+      const insertPurchaseStockLots = async (
+        itemId: number,
+        purchaseId: string,
+        incomingQty: number,
+        priorStockOnHand: number
+      ) => {
+        try {
+          const { count, error: cntErr } = await supabase
+            .from("inventory_stock_lots")
+            .select("*", { count: "exact", head: true })
+            .eq("item_id", itemId)
+            .gt("qty_remaining", 0);
+          if (cntErr) return;
+          const hasLots = (count ?? 0) > 0;
+          if (!hasLots && priorStockOnHand > 0) {
+            await supabase.from("inventory_stock_lots").insert({
+              item_id: itemId,
+              purchase_id: null,
+              qty_initial: priorStockOnHand,
+              qty_remaining: priorStockOnHand,
+            });
+          }
+          if (incomingQty > 0) {
+            await supabase.from("inventory_stock_lots").insert({
+              item_id: itemId,
+              purchase_id: purchaseId,
+              qty_initial: incomingQty,
+              qty_remaining: incomingQty,
+            });
+          }
+        } catch (e) {
+          console.warn("inventory_stock_lots skipped (run supabase/inventory_stock_lots.sql):", e);
+        }
+      };
+
+      const resolvedLines: ResolvedLine[] = [];
+      const stockByItemId = new Map<number, number>();
+      for (const it of items) stockByItemId.set(it.id, it.stock);
+      const lastPriceByItemId = new Map<number, number>();
+
+      for (const item of purchaseData.items) {
+        let target: InventoryItem | undefined;
+        if (item.itemId > 0) {
+          target = items.find((i) => i.id === item.itemId);
+        }
+        if (!target) {
+          target = findPurchaseMergeTarget(
+            items,
+            item.itemName,
+            item.category,
+            purchaseData.shopId
+          );
+        }
+        if (target) {
+          resolvedLines.push({
+            itemId: target.id,
+            itemName: item.itemName,
+            qty: item.qty,
+            costPrice: item.costPrice,
+            actualCost: item.actualCost,
+            staffSellingPrice: item.staffSellingPrice,
+            category: item.category,
+            isNewInventoryRow: false,
+          });
+          continue;
+        }
+
         const actualCost = item.actualCost ?? item.costPrice;
-        // staffSellingPrice is the price staff will use when selling - set as price and costPrice for profit calculation
         const staffPrice = item.staffSellingPrice ?? 0;
-        // Determine category: use provided category, or try to find from existing items, or default to 'Spare'
-        let itemCategory: 'Phone' | 'Spare' | 'Accessory' = item.category || 'Spare';
-        const existingItemByName = items.find(i => i.name.toLowerCase() === item.itemName.toLowerCase());
-        if (existingItemByName && !item.category) {
-          itemCategory = existingItemByName.category;
+        let itemCategory: "Phone" | "Spare" | "Accessory" = item.category || "Spare";
+        const nameMatch = items.find((i) => i.name.toLowerCase() === item.itemName.toLowerCase());
+        if (nameMatch && !item.category) {
+          itemCategory = nameMatch.category;
         }
         const payload = {
           name: item.itemName,
           category: itemCategory,
           stock: item.qty,
-          price: staffPrice, // Staff selling price - this is what staff sees and uses
+          price: staffPrice,
           reorder_level: 0,
           initial_stock: item.qty,
           shop_id: null,
           supplier: purchaseData.supplier,
-          cost_price: staffPrice, // Also set as costPrice so profit = selling_price - costPrice
+          cost_price: staffPrice,
           admin_cost_price: item.costPrice,
           actual_cost: actualCost,
           pending_allocation: true,
         };
         const { data: newRow, error: insertErr } = await supabase
-          .from('inventory_items')
+          .from("inventory_items")
           .insert(payload)
-          .select('id')
+          .select("id")
           .single();
         if (insertErr) {
-          console.error('Error creating inventory item:', insertErr);
+          console.error("Error creating inventory item:", insertErr);
           throw insertErr;
         }
-        const newId = newRow.id;
+        const newId = Number(newRow.id);
+        stockByItemId.set(newId, item.qty);
         setItems((prev) => [
           {
             id: newId,
@@ -855,108 +1053,139 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
             pendingAllocation: true,
             costPrice: staffPrice,
             adminCostPrice: item.costPrice,
-            actualCost: actualCost,
+            actualCost,
             supplier: purchaseData.supplier,
           } as InventoryItem,
           ...prev,
         ]);
-        resolvedItems.push({
+        resolvedLines.push({
           itemId: newId,
           itemName: item.itemName,
           qty: item.qty,
           costPrice: item.costPrice,
           actualCost: item.actualCost,
           staffSellingPrice: item.staffSellingPrice,
+          category: item.category,
+          isNewInventoryRow: true,
         });
       }
-    }
 
-    const purchasePayload: Record<string, unknown> = {
-      supplier: purchaseData.supplier,
-      total: purchaseData.total,
-      shop_id: purchaseData.shopId || null,
-    };
-    if (purchaseData.supplierType) purchasePayload.supplier_type = purchaseData.supplierType;
+      const purchasePayload: Record<string, unknown> = {
+        supplier: purchaseData.supplier,
+        total: purchaseData.total,
+        shop_id: purchaseData.shopId || null,
+      };
+      if (purchaseData.supplierType) purchasePayload.supplier_type = purchaseData.supplierType;
 
-    const { data: purchaseRecord, error: purchaseError } = await supabase
-      .from('purchases')
-      .insert(purchasePayload)
-      .select('*')
-      .single();
-    if (purchaseError) {
-      console.error('Error adding purchase:', purchaseError);
-      throw purchaseError;
-    }
-
-    const purchaseItemsPayload = resolvedItems.map((item) => ({
-      purchase_id: purchaseRecord.id,
-      item_id: item.itemId,
-      item_name: item.itemName,
-      qty: item.qty,
-      cost_price: item.costPrice,
-      ...(item.actualCost != null && { actual_cost: item.actualCost }),
-    }));
-    const { error: itemsError } = await supabase
-      .from('purchase_items')
-      .insert(purchaseItemsPayload);
-    if (itemsError) {
-      console.error('Error adding purchase items:', itemsError);
-      throw itemsError;
-    }
-
-    for (const item of purchaseData.items) {
-      const existingItem = items.find((i) => i.id === item.itemId);
-      if (existingItem && item.itemId > 0) {
-        const actualCost = item.actualCost ?? item.costPrice;
-        const staffPrice = item.staffSellingPrice ?? existingItem.price;
-        updateItem(existingItem.id, {
-          stock: existingItem.stock + item.qty,
-          pendingAllocation: true,
-          price: staffPrice, // Update price to staff selling price
-          costPrice: staffPrice, // Update costPrice for profit calculation
-          adminCostPrice: item.costPrice,
-          actualCost: actualCost,
-          supplier: purchaseData.supplier,
-        });
+      const { data: purchaseRecord, error: purchaseError } = await supabase
+        .from("purchases")
+        .insert(purchasePayload)
+        .select("*")
+        .single();
+      if (purchaseError) {
+        console.error("Error adding purchase:", purchaseError);
+        throw purchaseError;
       }
-    }
 
-    const { data: newPurchaseData, error: fetchError } = await supabase
-      .from('purchases')
-      .select('*')
-      .eq('id', purchaseRecord.id)
-      .single();
-    if (fetchError) {
-      console.error('Error fetching new purchase:', fetchError);
-      return;
-    }
+      const purchaseItemsPayload = resolvedLines.map((line) => ({
+        purchase_id: purchaseRecord.id,
+        item_id: line.itemId,
+        item_name: line.itemName,
+        qty: line.qty,
+        cost_price: line.costPrice,
+        ...(line.actualCost != null && { actual_cost: line.actualCost }),
+      }));
+      const { error: itemsError } = await supabase.from("purchase_items").insert(purchaseItemsPayload);
+      if (itemsError) {
+        console.error("Error adding purchase items:", itemsError);
+        throw itemsError;
+      }
 
-    const { data: itemsData } = await supabase
-      .from('purchase_items')
-      .select('*')
-      .eq('purchase_id', purchaseRecord.id);
+      for (let i = 0; i < resolvedLines.length; i++) {
+        const line = resolvedLines[i];
+        const src = purchaseData.items[i];
+        const priorForLots = line.isNewInventoryRow ? 0 : (stockByItemId.get(line.itemId) ?? 0);
+        await insertPurchaseStockLots(line.itemId, purchaseRecord.id, line.qty, priorForLots);
 
-    const newPurchase: Purchase = {
-      id: newPurchaseData.id,
-      date: new Date(newPurchaseData.date),
-      supplier: newPurchaseData.supplier,
-      supplierType: (newPurchaseData.supplier_type === 'wholesale' ? 'wholesale' : 'local') as 'local' | 'wholesale',
-      total: Number(newPurchaseData.total) || 0,
-      shopId: newPurchaseData.shop_id || undefined,
-      confirmed: newPurchaseData.confirmed || false,
-      confirmedBy: newPurchaseData.confirmed_by || undefined,
-      confirmedDate: newPurchaseData.confirmed_date ? new Date(newPurchaseData.confirmed_date) : undefined,
-      items: (itemsData || []).map((pi: any) => ({
-        itemId: pi.item_id,
-        itemName: pi.item_name,
-        qty: pi.qty,
-        costPrice: Number(pi.cost_price) || 0,
-        actualCost: pi.actual_cost != null ? Number(pi.actual_cost) : undefined,
-      })),
-    };
-    lastLocalUpdateRef.current = Date.now();
-    setPurchases((prev) => [newPurchase, ...prev]);
-  }, [items, updateItem]);
+        if (line.isNewInventoryRow) {
+          await recordStockMovement({
+            itemId: line.itemId,
+            itemName: line.itemName,
+            shopId: undefined,
+            delta: line.qty,
+            reason: "purchase_in",
+            actor: currentUser?.name,
+            referenceId: purchaseRecord.id,
+          });
+        } else {
+          const actualCost = src.actualCost ?? src.costPrice;
+          const staffPrice =
+            src.staffSellingPrice ??
+            lastPriceByItemId.get(line.itemId) ??
+            items.find((x) => x.id === line.itemId)?.price ??
+            0;
+          lastPriceByItemId.set(line.itemId, staffPrice);
+          const nextStock = priorForLots + line.qty;
+          stockByItemId.set(line.itemId, nextStock);
+          await updateItem(
+            line.itemId,
+            {
+              stock: nextStock,
+              pendingAllocation: true,
+              price: staffPrice,
+              costPrice: staffPrice,
+              adminCostPrice: src.costPrice,
+              actualCost,
+              supplier: purchaseData.supplier,
+            },
+            {
+              stockDeltaReason: "purchase_in",
+              stockDeltaReferenceId: purchaseRecord.id,
+            }
+          );
+        }
+      }
+
+      const { data: newPurchaseData, error: fetchError } = await supabase
+        .from("purchases")
+        .select("*")
+        .eq("id", purchaseRecord.id)
+        .single();
+      if (fetchError) {
+        console.error("Error fetching new purchase:", fetchError);
+        return;
+      }
+
+      const { data: itemsData } = await supabase
+        .from("purchase_items")
+        .select("*")
+        .eq("purchase_id", purchaseRecord.id);
+
+      const newPurchase: Purchase = {
+        id: newPurchaseData.id,
+        date: new Date(newPurchaseData.date),
+        supplier: newPurchaseData.supplier,
+        supplierType: (newPurchaseData.supplier_type === "wholesale" ? "wholesale" : "local") as
+          | "local"
+          | "wholesale",
+        total: Number(newPurchaseData.total) || 0,
+        shopId: newPurchaseData.shop_id || undefined,
+        confirmed: newPurchaseData.confirmed || false,
+        confirmedBy: newPurchaseData.confirmed_by || undefined,
+        confirmedDate: newPurchaseData.confirmed_date ? new Date(newPurchaseData.confirmed_date) : undefined,
+        items: (itemsData || []).map((pi: any) => ({
+          itemId: pi.item_id,
+          itemName: pi.item_name,
+          qty: pi.qty,
+          costPrice: Number(pi.cost_price) || 0,
+          actualCost: pi.actual_cost != null ? Number(pi.actual_cost) : undefined,
+        })),
+      };
+      lastLocalUpdateRef.current = Date.now();
+      setPurchases((prev) => [newPurchase, ...prev]);
+    },
+    [items, updateItem, recordStockMovement, currentUser?.name]
+  );
 
   const confirmPurchase = useCallback((purchaseId: string) => {
     (async () => {
@@ -1465,6 +1694,7 @@ export const InventoryProvider = ({ children }: { children: React.ReactNode }) =
         approveStockAllocation,
         rejectStockAllocation,
         refreshStockAllocations,
+        refreshStockMovements,
         addAuditLog,
         requestManagerApproval,
         approveManagerApproval,

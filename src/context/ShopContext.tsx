@@ -1,6 +1,32 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 
+const ROLE_SET = new Set(["admin", "technician", "manager"]);
+
+function normalizeRoles(raw: unknown): ("admin" | "technician" | "manager")[] {
+  let list: string[] = [];
+  if (Array.isArray(raw)) {
+    list = raw.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+  } else if (typeof raw === "string") {
+    const s = raw.trim();
+    if (s.startsWith("[")) {
+      try {
+        const p = JSON.parse(s) as unknown;
+        if (Array.isArray(p)) list = p.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+      } catch {
+        list = [];
+      }
+    }
+    if (list.length === 0) {
+      list = s.split(/[,\s|]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+    }
+  }
+  const out = [...new Set(list)].filter((r): r is "admin" | "technician" | "manager" =>
+    ROLE_SET.has(r)
+  );
+  return out.length ? out : ["technician"];
+}
+
 export type Shop = {
   id: string;
   name: string;
@@ -45,8 +71,8 @@ type ShopContextType = {
   addShop: (shop: Omit<Shop, 'id'>) => void;
   updateShop: (shopId: string, shop: Partial<Shop>) => void;
   deleteShop: (shopId: string) => void;
-  addUser: (user: Omit<User, 'id'>) => void;
-  updateUser: (userId: string, user: Partial<User>) => void;
+  addUser: (user: Omit<User, 'id'>) => Promise<{ ok: boolean; error?: string }>;
+  updateUser: (userId: string, user: Partial<User>) => Promise<{ ok: boolean; error?: string }>;
   deleteUser: (userId: string) => void;
   getShopById: (shopId: string) => Shop | undefined;
   getUserShops: (userId: string) => Shop[];
@@ -219,7 +245,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
           email: u.email,
           password: u.password,
           shopId: u.shop_id || '',
-          roles: (u.roles || []) as ('admin' | 'technician' | 'manager')[],
+          roles: normalizeRoles(u.roles),
           managerScope: (u.manager_scope || undefined) as 'accessories' | 'repair' | 'both' | undefined,
         }));
 
@@ -237,7 +263,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
                 email: userData.email,
                 password: userData.password,
                 shop_id: matchingShop.id,
-                roles: userData.roles,
+                roles: normalizeRoles(userData.roles),
               })
               .select("*")
               .single();
@@ -251,7 +277,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
               email: newUser.email,
               password: newUser.password,
               shopId: newUser.shop_id,
-              roles: (newUser.roles || []) as ('admin' | 'technician' | 'manager')[],
+              roles: normalizeRoles(newUser.roles),
               managerScope: (newUser.manager_scope || undefined) as 'accessories' | 'repair' | 'both' | undefined,
             });
           }
@@ -403,7 +429,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
         email: userRow.email,
         password: userRow.password,
         shopId: userRow.shop_id || '',
-        roles: (userRow.roles || []) as ('admin' | 'technician' | 'manager')[],
+        roles: normalizeRoles(userRow.roles),
         managerScope: userRow.manager_scope || undefined,
       };
 
@@ -515,89 +541,90 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
     })();
   }, []);
 
-  const addUser = useCallback((userData: Omit<User, 'id'>) => {
-    (async () => {
-      // Trim email and password so login comparison works (login trims input)
-      const email = (userData.email || '').trim().toLowerCase();
-      const password = (userData.password || '').trim();
+  const addUser = useCallback(
+    async (userData: Omit<User, "id">): Promise<{ ok: boolean; error?: string }> => {
+      const email = (userData.email || "").trim().toLowerCase();
+      const password = (userData.password || "").trim();
       if (!password) {
-        console.error("Password is required when adding a user");
-        return;
+        const msg = "Password is required when adding a user";
+        console.error(msg);
+        return { ok: false, error: msg };
       }
+      const roles = normalizeRoles(userData.roles);
       const { data, error } = await supabase
         .from("users")
         .insert({
-          name: (userData.name || '').trim(),
+          name: (userData.name || "").trim(),
           email,
           password,
           shop_id: userData.shopId || null,
-          roles: userData.roles,
+          roles,
           manager_scope: userData.managerScope || null,
         })
         .select("*")
         .single();
       if (error) {
         console.error("Error adding user:", error);
-        return;
+        return { ok: false, error: error.message };
       }
       const newUser: User = {
         id: data.id,
         name: data.name,
         email: data.email,
         password: data.password,
-        shopId: data.shop_id || '',
-        roles: (data.roles || []) as ('admin' | 'technician' | 'manager')[],
-        managerScope: (data.manager_scope || undefined) as 'accessories' | 'repair' | 'both' | undefined,
+        shopId: data.shop_id || "",
+        roles: normalizeRoles(data.roles),
+        managerScope: (data.manager_scope || undefined) as "accessories" | "repair" | "both" | undefined,
       };
       setUsers((prev) => [newUser, ...prev]);
       void addStaffAuditLog({
-        action: 'staff_add',
+        action: "staff_add",
         targetUserId: newUser.id,
         targetName: newUser.name,
-        details: `Added staff with roles: ${newUser.roles.join(', ')}`,
+        details: `Added staff with roles: ${newUser.roles.join(", ")}`,
       });
-    })();
-  }, [addStaffAuditLog]);
+      return { ok: true };
+    },
+    [addStaffAuditLog]
+  );
 
-  const updateUser = useCallback((userId: string, userData: Partial<User>) => {
-    (async () => {
-      const payload: any = {};
-      if (userData.name !== undefined) payload.name = (userData.name || '').trim();
-      if (userData.email !== undefined) payload.email = (userData.email || '').trim().toLowerCase();
-      // Only update password if a new non-empty one was provided (don't overwrite with empty)
-      if (userData.password !== undefined && (userData.password || '').trim() !== '') {
-        payload.password = (userData.password || '').trim();
+  const updateUser = useCallback(
+    async (userId: string, userData: Partial<User>): Promise<{ ok: boolean; error?: string }> => {
+      const payload: Record<string, unknown> = {};
+      if (userData.name !== undefined) payload.name = (userData.name || "").trim();
+      if (userData.email !== undefined) payload.email = (userData.email || "").trim().toLowerCase();
+      if (userData.password !== undefined && (userData.password || "").trim() !== "") {
+        payload.password = (userData.password || "").trim();
       }
       if (userData.shopId !== undefined) payload.shop_id = userData.shopId || null;
-      if (userData.roles !== undefined) payload.roles = userData.roles;
+      if (userData.roles !== undefined) payload.roles = normalizeRoles(userData.roles);
       if (userData.managerScope !== undefined) payload.manager_scope = userData.managerScope || null;
 
-      const { error } = await supabase
-        .from("users")
-        .update(payload)
-        .eq("id", userId);
+      const { error } = await supabase.from("users").update(payload).eq("id", userId);
       if (error) {
         console.error("Error updating user:", error);
-        return;
+        return { ok: false, error: error.message };
       }
-      // Merge updates into local state (keep existing password in state if not updated)
       setUsers((prev) =>
         prev.map((user) => {
           if (user.id !== userId) return user;
-          const updated = { ...user, ...userData } as User;
-          if (payload.password === undefined) updated.password = user.password;
-          return updated;
+          const merged = { ...user, ...userData } as User;
+          if (userData.roles !== undefined) merged.roles = normalizeRoles(userData.roles);
+          if (payload.password === undefined) merged.password = user.password;
+          return merged;
         })
       );
       const target = users.find((u) => u.id === userId);
       void addStaffAuditLog({
-        action: 'staff_update',
+        action: "staff_update",
         targetUserId: userId,
         targetName: userData.name || target?.name,
-        details: `Updated staff account fields: ${Object.keys(payload).join(', ')}`,
+        details: `Updated staff account fields: ${Object.keys(payload).join(", ")}`,
       });
-    })();
-  }, [addStaffAuditLog, users]);
+      return { ok: true };
+    },
+    [addStaffAuditLog, users]
+  );
 
   const deleteUser = useCallback((userId: string) => {
     (async () => {

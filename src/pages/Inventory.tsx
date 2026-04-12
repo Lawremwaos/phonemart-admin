@@ -15,6 +15,7 @@ export default function Inventory() {
     approveManagerApproval,
     rejectManagerApproval,
     getStockMath,
+    stockMovements,
   } = useInventory();
   const { currentShop, currentUser, shops } = useShop();
   const isAdmin = currentUser?.roles.includes("admin") || false;
@@ -23,6 +24,7 @@ export default function Inventory() {
   const canViewAllStock = isAdmin || isManager;
 
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
+  const [ledgerItemId, setLedgerItemId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     category: "Phone" as "Phone" | "Spare" | "Accessory",
@@ -260,10 +262,14 @@ export default function Inventory() {
                   </td>
                 </tr>
               ) : (
-                section.rows.map((item) => {
+                section.rows.flatMap((item) => {
                   const lowStock = item.stock <= item.reorderLevel;
                   const math = getStockMath(item.id);
-                  return (
+                  const trail = stockMovements
+                    .filter((m) => m.itemId === item.id)
+                    .slice(0, 25);
+                  const colSpan = canEditStock ? (canViewAllStock ? 8 : 7) : canViewAllStock ? 7 : 6;
+                  const mainRow = (
                     <tr
                       key={item.id}
                       className={`border-t border-[var(--pm-border)] ${lowStock ? "bg-red-50" : ""}`}
@@ -280,13 +286,24 @@ export default function Inventory() {
                         </td>
                       )}
                       <td className="p-3 text-xs">
-                        {math.matches ? (
-                          <span className="text-green-700 font-semibold">Balanced</span>
-                        ) : (
-                          <span className="text-red-700 font-semibold">
-                            Mismatch ({math.expectedStock} expected)
-                          </span>
-                        )}
+                        <div className="flex flex-col gap-1">
+                          {math.matches ? (
+                            <span className="text-green-700 font-semibold">Balanced</span>
+                          ) : (
+                            <span className="text-red-700 font-semibold">
+                              Mismatch ({math.expectedStock} expected)
+                            </span>
+                          )}
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              className="text-left text-[var(--pm-accent-strong)] underline text-xs font-medium"
+                              onClick={() => setLedgerItemId((id) => (id === item.id ? null : item.id))}
+                            >
+                              {ledgerItemId === item.id ? "Hide stock trail" : "Stock trail (admin)"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="p-3">
                         {lowStock ? (
@@ -319,6 +336,33 @@ export default function Inventory() {
                       )}
                     </tr>
                   );
+                  if (!isAdmin || ledgerItemId !== item.id) return [mainRow];
+                  const detailRow = (
+                    <tr key={`${item.id}-trail`} className="border-t border-[var(--pm-border)] bg-[var(--pm-surface-soft)]">
+                      <td className="p-3 text-xs text-[var(--pm-ink-soft)]" colSpan={colSpan}>
+                        <p className="font-semibold text-[var(--pm-ink)] mb-2">Recent movements (purchase batches & sales)</p>
+                        {trail.length === 0 ? (
+                          <p>No movements recorded yet for this item.</p>
+                        ) : (
+                          <ul className="space-y-1 font-mono">
+                            {trail.map((m) => (
+                              <li key={m.id}>
+                                {new Date(m.createdAt).toLocaleString()} — {m.reason}
+                                {m.delta > 0 ? ` +${m.delta}` : ` ${m.delta}`}
+                                {m.referenceId ? ` · ref ${m.referenceId}` : ""}
+                                {m.sourcePurchaseId
+                                  ? ` · from purchase ${m.sourcePurchaseId.slice(0, 8)}…`
+                                  : m.reason === "sale" && m.delta < 0
+                                    ? " · legacy / unbatched stock"
+                                    : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                  return [mainRow, detailRow];
                 })
               )}
             </tbody>
